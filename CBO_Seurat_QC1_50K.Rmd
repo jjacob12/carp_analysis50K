@@ -1,0 +1,448 @@
+---
+title: "CBO_Seurat_QC1_50K"
+author: "JJ"
+date: "05/08/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+library(Seurat)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+```
+
+```{r path_to_data}
+data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
+
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r read_expression_matrix}
+# note these are .gz files which can be directly read. n = 3838 cells
+
+cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+
+dim(cbo.data)
+```
+
+```{r distrib_detect_genes_stats}
+# Check how many genes have at least one transcript in each cell.
+# Minimum genes per cell is 82, median genes per cell is 2843
+
+at_least_one <- apply(cbo.data, 2, function(x) sum(x>0)) # counts the sum of rows that have a                                                                        count value (x > 0) for each column
+summary(at_least_one)
+
+# summary of total expression per cell.
+summary(colSums(cbo.data))
+```
+
+```{r Plots_GenesPerCell, fig.height=10, fig.width=8}
+# distribution of genes looks bimodal
+par(mfrow = c(2, 1))
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(cbo.data),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+```
+
+```{r genesPerCell}
+# manually check the number of genes detected in three or more cells
+# ~25.8K genes are expressed in at least 3 cells
+# ~10.7K genes are not expressed in at least 3 cells
+tmp <- apply(cbo.data, 1, function(x) sum(x > 0))
+table(tmp >= 3)
+```
+
+```{r cells_gene_counts}
+# Do all 3838 cells have at least 200 expressed genes? Ans = NO. Min. genes = 82
+
+keep <- tmp>=3                  # for each gene this states TRUE or FALSE
+
+tmp2 <- cbo.data[keep, ]        # subset cbo.data to keep only TRUE values, i.e. genes which 
+                                # are expressed in 3 or more cells
+
+dim(tmp2)                       # dim is 25872 by 3838
+
+genes_in_3orMoreCells <- apply(tmp2, 2, function(x) sum(x > 0))   # for each cell, this counts the number 
+                                                                  # of genes that cell expresses for all
+                                                                  # genes expressed in 3 or more cells
+
+summary(genes_in_3orMoreCells)
+```
+
+```{r Plot_sorted_genesPerCell}
+# rank each cell by its library complexity, i.e. number of genes detected per cell. Graph looks OK
+
+genes_per_cell <- Matrix::colSums(cbo.data > 0) # count gene only if it has non-zero reads                                                                   mapped.
+
+plot(sort(genes_per_cell), 
+     xlab='cell',
+     ylab = "sorted genes per cell",
+     log = "y",                             # only y axis is logarithmic
+     main='Genes per cell (ordered)') 
+```
+
+```{r create_seurat_object}
+
+cbo.seurat <- CreateSeuratObject(counts = cbo.data, 
+                                    min.cells = 3, 
+                                    min.genes = 200, 
+                                    project = "CBO")
+dim(cbo.seurat)
+```
+
+```{r add_percent_mitochondria_meta.data}
+# mitochondrial percentage
+cbo.seurat[["percent.mt"]] <- PercentageFeatureSet(cbo.seurat, pattern = "^MT-")
+head(cbo.seurat@meta.data)
+```
+
+```{r metadata_dataframe_3838cells}
+# create metadata dataframe
+metadata <- cbo.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+# Rename columns to be more intuitive
+metadata <- metadata %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+dim(metadata)
+```
+
+```{r violinPlot_genes_transcripts_percent.mt_3838cells, fig.height=10, fig.width=5}
+# there are many cells with excessive mitochondrial transcripts
+# the data looks bimodal
+
+p1 <- metadata %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p2 <- metadata %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p3 <- metadata %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p1 / p2 / p3
+```
+
+```{r Plot_UMIcountsPerCell_3838cells}
+
+# visualise number of UMIs (transcripts) per cell using all 3838 cells. There are ~9-10K UMI's per cell 
+# In geom_density use (y = ..scaled..) value that stat_density provides
+
+metadata %>% 
+        ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..)) +
+        scale_x_log10() +
+        theme_classic() +
+        ylab("cell density") +
+        geom_vline(xintercept = 500, color = "blue")
+```
+
+```{r mitochondrial_thresholds}
+# number of cells with percent.mt > 10%: 768 cells
+# number of cells with percent.mt < 10%: 3070 cells
+
+nrow(metadata[metadata$percent.mt > 10, ])
+
+nrow(metadata[metadata$percent.mt < 10, ])
+```
+
+```{r filtered_seuratObject_CellLevel}
+# CELL LEVEL FILTERING
+#-------------------------------------------------------------------------------------------
+
+# remove cells with percent mitochondrial gene expression > 10 and where no.genes/cell < 200.
+# left with 3070 cells
+
+filtered.cbo.seurat <- subset(cbo.seurat, subset = nFeature_RNA > 200 & percent.mt < 10)
+dim(filtered.cbo.seurat)
+```
+
+```{r violinPlot_genes_transcripts_percent.mt_3070cells, fig.height=10, fig.width=5}
+# create a metadata dataframe
+# new plots show 
+
+metadata.2 <- filtered.cbo.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata.2$cells <- rownames(metadata.2)
+
+# Rename columns to be more intuitive
+metadata.2 <- metadata.2 %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+p4 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p5 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p6 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        ylim(0, 100) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p4 / p5 / p6
+```
+
+```{r extract_countsSlot_3070cells}
+# subset '@counts' slot (matrix) of filtered seurat object
+
+counts.3070 <- GetAssayData(object = filtered.cbo.seurat, slot = "counts")
+```
+
+```{r summarise_stats_3070cells}
+# median genes per cell and expression sum, as above. Min. genes = 335, median = 3155
+
+at_least_one.3070 <- apply(counts.3070, 2, function(x) sum(x>0))
+
+summary(at_least_one.3070)
+
+summary(colSums(counts.3070))
+```
+
+```{r Plots_GenesPerCell_3070cells, fig.height=10, fig.width=8}
+# 1 major peak now, but still a group of cells to the left with lower gene expression. 
+# There are cells in the tail to the right of each graph which look like outliers with 
+# very high gene expression.
+
+par(mfrow = c(2, 1))
+
+hist(at_least_one.3070, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(counts.3070),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+```
+
+```{r Plots_UMI_gene_expression_3070cells, fig.height=10, fig.width=5}
+
+# looks ok, most of the filtered CBO cells have UMI counts > 3000 and express ~3000 genes
+
+p7 <- metadata.2 %>% 
+       ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..), colour = "blue", fill = "blue", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p8 <- metadata.2 %>% 
+        ggplot(aes(x = nGene)) +
+        geom_density(aes(y = ..scaled..), colour = "brown1", fill = "brown1", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p7 / p8
+```
+
+```{r Plot_mitoch_transcript_genes_3070cells, fig.height=8, fig.width=6}
+# use ggplot adjustable parameters, e.g. ylim() to change the y-axis scale from the Seurat default
+
+p9 <- FeatureScatter(filtered.cbo.seurat, 
+                     feature1 = "nCount_RNA", 
+                     feature2 = "percent.mt") +
+        ylim(0, 100)
+
+p10 <- FeatureScatter(filtered.cbo.seurat, 
+                      feature1 = "nCount_RNA",
+                      feature2 = "nFeature_RNA")
+
+p9 / p10
+```
+
+```{r filtered_seuratObject_GeneLevel}
+# GENE LEVEL FILTERING (applied on cell-filtered Seurat object)
+#-----------------------------------------------------------------------------------
+
+#  we will have many genes with zero counts, which can dramatically reduce the average expression for a cell and so we will remove them from our data. Remove genes that have zero expression in all cells.
+
+# # Extract counts
+counts <- GetAssayData(object = filtered.cbo.seurat, slot = "counts")
+
+# Output a logical vector for every gene on whether there are more than zero counts per cell
+nonzero <- counts > 0
+
+# If a gene is only expressed in a handful of cells, it is not particularly meaningful as it still brings down the averages for all other cells it is not expressed in. For our data we choose to keep only genes which are expressed in 10 or more cells.
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10 # sum the TRUE values in a row with 'gene' as rowname
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+
+# Reassign to filtered Seurat object
+filteredCellsGenes.cbo.seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered.cbo.seurat@meta.data)
+```
+
+```
+# saved the filteredCellsGenes.cbo.seurat object to outputs50K folder
+
+saveRDS(filteredCellsGenes.cbo.seurat, file = "./outputs50K/CBO/filtered.cbo.seurat.rds")
+```
+
+```{r load_filteredSeuratObject}
+# load full filtered (genes and cells) seurat object
+
+Fullfilt.cbo.seurat <- readRDS("outputs50K/CBO/filtered.cbo.seurat.rds")
+```
+
+```{r size_filteredSeuratObject}
+# number of genes  is 21,299 which is is less after gene-level filtering (vs 25,872 before filtering)
+
+dim(Fullfilt.cbo.seurat)
+```
+
+```{r}
+#--------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
+# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
+```
+
+```{r normalize_fully_filtered_seuratObject}
+# standard normalization function is sufficient to explore whether cells cluster by cell-cycle phase
+
+seurat.phase <- NormalizeData(Fullfilt.cbo.seurat)
+```
+
+```{r cellCycle_effects}
+# Score cells for cell cycle.
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+seurat.phase <- CellCycleScoring(seurat.phase,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+```
+
+```{r}
+head(seurat.phase@meta.data)
+```
+
+```{r cellCycle_genes}
+# After scoring the cells for cell cycle, check whether cell cycle is 
+# a major source of variation in our dataset using PCA. 
+# To perform PCA, we need to first choose the most variable features, then scale the data.
+seurat.phase <- FindVariableFeatures(seurat.phase, 
+                     selection.method = "vst",
+                     nfeatures = 2000, 
+                     verbose = FALSE)
+
+seurat.phase <- ScaleData(seurat.phase)
+```
+
+```{r Plot_PCA}
+# cells do not obviously segregate by cell-cycle phase.
+
+# Perform PCA
+seurat.phase <- RunPCA(seurat.phase)
+
+# Plot the PCA colored by cell cycle phase - cell cycle for G2M vs S not obviously having an effect on clustering, as there is considerable overlap. There is perhaps some clustering/separation for G1 vs G2M phases. Not sure it is significant.
+DimPlot(seurat.phase,
+        reduction = "pca",
+        group.by= "Phase")
+```
+
+```{r mitochondrial_expression}
+# Check quartile values
+summary(seurat.phase@meta.data$percent.mt)
+
+# Turn percent.mt into categorical factor vector based on quartile values
+seurat.phase@meta.data$mito.prop <- cut(seurat.phase@meta.data$percent.mt, 
+                  breaks=c(-Inf, 1.8, 5.0, 9.99, Inf), 
+                  labels=c("Low","Medium","Medium high", "High"))
+```
+
+```{r plot_mitochondrialExpression}
+# repeat PCA and plot the PCA colored by mitochondrial percentage - this variable has no effect
+# on the clustering, just like cell-cycle phase
+seurat.phase <- RunPCA(seurat.phase)
+
+DimPlot(seurat.phase,
+        reduction = "pca",
+        group.by= "mito.prop",
+        split.by = "mito.prop")
+```
+
+```{r}
+saveRDS(seurat.phase, "./outputs50K/CBO/seurat.phase.cbo.rds")
+```
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
