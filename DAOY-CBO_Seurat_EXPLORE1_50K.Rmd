@@ -1,0 +1,514 @@
+---
+title: "DAOY-CBO_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "12/08/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+library(Seurat)
+library(glmGamPoi)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+```
+
+```{r load_filteredSeuratObject}
+# load full filtered (genes and cells) seurat object
+
+filt.cboDaoy.seurat <- readRDS("outputs50K/DAOY-CBO/filtCellsGenes.daoyCbo.seurat.rds")
+```
+
+```{r calc_ribosomal_percent}
+# calculate ribosomal percentage
+
+filt.cboDaoy.seurat[["percent.ribo"]] <- PercentageFeatureSet(filt.cboDaoy.seurat, pattern = "^RP[SL]")
+```
+
+```{r}
+summary(filt.cboDaoy.seurat@meta.data$percent.ribo)
+```
+
+```{r}
+VlnPlot(filt.cboDaoy.seurat, features = c("percent.mt", "percent.ribo"), ncol = 3)
+```
+
+```{r}
+# In https://kb.10xgenomics.com/hc/en-us/articles/218169723-What-fraction-of-reads-map-to-ribosomal-proteins- on the 10X Genomics scRNA-seq website there is a table of percent ribosomal genes in different cell types. For neurons the upper limit is 20%. So try filtering 'filt.cboDaoy.seurat' for ribosomal genes and repeat the clustering.
+
+# View metadata data frame, stored in object@meta.data
+metadata <- filt.cboDaoy.seurat[[]]
+
+# number of cells with percent.ribo > 20%: 1460 cells
+# number of cells with percent.ribo < 20%: 1596 cells
+
+nrow(metadata[metadata$percent.ribo > 20, ])
+
+nrow(metadata[metadata$percent.ribo < 20, ])
+```
+
+```{r filter_on_percent.ribo<20}
+# this object, as expected, has only 1596 cells, in which all cells have percent.ribo < 20%
+
+full.ribo.filt.cboDaoy <- subset(filt.cboDaoy.seurat, subset = percent.ribo < 20)
+dim(full.ribo.filt.cboDaoy)
+```
+
+```{r Plot_SCTransform_UMAP_clustering}
+# Perform SCTransform
+# Perform dimensionality reduction by PCA and UMAP embedding
+# FindClusters is run with only the default resolution parameter (= 0.8)
+
+full.ribo.filt.cboDaoy <- SCTransform(full.ribo.filt.cboDaoy, method = "glmGamPoi", verbose = FALSE)
+
+full.ribo.filt.cboDaoy <- RunPCA(full.ribo.filt.cboDaoy, verbose = FALSE)
+
+full.ribo.filt.cboDaoy <- RunUMAP(full.ribo.filt.cboDaoy, dims = 1:30, verbose = FALSE)
+
+full.ribo.filt.cboDaoy <- FindNeighbors(full.ribo.filt.cboDaoy, dims = 1:30, verbose = FALSE)
+
+full.ribo.filt.clust.cboDaoy <- FindClusters(full.ribo.filt.cboDaoy, verbose = FALSE)
+
+# 12 clusters are now detected
+DimPlot(full.ribo.filt.clust.cboDaoy, label = TRUE) # '+ NoLegend()' is an option to insert here
+```
+
+```
+# saved the last seurat object, 'full.ribo.filt.cboDaoy'
+
+saveRDS(full.ribo.filt.cboDaoy, file = "./outputs50K/DAOY-CBO/full.ribo.filt.cboDaoy.seurat.rds")
+```
+
+```
+# saved the CLUSTERED 'full.ribo.filt.clust.cboDaoy' Seurat object to the folder 'outputs50K'
+
+saveRDS(full.ribo.filt.clust.cboDaoy, file = "./outputs50K/DAOY-CBO/full.ribo.filt.clust.cboDaoy.seurat.rds")
+```
+
+```{r}
+full.ribo.filt.clust.cboDaoy <- readRDS("outputs50K/DAOY-CBO/full.ribo.filt.clust.cboDaoy.seurat.rds")
+```
+
+
+```{r differential_genes_by_cluster_cboDaoy_ribo<20%}
+# Find positive markers for each of the 9 clusters
+cboDaoy.cluster.markers.ribo20 <- FindAllMarkers(full.ribo.filt.clust.cboDaoy, min.pct = 0.25, only.pos = TRUE)
+```
+
+```{r}
+# save cboDaoy.cluster.markers.ribo20 as a csv file. This object has percent.ribo < 20
+
+write.csv(cboDaoy.cluster.markers.ribo20, "./outputs50K/DAOY-CBO/cboDaoy.cluster.markers.ribo20.csv", quote = F)
+```
+
+```{r}
+cboDaoy.cluster.markers.ribo20 <- read.csv("outputs50K/DAOY-CBO/cboDaoy.cluster.markers.ribo20.csv", 
+                                       header = TRUE, 
+                                       stringsAsFactors = FALSE)
+```
+
+```{r cell_counts_perCluster}
+# there are 1596 cells in total (AFTER ribosome filtering), which is correct, and the cell numbers 
+# per cluster are shown below.
+
+cell.num <- table(full.ribo.filt.clust.cboDaoy@active.ident)
+cell.num
+sum(cell.num)
+```
+
+```{r cluster0_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 0 = GABAergic lineage
+cluster0.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 0, ] %>%
+  head(n=20)
+
+cluster0.markers.ribo20
+```
+
+```{r cluster1_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 1 = GCP/granule neuron
+cluster1.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 1, ] %>%
+  head(n=20)
+
+cluster1.markers.ribo20
+```
+
+```{r cluster2_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 2 = glia
+cluster2.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 2, ] %>%
+  head(n=20)
+
+cluster2.markers.ribo20
+```
+
+```{r cluster3_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 3 = undetermined - both glial and choroid plexus markers
+cluster3.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 3, ] %>%
+  head(n=20)
+
+cluster3.markers.ribo20
+```
+
+```{r cluster4_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 4 = probable roof plate/choroid plexus
+cluster4.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 4, ] %>%
+  head(n=20)
+
+cluster4.markers.ribo20
+```
+
+```{r cluster5_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 5 = choroid plexus/4th ventricle
+cluster5.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 5, ] %>%
+  head(n=20)
+
+cluster5.markers.ribo20
+```
+
+```{r cluster6_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 6 = probable glia
+cluster6.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 6, ] %>%
+  head(n=20)
+
+cluster6.markers.ribo20
+```
+
+```{r cluster7_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 7 = probable glia
+cluster7.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 7, ] %>%
+  head(n=20)
+
+cluster7.markers.ribo20
+```
+
+```{r cluster8_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 8 = hard to classify ??cerebellar GABAergic subtypes
+cluster8.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 8, ] %>%
+  head(n=20)
+
+cluster8.markers.ribo20
+```
+
+```{r cluster9_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 9 = GCP/rhombic lip-like ?DAOY cells
+cluster9.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 9, ] %>%
+  head(n=20)
+
+cluster9.markers.ribo20
+```
+
+```{r cluster10_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 10 = ciliated cells
+cluster10.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 10, ] %>%
+  head(n=20)
+
+cluster10.markers.ribo20
+```
+
+```{r cluster11_cboDaoy.cluster.markers.ribo20_top10markers}
+# cluster 11 = this could be DAOY cells?
+cluster11.markers.ribo20 <- cboDaoy.cluster.markers.ribo20[cboDaoy.cluster.markers.ribo20$cluster == 11, ] %>%
+  head(n=20)
+
+cluster11.markers.ribo20
+```
+
+```{r remove_ribo_genes}
+# FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH ARE REMAINING
+# THAT HAVE PERCENT.MITO < 10%) BEFORE DOING THE CLUSTERING, AND DON'T REMOVE ANY MORE ACTUAL CELLS
+#-------------------------------------------------------------------------------------
+
+# remove ribosomal genes first
+filt.noRibo.cboDaoy <- filt.cboDaoy.seurat[ ! grepl('^RP[SL]', rownames(filt.cboDaoy.seurat)), ]
+```
+
+```{r check_ribo_removed}
+# this has worked - 97 ribosomal genes have been removed from the new Seurat object
+# there are 3056 cells
+dim(filt.cboDaoy.seurat)
+dim(filt.noRibo.cboDaoy)
+```
+
+```{r remove_mitoch_genes}
+# remove mitochondrial genes 
+filt.noRiboMito.cboDaoy <- filt.noRibo.cboDaoy[ ! grepl("^MT-", rownames(filt.noRibo.cboDaoy)), ]
+```
+
+```{r check_filtering}
+# check if ribosome and mitochondrial gene filtering works - it does!
+dim(filt.noRibo.cboDaoy)
+dim(filt.noRiboMito.cboDaoy)
+```
+
+```
+# save the no ribosome and no mitochondrial genes seurat object
+
+saveRDS(filt.noRiboMito.cboDaoy, file = "./outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.rds")
+```
+
+```{r DimPlot_SCTransform_UMAPclustering}
+# Perform SCTransform
+# Perform dimensionality reduction by PCA and UMAP embedding
+# FindClusters is run with only the default resolution parameter (= 0.8)
+# 13 clusters identified
+
+filt.noRiboMito.cboDaoy <- SCTransform(filt.noRiboMito.cboDaoy, method = "glmGamPoi", verbose = FALSE)
+
+filt.noRiboMito.cboDaoy <- RunPCA(filt.noRiboMito.cboDaoy, verbose = FALSE)
+
+filt.noRiboMito.cboDaoy <- RunUMAP(filt.noRiboMito.cboDaoy, dims = 1:30, verbose = FALSE)
+
+filt.noRiboMito.cboDaoy <- FindNeighbors(filt.noRiboMito.cboDaoy, dims = 1:30, verbose = FALSE)
+
+filt.noRiboMito.cboDaoy.clusters <- FindClusters(filt.noRiboMito.cboDaoy, verbose = FALSE)
+
+DimPlot(filt.noRiboMito.cboDaoy.clusters, label = TRUE) # '+ NoLegend()' is an option to insert here
+```
+
+```
+# SAVE THE 'filt.noRiboMito.cboDaoy.clusters' seurat object
+
+saveRDS(filt.noRiboMito.cboDaoy.clusters, file = "./outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.clusters.rds")
+```
+
+```{r load_filt.NoRiboNoMito.cboDaoy.clusters.rds}
+filt.noRiboMito.cboDaoy.clusters <- readRDS("outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.clusters.rds")
+```
+
+```{r differential_genes_by_cluster_filt.noRiboMito.cbo.clusters}
+# Find positive markers for each of the 11 clusters of 'filt.noRiboMito.cbo.clusters'
+
+cboDaoy.cluster.markers.noRiboMito <- FindAllMarkers(filt.noRiboMito.cboDaoy.clusters, 
+                                                     min.pct = 0.25, 
+                                                     only.pos = TRUE)
+```
+
+```{r cell_counts_perCluster}
+# there are 3056 cells in total, which is correct, and the cell numbers per cluster are shown below.
+
+cell.num.riboFilt <- table(filt.noRiboMito.cboDaoy.clusters@active.ident)
+cell.num.riboFilt
+sum(cell.num.riboFilt)
+```
+
+```
+# save 'cboDaoy.cluster.markers.noRiboMito' as a csv file. This object has NO mitochondrial or ribosomal genes.
+# The object has already been filtered to keep cells with mitoch gene expression < 10%.
+
+write.csv(cboDaoy.cluster.markers.noRiboMito, "./outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", quote = F)
+```
+
+```{r load_cboDaoy.cluster.markers.noRiboMito.csv}
+cboDaoy.cluster.markers.noRiboMito <- read.csv("outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", 
+                                       header = TRUE, 
+                                       stringsAsFactors = FALSE)
+```
+
+```{r cluster0_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 0 manual = probable glia
+cluster0.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 0, ] %>%
+  head(n=10)
+
+cluster0.markers
+```
+
+```{r cluster1_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 1 manual = 4th ventricle derivatives/choroid plexus or Purkinje neurons (PN)
+cluster1.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 1, ] %>%
+  head(n=10)
+
+cluster1.markers
+```
+
+```{r cluster2_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 2 manual = probable roof plate/choroid plexus
+cluster2.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 2, ] %>%
+  head(n=10)
+
+cluster2.markers
+```
+
+```{r cluster3_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 3 manual = could be inhibitory GABAergic cerebellar nuclei/interneurons/PN
+cluster3.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 3, ] %>%
+  head(n=10)
+
+cluster3.markers
+```
+
+```{r cluster4_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 4 manual = GCP/granule neuron
+cluster4.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 4, ] %>%
+  head(n=10)
+
+cluster4.markers
+```
+
+```{r cluster5_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 5 manual = mainly glial markers
+cluster5.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 5, ] %>%
+  head(n=10)
+
+cluster5.markers
+```
+
+```{r cluster6_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 6 manual = rhombic lip, GCP, proliferative granule cells
+cluster6.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 6, ] %>%
+  head(n=10)
+
+cluster6.markers
+```
+
+```{r cluster7_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 7 manual = uncertain
+cluster7.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 7, ] %>%
+  head(n=10)
+
+cluster7.markers
+```
+
+```{r cluster8_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 8 manual = could be DAOY cells?
+cluster8.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 8, ] %>%
+  head(n=10)
+
+cluster8.markers
+```
+
+```{r cluster9_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 9 manual = ciliated cells
+cluster9.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 9, ] %>%
+  head(n=10)
+
+cluster9.markers
+```
+
+```{r cluster10_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 10 manual = glia
+cluster10.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 10, ] %>%
+  head(n=10)
+
+cluster10.markers
+```
+
+```{r cluster11_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 11 manual = probable DAOY cells
+cluster11.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 11, ] %>%
+  head(n=10)
+
+cluster11.markers
+```
+
+```{r cluster12_cboDaoy.cluster.markers.noRiboMito_top10markers}
+# cluster 12 manual = probable DAOY cells
+cluster12.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 12, ] %>%
+  head(n=10)
+
+cluster12.markers
+```
+
+```{r Dotplot_all_seppMarkers+cilia, fig.height=12}
+# from the Sepp paper repeat Dotplot with TF and some key non-TF markers
+# added markers of ciliated cells from cluster10 above.
+# used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
+
+sepp.all.markers <- c("TFAP2A", "PAX3", "RFX4", "TCFL71", "TCF7L2", "GLIS3", "SOX6", "HOPX", "TSC22D4",  
+                      "ID4", "NCKAP5", "SLIT2", "CLYBL", "SLC1A3", "SLC6A11", "AQP4",  #astroglial/progenitor
+                      
+                      "ESRRB", "FOXP1", "FOXP2", "FOXP4", "MEF2C", "RORB", "CDH9", "ETV1", "EBF1", "EBF2", 
+                      "SKOR2", "DAB1", "IPTR",   # Purkinje
+                      
+                      "NOTCH1",    # VZ neuroblast
+             
+                      "PAX2", "NFIA", "NFIB", "TFAP2B", "BHLHE22", "PRDM8",  # interneuron
+                      
+                      "ZFHX3", "ZFHX4",   # GABAergic deep nuclei neurons
+             
+                      "TOP2A", "ATOH1", "LMX1A", "OTX2","ETV6", "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", 
+                      "ZBTB18", "NEUROD1", "ZIC1", "ZIC4", "GABAR6", "CNTN1", "CNTN2", "KLF9", "NR3C1", "LMO3", 
+                      "SYNPR", "KCNIP4", "HCRTR2", 
+                      "EOMES", "TRPC3", "GRM1")
+                      # UBC/GCP/granule/glut deep cerebellar nuclei                                                                   
+seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "C11orf88", "ANKRD66", "C20orf85", 
+                                "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
+
+
+DotPlot(object = filt.noRiboMito.cboDaoy.clusters, features = seppAll.cilia.stem.markers, col.min = 0) +
+  coord_flip()
+```
+
+```{r fig.height=8}
+VlnPlot(filt.noRiboMito.cboDaoy.clusters, features = c("ZFHX3", "ZFHX4", "CNTN2", "MEIS1", "GRIA4", "POU3F2"))
+```
+
+```{r cntn2_cluster4,11}
+# CHECK ABOVE CANDIDATE GENES WHICH ARE UPREGULATED IN DAOY CELLS VS WT CELLS IN CO-CULTURE
+#----------------------------------------------------------------------------------------------------
+# CLUSTER 4, CNTN2 expression in cells: pct.1 = 38%, pct.2 (all other cells) = 5%, avg_log2FC = 0.525;
+# adj p-val = 1.456e-72
+
+# CLUSTER 11, CNTN2 expression in cells: pct.1 = 43%, pct.2 = 7%, avg_log2FC = 1.338;
+# adj p-val = 2.450e-31
+
+cntn2.clusters.4.11 <- cboDaoy.cluster.markers.noRiboMito[((cboDaoy.cluster.markers.noRiboMito$cluster == 11 | cboDaoy.cluster.markers.noRiboMito$cluster == 4) & cboDaoy.cluster.markers.noRiboMito$gene == "CNTN2"), ]
+ 
+
+cntn2.clusters.4.11
+```
+
+```{r meis1_cluster8,11,12}
+# CLUSTER 8, MEIS1 expression in cells: pct.1 = 29%, pct.2 (all other cells) = 3%, avg_log2FC = 0.438;
+# adj p-val = 1.157e-39
+
+# CLUSTER 11, MEIS1 expression in cells: pct.1 = 32%, pct.2 = 3.5%, avg_log2FC = 0.914;
+# adj p-val = 2.479e-32
+
+# CLUSTER 12, MEIS1 expression in cells: pct.1 = 39%, pct.2 = 3.6%, avg_log2FC = 0.565;
+# adj p-val = 4.239e-33
+
+meis1.clusters.8.11.12 <- cboDaoy.cluster.markers.noRiboMito[((cboDaoy.cluster.markers.noRiboMito$cluster == 8 | cboDaoy.cluster.markers.noRiboMito$cluster == 11 | cboDaoy.cluster.markers.noRiboMito$cluster == 12) & cboDaoy.cluster.markers.noRiboMito$gene == "MEIS1"), ]
+ 
+meis1.clusters.8.11.12
+```
+
+```{r gria4_cluster11}
+# CLUSTER 11, GRIA4 expression in cells: pct.1 = 53%, pct.2 = 2%, avg_log2FC = 1.083;
+# adj p-val = 3.44e-127
+
+gria4.cluster.11 <- cboDaoy.cluster.markers.noRiboMito[(cboDaoy.cluster.markers.noRiboMito$cluster == 11 & cboDaoy.cluster.markers.noRiboMito$gene == "GRIA4"), ]
+ 
+gria4.cluster.11
+```
+
+```{r pou3f2_cluster8,11}
+# CLUSTER 8, POU3F2 expression in cells: pct.1 = 55%, pct.2 (all other cells) = 2%, avg_log2FC = 0.845;
+# adj p-val = 2.391e-167
+
+# CLUSTER 11, POU3F2 expression in cells: pct.1 = 50%, pct.2 = 3%, avg_log2FC = 0.952;
+# adj p-val = 1.003e-87
+
+pou3f2.clusters.8.11 <- cboDaoy.cluster.markers.noRiboMito[((cboDaoy.cluster.markers.noRiboMito$cluster == 8 | cboDaoy.cluster.markers.noRiboMito$cluster == 11) & cboDaoy.cluster.markers.noRiboMito$gene == "POU3F2"), ]
+ 
+pou3f2.clusters.8.11
+```
+
+
+
+
+
+
+
+
+
+
