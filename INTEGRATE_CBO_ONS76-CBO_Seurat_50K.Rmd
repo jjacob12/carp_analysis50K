@@ -1,0 +1,360 @@
+---
+title: "Integrate_CBO_ONS76-CBO_seurat_50K"
+author: "JJ"
+date: "25/08/2022"
+output: html_document
+---
+
+Here we will integrate the CBO and ONS76-CBO 50K datasets to find common and differentially expressed genes between clusters. A main goal is to find cells that are SHH-MB cells. We will integrate the sctransformed datasets, which have cells with >10% mitochondrial genes removed (CELLS and GENES filtered saved seurat objects), and where all mitochondrial and ribosomal genes have been removed (also saved). The saved seurat objects are in the 'outputs50K' folder.
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+library(Seurat)
+library(glmGamPoi)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+```
+
+```{r SCtransform_CBO_ONS76-CBO}
+# prepare the SCTransformed seurat objects
+# 'outputs50K" folder contains the correct RDS seurat object
+# when running this code the warning' "Warning in theta.ml(y = y, mu = fit$fitted) : iteration limit reached" will appear regularly. See this Stack Exchange answer (https://bioinformatics.stackexchange.com/questions/16439/sctransform-warning-in-theta-mly-y-mu-fitfitted-iteration-limit-reach) for the meaning. This behaviour of the code is expected.
+
+cbo <- readRDS("outputs50K/CBO/filt.NoRiboNoMitochGenes.cbo.rds")
+
+ons76cbo <- readRDS("outputs50K/ONS76-CBO/filt.NoRiboNoMito.cboONS76.rds")
+
+cbo.ons76cbo.list <- list(cbo, ons76cbo)
+
+cbo.ons76cbo.list <- lapply(X = cbo.ons76cbo.list, FUN = SCTransform)
+```
+
+```{r pre-integration}
+features <- SelectIntegrationFeatures(object.list = cbo.ons76cbo.list, nfeatures = 3000)
+
+cbo.ons76cbo.list <- PrepSCTIntegration(object.list = cbo.ons76cbo.list, anchor.features = features)
+```
+
+```{r}
+cbo.ons76cbo.anchors <- FindIntegrationAnchors(object.list = cbo.ons76cbo.list, normalization.method = "SCT",
+    anchor.features = features)
+cbo.ons76cbo.combined.sct <- IntegrateData(anchorset = cbo.ons76cbo.anchors, normalization.method = "SCT")
+```
+
+```r
+# save the combined (integrated) seurat object
+# note this object has NOT been through PCA or UMAP commands
+
+saveRDS(cbo.ons76cbo.combined.sct, file = "./outputs50K/INTEGRATE/cbo.ons76cbo.combined.sct.rds")
+```
+
+```{r load_integrated_seuratObject}
+cbo.ons76cbo.combined.sct <- readRDS("outputs50K/INTEGRATE/cbo.ons76cbo.combined.sct.rds")
+```
+
+
+```{r runPCA_UMAP}
+cbo.ons76cbo.combined.sct <- RunPCA(cbo.ons76cbo.combined.sct, verbose = FALSE)
+cbo.ons76cbo.combined.sct <- RunUMAP(cbo.ons76cbo.combined.sct, reduction = "pca", dims = 1:30)
+```
+
+```{r findNeighbours_findClusters}
+cbo.ons76cbo.combined.sct <- FindNeighbors(cbo.ons76cbo.combined.sct, 
+                                           reduction = "pca", 
+                                           dims = 1:30)
+
+cbo.ons76cbo.combined.sct.clusters <- FindClusters(cbo.ons76cbo.combined.sct, resolution = 0.5)
+
+
+```
+
+```
+# save the clustered integrated seurat object
+saveRDS(cbo.ons76cbo.combined.sct.clusters, file = "outputs50K/INTEGRATE/cbo.ons76cbo.combined.sct.clusters.rds")
+```
+
+```{r load_integrated_clustered_seurat}
+# load the integrated and CLUSTERED seurat object
+cbo.ons76cbo.combined.sct.clusters <- readRDS("outputs50K/INTEGRATE/cbo.ons76cbo.combined.sct.clusters.rds")
+```
+
+
+
+```{r Dimplots, fig.height=12, fig.width=8}
+p1 <- DimPlot(cbo.ons76cbo.combined.sct.clusters, reduction = "umap", group.by = "orig.ident")
+p2 <- DimPlot(cbo.ons76cbo.combined.sct.clusters, reduction = "umap", label = TRUE, repel = TRUE)
+p3 <- DimPlot(cbo.ons76cbo.combined.sct.clusters, reduction = "umap", split.by = "orig.ident")
+p1 / p2 / p3
+```
+
+```{r conserved_markers_cluster0}
+# For performing differential expression after integration, we switch back to the original
+# data - here we use FindConservedMarkers.
+
+# cluster 0 manual annotation = RP/choroid plexus
+
+DefaultAssay(cbo.ons76cbo.combined.sct.clusters) <- "RNA"
+clust0.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 0,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust0.integ.markers, n = 10)
+```
+
+```{r conserved_markers_cluster1}
+# cluster 1 manual annotation = glia
+
+clust1.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 1,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust1.integ.markers, n = 10)
+```
+
+```{r conserved_markers_cluster2}
+# cluster 2 manual annotation = 4th ventricle derivatives/choroid plexus and Purkinje neurons 
+
+clust2.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 2,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust2.integ.markers, n = 10)
+```
+
+```{r conserved_markers_cluster3}
+# cluster 3 manual annotation =  uncertain (?ONS76 cells as no markers are conserved)
+
+clust3.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 3,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust3.integ.markers, n = 10)
+```
+
+```{r conserved_markers_cluster4}
+# cluster 4 manual annotation =  GABA-ergic neurons
+
+clust4.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 4,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust4.integ.markers, n = 10)
+```
+
+```{r conserved_markers_cluster5}
+# cluster 5 manual annotation = rhombic lip, GCP, proliferative granule cells
+
+clust5.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 5,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust5.integ.markers, n = 50)
+```
+
+```{r conserved_markers_cluster6}
+# cluster 6 manual annotation = some markers suggest this is GCP/Granule neuron, but non-GCP markers also expressed
+
+clust6.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 6,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust6.integ.markers, n = 20)
+```
+
+```{r conserved_markers_cluster7}
+# cluster 7 manual annotation = uncertain
+
+clust7.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 7,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust7.integ.markers, n = 20)
+```
+
+```{r conserved_markers_cluster8}
+# cluster 8 manual annotation = probable glia
+
+clust8.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 8,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust8.integ.markers, n = 20)
+```
+
+```{r conserved_markers_cluster9}
+# cluster 9 manual annotation = multiciliated cells
+
+clust9.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 9,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust9.integ.markers, n = 20)
+```
+
+```{r conserved_markers_cluster10}
+# cluster 10 manual annotation = Granule-like cluster
+
+clust10.integ.markers <- FindConservedMarkers(cbo.ons76cbo.combined.sct.clusters, 
+                                             ident.1 = 10,
+                                             grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clust10.integ.markers, n = 20)
+```
+
+```{r breakdown_cell_numbers}
+# number of cells in each of the 11 clusters
+
+table(Idents(cbo.ons76cbo.combined.sct.clusters))
+```
+
+```{r DEGs_cluster0}
+# now that we have integrated datasets, find DIFFERENTIAL GENE EXPRESSION across sample conditions
+# i.e. which genes are upregulated in ONS76-CBO vs CBO only samples.
+# there seems to be no need to specify 'grouping.var =' in FindMarkers arguments.
+#-------------------------------------------------------------------------------------------------
+
+clus0.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "0",
+                            
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+clus0.de.markers
+
+```
+
+```{r DEGs_cluster3}
+# DEGs in cluster 3
+
+clus3.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "3",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+clus3.de.markers
+```
+
+```{r DEGs_cluster5}
+# DEGs cluster 5.
+
+clus5.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "5",
+                                grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clus5.de.markers, n=50)
+```
+
+```{r DEGs_cluster6}
+# DEGs cluster 6
+
+clus6.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "6",
+                                grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clus6.de.markers, n=50)
+```
+
+```{r DEGs_cluster7}
+# DEGs cluster 7
+
+clus7.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "7",
+                                grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clus7.de.markers, n=50)
+```
+
+```{r DEGs_cluster10}
+# DEGs cluster 10
+
+clus10.de.markers <- FindMarkers(cbo.ons76cbo.combined.sct.clusters, ident.1 = "10",
+                                grouping.var = "orig.ident",
+                                             only.pos = TRUE,
+                                             min.diff.pct = 0.25,
+                                             min.pct = 0.25,
+                                             logfc.threshold = 0.25,
+                                             verbose = FALSE)
+head(clus10.de.markers, n=50)
+```
+
+
+
+```{r fig.height=10}
+VlnPlot(cbo.ons76cbo.combined.sct.clusters, 
+        features = c("RRM2", "NEUROD1", "CNTN1", "CNTN2", "MEIS1", "GRIA4", "POU3F2", "HOXB2", "ACTC1"))
+```
+
+
+
+
+
+
+
+
+
