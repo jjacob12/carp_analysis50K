@@ -37,7 +37,7 @@ ons76cbo <- readRDS("outputs50K/ONS76-CBO/filt.NoRiboNoMito.cboONS76.rds")
 
 cbo.ons76cbo.list <- list(cbo, ons76cbo)
 
-cbo.ons76cbo.list <- lapply(X = cbo.ons76cbo.list, FUN = SCTransform)
+cbo.ons76cbo.list <- suppressWarnings(lapply(X = cbo.ons76cbo.list, FUN = SCTransform))
 ```
 
 ```{r pre-integration}
@@ -75,8 +75,6 @@ cbo.ons76cbo.combined.sct <- FindNeighbors(cbo.ons76cbo.combined.sct,
                                            dims = 1:30)
 
 cbo.ons76cbo.combined.sct.clusters <- FindClusters(cbo.ons76cbo.combined.sct, resolution = 0.5)
-
-
 ```
 
 ```
