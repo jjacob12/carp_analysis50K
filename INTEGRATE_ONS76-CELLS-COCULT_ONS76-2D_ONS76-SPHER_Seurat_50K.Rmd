@@ -1,0 +1,1590 @@
+---
+title: "integrate_ONS76-cells-cocult_ONS76-2D_ONS76-SPHER_seurat_50K"
+author: "JJ"
+date: "29/08/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(Matrix)
+library(patchwork)
+library(clustree)
+library(EnhancedVolcano)
+library(tidyverse) 
+})
+```
+
+```{r SCtransform_CBO_ONS76-CBO}
+# prepare the SCTransformed seurat objects
+# the seurat object has NO mitochondrial and NO ribosomal genes
+#----------------------------------------------------------------------------------------------
+# 'outputs50K" folder contains the correct RDS seurat object
+# when running this code the warning' "Warning in theta.ml(y = y, mu = fit$fitted) : iteration limit reached" will appear regularly. See this Stack Exchange answer (https://bioinformatics.stackexchange.com/questions/16439/sctransform-warning-in-theta-mly-y-mu-fitfitted-iteration-limit-reach) for the meaning. This behaviour of the code is expected.
+
+filt.noRiboMito.ons76.2d <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
+
+filt.noRiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
+
+ons76.cells.cocult <- readRDS("outputs50K/ONS76-CBO/ons76.cells.only.rds")
+
+ons76.all.list <- list(filt.noRiboMito.ons76.2d, filt.noRiboMito.ons76spher, ons76.cells.cocult)
+
+ons76.all.list <- suppressWarnings(lapply(X = ons76.all.list, FUN = SCTransform))
+```
+
+```{r pre-integration}
+features <- SelectIntegrationFeatures(object.list = ons76.all.list, nfeatures = 3000)
+
+ons76.all.list <- PrepSCTIntegration(object.list = ons76.all.list, anchor.features = features)
+```
+
+```{r}
+ons76.all.anchors <- FindIntegrationAnchors(object.list = ons76.all.list, normalization.method = "SCT",
+    anchor.features = features)
+ons76.all.combined.sct <- IntegrateData(anchorset = ons76.all.anchors, normalization.method = "SCT")
+```
+
+```
+# save the combined (integrated) seurat object, which includes: ONS76-2D, ONS76-SPHER, and ONS76 cells extracted
+# from ONS76-CBO sample.
+# note this integrated seurat object has NOT been through PCA or UMAP commands
+
+saveRDS(ons76.all.combined.sct, file = "./outputs50K/INTEGRATE/ons76.all.combined.sct.rds")
+```
+
+```{r}
+# here we read in the ons76 cells from monolayer, spheroid, and ons76-CBO coculture
+ons76.all.combined.sct <- readRDS("outputs50K/INTEGRATE/ons76.all.combined.sct.rds")
+```
+
+```{r}
+ons76.all.combined.sct <- RunPCA(ons76.all.combined.sct, verbose = FALSE)
+ons76.all.combined.sct <- RunUMAP(ons76.all.combined.sct, reduction = "pca", dims = 1:30)
+```
+
+```{r}
+ons76.all.combined.sct <- FindNeighbors(ons76.all.combined.sct, 
+                                           reduction = "pca", 
+                                           dims = 1:30)
+```
+
+```{r clustree, fig.height=8}
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+ons76.all.combined.sct.clusters <- FindClusters(object = ons76.all.combined.sct, 
+                                             resolution = resolution.range,
+                                             verbose = FALSE)
+
+# apply Clustree: this suggests there are 3 or possibly 4 clusters (4th cluster is smallest)
+clustree(ons76.all.combined.sct.clusters)
+```
+
+```{r findClusters_res0.2_res0.4}
+
+ons76.all.clusters.res0.2 <- FindClusters(ons76.all.combined.sct, resolution = 0.2)
+
+ons76.all.clusters.res0.4 <- FindClusters(ons76.all.combined.sct, resolution = 0.4)
+```
+
+```{r DimplotsRes0.2Integrated3samples, fig.height=12, fig.width=8}
+# With res=0.2, there are 3 clusters in ONS76-2D and ONS76-CBO, but 4 clusters in ons76spher. 
+# The 4th cluster in ons76spher is small.
+# THE INTEGRATION OF 3 CONDTIONS: ONS76-2D, ONS76-SPHER AND ONS76 CELLS IN COCULTURE HAS WORKED VERY WELL -
+      # there is great overlap of the UMAP clusters from the three conditions, which adds 
+      # confidence that the same cell types are present in all three conditions
+#---------------------------------------------------------------------------------------------------------
+
+p1 <- DimPlot(ons76.all.clusters.res0.2, reduction = "umap", group.by = "orig.ident")
+p2 <- DimPlot(ons76.all.clusters.res0.2, reduction = "umap", split.by = "orig.ident")
+p3 <- DimPlot(ons76.all.clusters.res0.2, reduction = "umap", label = TRUE, repel = TRUE)
+
+p1 / p2 / p3
+```
+
+```{r DimplotsRes0.4Integrated3samples, fig.height=12, fig.width=8}
+# With res=0.4, there are 4 clusters in all three samples. 
+# The 5th cluster in ons76spher is small.
+
+p4 <- DimPlot(ons76.all.clusters.res0.4, reduction = "umap", group.by = "orig.ident")
+p5 <- DimPlot(ons76.all.clusters.res0.4, reduction = "umap", split.by = "orig.ident")
+p6 <- DimPlot(ons76.all.clusters.res0.4, reduction = "umap", label = TRUE, repel = TRUE)
+
+p4 / p5 / p6
+```
+
+```
+# save the clustered integrated seurat objects.
+# USE CLUSTER RES = 0.4 GOING FORWARDS
+
+saveRDS(ons76.all.clusters.res0.2, file = "./outputs50K/INTEGRATE/ons76.all.combined.sct.clusters.res0.2.rds")
+saveRDS(ons76.all.clusters.res0.4, file = "./outputs50K/INTEGRATE/ons76.all.combined.sct.clusters.res0.4.rds")
+```
+
+```{r}
+# load res0.4 clustered seurat object
+# this seurat object still has all three samples - ons76-2D, ons76-CBO and ons76-spher
+
+ons76.all.combined.sct.clust <- readRDS("outputs50K/INTEGRATE/ons76.all.combined.sct.clusters.res0.4.rds")
+```
+
+***-------------------------------------------------------------------------------------------------***
+***Compare gene expression in ONS76 cocultured (ONS76-CBO) cells with ONS76 spheroids***
+```{r extractONS76CBOSpher}
+# extract two conditions out of three from integrated object:
+      # 'ONS76-CBO' ons76 cells, and 'ons76spher' ons76 cells
+# THE AIM IS TO COMPARE GENE EXPRESSION IN ONS76 CO-CULTURED CELLS VS ONS76 SPHEROIDS
+#--------------------------------------------------------------------------------------------------
+
+ons76.spher.cbo.clust <- subset(ons76.all.combined.sct.clust, subset = (orig.ident == "ONS76-CBO" | orig.ident == "ons76spher"))
+```
+
+```
+# THIS WAY OF SUBSETTING THE INTEGRATED OBJECT ALSO WORKS!
+subset(ons76.all.combined.sct.clust, subset = (orig.ident %in% c("ONS76-CBO", "ons76spher")))
+```
+
+
+```
+# save the clustered Seurat object which has been subsetted to include only ONS76 co-culture (with CBO)
+# cells and ONS76 spheroid control (resolution = 0.4)
+saveRDS(ons76.spher.cbo.clust, file = "./outputs50K/INTEGRATE/ons76.spher.cbo.clust.res0.4.rds")
+```
+
+```{r}
+# load ONS76 cells in cocult and spheroid Integrated object, res = 0.4
+ons76.spher.cbo.clust <- readRDS("outputs50K/INTEGRATE/ons76.spher.cbo.clust.res0.4.rds")
+```
+
+
+```{r}
+dim(ons76.spher.cbo.clust)
+nrow(ons76.spher.cbo.clust@meta.data)
+```
+
+```{r DimplotsRes0.4IntegratedONS76cboSpher, fig.height=12, fig.width=8}
+# successfully subsetted the integrated object with 3 conditions to obtain integrated
+# object with two conditions
+p7 <- DimPlot(ons76.spher.cbo.clust, reduction = "umap", group.by = "orig.ident")
+p8 <- DimPlot(ons76.spher.cbo.clust, reduction = "umap", split.by = "orig.ident")
+p9 <- DimPlot(ons76.spher.cbo.clust, reduction = "umap", label = TRUE, repel = TRUE)
+
+p7 / p8 / p9
+```
+
+```{r}
+# Normalize the original integrated object, which was not done earlier in the workflow!
+# ASSIGN the normalized integrated object
+
+ons76.all.combined.sct.clust <- NormalizeData(object = ons76.all.combined.sct.clust, assay = "RNA")
+DefaultAssay(ons76.all.combined.sct.clust) <- "RNA"
+ons76.spher.cbo.clust <- subset(ons76.all.combined.sct.clust, subset = (orig.ident == "ONS76-CBO" | orig.ident == "ons76spher"))
+```
+
+```{r}
+# change 'ONS76-CBO' to 'ONS76_CBO' because the hyphen causes problems in ggplot!
+
+ons76.spher.cbo.clust@meta.data[ons76.spher.cbo.clust@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
+```
+
+```{r}
+table(Idents(ons76.spher.cbo.clust))
+```
+
+```
+# NORMALIZATION STEP IS NEEDED FOR AverageExpression() to work!!!
+# RUNNING THIS CODE GIVES INFINITE VALUES!!
+avg.clus0 <- as.data.frame(log1p(AverageExpression(clus0.ons76.cbo.spher, verbose = FALSE)$RNA))
+View(avg.clus0)
+```
+
+```
+# DEALING WITH INFINITE VALUES. MY $RNA DATA NOR $SCT DATA CONTAINED ANY NEGATIVE OR NaN VALUES
+# I ran the below code and showed there are none of these values in this dataset
+# SatijaLab GitHub page: 'Infinite values when using Average expression function 3004' - so others
+# have had a similar problem. SatijaLab recommend: "checking the data slot of your SCT assay (and of your original RNA assay). There are likely negative or NaN values in either of these which are causing your problem."
+
+# in original RNA of ons76spher data (unintegrated, original object):
+# there are ZERO values < 0 and no NaN values. Code for this is:
+has.neg.1 <- apply(filt.noRiboMito.ons76spher$RNA@data, 1, function(row) any(row < 0))
+length(which(has.neg))
+
+any(is.nan(as.matrix(filt.noRiboMito.ons76spher@assays$RNA@data)))
+
+
+# in original RNA of ONS76-CBO data (unintegrated, original object):
+# there are ZERO values < 0 and no NaN values
+has.neg.2 <- apply(ons76.cells.cocult$RNA@data, 1, function(row) any(row < 0))
+length(which(has.neg))
+
+any(is.nan(as.matrix(ons76.cells.cocult@assays$RNA@data)))
+
+# in SCT of integrated object (ons76.all.combined.sct):
+# there are ZERO values < 0 and no NaN values
+has.neg.1sct <- apply(ons76.all.combined.sct@assays$SCT@data, 1, function(row) any(row < 0))
+length(which(has.neg.1sct))
+
+any(is.nan(as.matrix(ons76.all.combined.sct@assays$SCT@data)))
+
+```
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76Spher) for CLUSTER 0
+# as the first step in finding DEGs
+clus0.ons76.cbo.spher <- subset(ons76.spher.cbo.clust, idents = "0")
+table(Idents(clus0.ons76.cbo.spher))
+```
+
+```{r}
+# switch Idents from '0' to the two conditions
+
+Idents(clus0.ons76.cbo.spher) <- "orig.ident"
+table(Idents(clus0.ons76.cbo.spher))
+```
+
+```{r DimplotCluster0-ONS76cboSpher}
+# this shows we have the cells of cluster 0 
+DimPlot(clus0.ons76.cbo.spher, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r AverageExpressionPseudobulkCluster0ONS76cboSpher}
+# get AverageExpression of cluster 0
+avg.clus0 <- as.data.frame(log1p(AverageExpression(clus0.ons76.cbo.spher, verbose = FALSE)$RNA))
+```
+
+
+```{r}
+# make the new 'gene' column for avg.clus0
+avg.clus0$gene <- rownames(avg.clus0)
+```
+
+```{r}
+# FIND DEGs IN EQUIVALENT CLUSTERS - ONS76-COCULTURE vs ONS76-SPHEROID samples
+#----------------------------------------------------------------------------------------------------------
+# UP-regulated DEGs in cluster 0
+clus0.ons76.cocult.vs.spher.pos <- FindMarkers(clus0.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus0.ons76.cocult.vs.spher.pos, n = 30)
+```
+
+```
+# up-regulated genes in ons76-CBO coculture cells vs ons76 spheroids
+# save the 'clus0.ons76.cocult.vs.spher.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus0.ons76.cocult.vs.spher.pos, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.cocult.vs.spher.posDEgenes.csv", 
+          quote = F) 
+```
+
+```{r}
+clus0.ons76.cocult.vs.spher.all <- FindMarkers(clus0.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     verbose = FALSE)
+head(clus0.ons76.cocult.vs.spher.all, n = 10)
+```
+
+```
+# save UP- and DOWN-regulated genes in cluster0 in ons76-CBO coculture cells vs ons76 spheroids.
+
+write.csv(clus0.ons76.cocult.vs.spher.all, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.cocult.vs.spher.allDEgenes.csv", 
+          quote = F) 
+```
+
+```{r scatterplotCluster0DEGsONS76cboVSspher}
+# MUST USE BACK-TICKS FOR NON-STANDARD COLUMN NAMES (otherwise the dash in ONS76-CBO will throw an error!!!)
+# so I changed 'ONS76-CBO' to 'ONS76_CBO' in the object ons76.spher.cbo.clust.
+# gene list is from the table of UP-regulated DEGs
+
+genes.to.label = c("NR2F1", "AFF3", "KIAA1211", "NNAT", "TUBB2B")
+
+clus0.genes.ons76cbo.vs.spher.scatterPlot <- ggplot(avg.clus0, aes(x = ons76spher, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) + 
+  theme_classic()
+
+clus0.genes.ons76cbo.vs.spher.scatterPlot <- LabelPoints(plot = clus0.genes.ons76cbo.vs.spher.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus0.genes.ons76cbo.vs.spher.scatterPlot 
+```
+
+***PLOT VOLCANO PLOTS USING 'ENHANCED VOLCANO' (https://www.biostars.org/p/9490813/)***
+
+```{r VolcanoPlotClus0ONS76cboVSspher, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster0 in ONS76 cells 
+# in co-culture vs ONS76-spheroid cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus0.ons76.cocult.vs.spher.all <- read.csv(
+  "outputs50K/INTEGRATE/clus0.ons76.cocult.vs.spher.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus0.ons76.cocult.vs.spher.all,
+                lab = clus0.ons76.cocult.vs.spher.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# in general, no need to load the csv files. Here one is loaded just to remind me what arguments
+# to use
+clus0.ons76.cocult.vs.spher.all <- read.csv(
+  "outputs50K/INTEGRATE/clus0.ons76.cocult.vs.spher.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+```
+
+```{r}
+# there are 3241 DE genes in cluster 0
+
+nrow(clus0.ons76.cocult.vs.spher.pos)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76Spher) for CLUSTER 1
+# as the first step in finding DEGs
+clus1.ons76.cbo.spher <- subset(ons76.spher.cbo.clust, idents = "1")
+table(Idents(clus1.ons76.cbo.spher))
+```
+
+```{r}
+# switch Idents from '1' to the two conditions
+
+Idents(clus1.ons76.cbo.spher) <- "orig.ident"
+table(Idents(clus1.ons76.cbo.spher))
+```
+
+```{r DimplotCluster1ONS76cboSpher}
+# this shows we have the cells of cluster 1
+DimPlot(clus1.ons76.cbo.spher, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 1 pseudobulk
+avg.clus1 <- as.data.frame(log1p(AverageExpression(clus1.ons76.cbo.spher, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus1
+avg.clus1$gene <- rownames(avg.clus1)
+```
+
+```{r}
+# cluster 1 UPregulated genes
+
+clus1.ons76.cocult.vs.spher.pos <- FindMarkers(clus1.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus1.ons76.cocult.vs.spher.pos, n = 30)
+```
+
+```
+# UP-regulated genes in ons76-CBO coculture cells vs ons76 spheroids
+# save the 'clus1.ons76.cocult.vs.spher.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus1.ons76.cocult.vs.spher.pos, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.cocult.vs.spher.posDEgenes.csv", 
+          quote = F) 
+```
+
+```{r}
+
+# cluster 1 UP- and DOWN-regulated genes
+clus1.ons76.cocult.vs.spher.all <- FindMarkers(clus1.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     verbose = FALSE)
+head(clus1.ons76.cocult.vs.spher.all, n = 10)
+```
+
+```
+# save UP- and DOWN-regulated genes in cluster1 ons76-CBO coculture cells vs ons76 spheroids.
+
+write.csv(clus1.ons76.cocult.vs.spher.all, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.cocult.vs.spher.allDEgenes.csv", 
+          quote = F) 
+```
+
+```{r scatterplotCluster1DEGsONS76cboVSspher}
+genes.to.label = c("NNAT", "NEUROD1", "TUBB2B", "NR2F1", "GKAP1")
+
+clus1.genes.ons76cbo.vs.spher.scatterPlot <- ggplot(avg.clus1, aes(x = ons76spher, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) +
+  theme_classic()
+
+clus1.genes.ons76cbo.vs.spher.scatterPlot <- LabelPoints(plot = clus1.genes.ons76cbo.vs.spher.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus1.genes.ons76cbo.vs.spher.scatterPlot 
+```
+
+```{r VolcanoPlotClus1ONS76cboVSspher, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster1 in ONS76 cells 
+# in co-culture vs ONS76-spheroid cells
+
+clus1.ons76.cocult.vs.spher.all <- read.csv(
+  "outputs50K/INTEGRATE/clus1.ons76.cocult.vs.spher.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+EnhancedVolcano(clus1.ons76.cocult.vs.spher.all,
+                lab = clus1.ons76.cocult.vs.spher.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76Spher) for CLUSTER 2
+# as the first step in finding DEGs
+clus2.ons76.cbo.spher <- subset(ons76.spher.cbo.clust, idents = "2")
+table(Idents(clus2.ons76.cbo.spher))
+```
+
+```{r}
+# switch Idents from '2' to the two conditions 
+ # ons76spher cells = 304
+ # ONS76-coculture cells = 29
+
+Idents(clus2.ons76.cbo.spher) <- "orig.ident"
+table(Idents(clus2.ons76.cbo.spher))
+```
+
+```{r DimplotCluster2ONS76cboSpher}
+# this shows we have the cells of cluster 2
+DimPlot(clus2.ons76.cbo.spher, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 2
+avg.clus2 <- as.data.frame(log1p(AverageExpression(clus2.ons76.cbo.spher, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus2
+avg.clus2$gene <- rownames(avg.clus2)
+```
+
+```{r}
+# cluster 2 UPregulated genes
+
+clus2.ons76.cocult.vs.spher.pos <- FindMarkers(clus2.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus2.ons76.cocult.vs.spher.pos, n = 30)
+```
+
+```
+# UP-regulated genes in ons76-CBO coculture cells vs ons76 spheroids
+# save the 'clus2.ons76.cocult.vs.spher.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus2.ons76.cocult.vs.spher.pos, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.cocult.vs.spher.posDEgenes.csv", 
+          quote = F) 
+```
+
+```{r}
+# cluster 2 UP- and DOWN-regulated genes
+
+clus2.ons76.cocult.vs.spher.all <- FindMarkers(clus2.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     verbose = FALSE)
+head(clus2.ons76.cocult.vs.spher.all, n = 10)
+```
+
+```
+# save UP- and DOWN-regulated genes in cluster2 in ons76-CBO coculture cells vs ons76 spheroids.
+
+write.csv(clus2.ons76.cocult.vs.spher.all, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.cocult.vs.spher.allDEgenes.csv", 
+          quote = F) 
+```
+
+```{r scatterplotCluster2DEGsONS76cboVSspher}
+
+genes.to.label = c("STMN2", "TAGLN3", "NNAT", "SCG3", "TMSB15A")
+
+clus2.genes.ons76cbo.vs.spher.scatterPlot <- ggplot(avg.clus2, aes(x = ons76spher, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.05) +
+  theme_classic()
+
+clus2.genes.ons76cbo.vs.spher.scatterPlot <- LabelPoints(plot = clus2.genes.ons76cbo.vs.spher.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus2.genes.ons76cbo.vs.spher.scatterPlot 
+```
+
+```{r VolcanoPlotClus2ONS76cboVSspher, fig.height=10}
+
+clus2.ons76.cocult.vs.spher.all <- read.csv(
+  "outputs50K/INTEGRATE/clus2.ons76.cocult.vs.spher.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+EnhancedVolcano(clus2.ons76.cocult.vs.spher.all,
+                lab = clus2.ons76.cocult.vs.spher.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76Spher) for CLUSTER 3
+# as the first step in finding DEGs
+clus3.ons76.cbo.spher <- subset(ons76.spher.cbo.clust, idents = "3")
+table(Idents(clus3.ons76.cbo.spher))
+```
+
+```{r}
+# switch Idents from '3' to the two conditions 
+ # ons76spher cells = 61
+ # ONS76-coculture (same as ONS76_CBO) cells = 96
+
+Idents(clus3.ons76.cbo.spher) <- "orig.ident"
+table(Idents(clus3.ons76.cbo.spher))
+```
+
+```{r DimplotCluster3ONS76cboSpher}
+# this shows we have the cells of cluster 3
+DimPlot(clus3.ons76.cbo.spher, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression (pseudobulk) of cluster 3
+avg.clus3 <- as.data.frame(log1p(AverageExpression(clus3.ons76.cbo.spher, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus3
+avg.clus3$gene <- rownames(avg.clus3)
+```
+
+```{r}
+# cluster 3 UPregulated genes
+
+clus3.ons76.cocult.vs.spher.pos <- FindMarkers(clus3.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus3.ons76.cocult.vs.spher.pos, n = 30)
+```
+
+```
+# UP-regulated genes in ons76-CBO coculture cells vs ons76 spheroids
+# save the 'clus3.ons76.cocult.vs.spher.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus3.ons76.cocult.vs.spher.pos, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.cocult.vs.spher.posDEgenes.csv", 
+          quote = F) 
+```
+
+```{r}
+# cluster 3 UP- and DOWN-regulated genes
+
+clus3.ons76.cocult.vs.spher.all <- FindMarkers(clus3.ons76.cbo.spher, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ons76spher",
+                                     verbose = FALSE)
+head(clus3.ons76.cocult.vs.spher.all, n = 10)
+```
+
+```
+# save UP- and DOWN-regulated genes in cluster3 in ons76-CBO coculture cells vs ons76 spheroids.
+
+write.csv(clus3.ons76.cocult.vs.spher.all, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.cocult.vs.spher.allDEgenes.csv", 
+          quote = F) 
+```
+
+```{r scatterplotCluster3DEGsONS76cboVSspher}
+
+genes.to.label = c("NNAT", "EYA2", "CADM1", "FIGN", "GKAP1")
+
+clus3.genes.ons76cbo.vs.spher.scatterPlot <- ggplot(avg.clus3, aes(x = ons76spher, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.05) +
+  theme_classic()
+
+clus3.genes.ons76cbo.vs.spher.scatterPlot <- LabelPoints(plot = clus3.genes.ons76cbo.vs.spher.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus3.genes.ons76cbo.vs.spher.scatterPlot 
+```
+
+```{r VolcanoPlotClus3ONS76cboVSspher, fig.height=10}
+
+clus3.ons76.cocult.vs.spher.all <- read.csv(
+  "outputs50K/INTEGRATE/clus3.ons76.cocult.vs.spher.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+EnhancedVolcano(clus3.ons76.cocult.vs.spher.all,
+                lab = clus3.ons76.cocult.vs.spher.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+***-------------------------------------------------------------------------------------------------***
+***Compare gene expression in ONS76-CBO (coculture) cells with ONS76-2D cells***
+```{r}
+# load res0.4 clustered seurat object
+# this seurat object still has all three samples - ons76-2D, ons76-CBO and ons76-spher
+
+ons76.all.combined.sct.clust <- readRDS("outputs50K/INTEGRATE/ons76.all.combined.sct.clusters.res0.4.rds")
+```
+
+```{r}
+# COMPARE GENE EXPRESSION IN ONS76-COCULTURED CELLS VS. ONS76-2D CELLS
+# extract two conditions out of three from integrated object:
+      # 'ONS76-CBO' ons76 (coculture) cells, and ONS76-2D cells
+# THE AIM IS TO COMPARE GENE EXPRESSION IN ONS76 CO-CULTURED CELLS VS ONS76-2D condition
+#--------------------------------------------------------------------------------------------------
+# Normalize the original integrated object - this needs to be repeated as the original object 'ons76.all.combined.sct.clust' has been reloaded.
+# ASSIGN the normalized integrated object
+
+ons76.all.combined.sct.clust <- NormalizeData(object = ons76.all.combined.sct.clust, assay = "RNA")
+DefaultAssay(ons76.all.combined.sct.clust) <- "RNA"
+ons76.cbo.2d.clust <- subset(ons76.all.combined.sct.clust, subset = (orig.ident == "ONS76-CBO" | orig.ident == "ONS76-2D"))
+```
+
+
+```{r}
+dim(ons76.cbo.2d.clust)
+nrow(ons76.cbo.2d.clust@meta.data)
+```
+
+```{r}
+head(Idents(ons76.cbo.2d.clust))
+```
+
+```{r DimplotsONS76cbo2d, fig.height=12, fig.width=8}
+# successfully subsetted the integrated object with 3 conditions to obtain integrated
+# object with two conditions
+p10 <- DimPlot(ons76.cbo.2d.clust, reduction = "umap", group.by = "orig.ident")
+p11 <- DimPlot(ons76.cbo.2d.clust, reduction = "umap", split.by = "orig.ident")
+p12 <- DimPlot(ons76.cbo.2d.clust, reduction = "umap", label = TRUE, repel = TRUE)
+
+p10 / p11 / p12
+```
+
+```{r}
+table(Idents(ons76.cbo.2d.clust))
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76Spher) for cluster 0
+# as the first step in finding DEGs
+clus0.ons76.cbo.2d <- subset(ons76.cbo.2d.clust, idents = "0")
+table(Idents(clus0.ons76.cbo.2d))
+```
+
+```{r}
+# change 'ONS76-CBO' to 'ONS76_CBO' and ONS76-2D to ONS76_2D because the hyphen causes problems in ggplot!
+
+clus0.ons76.cbo.2d@meta.data[clus0.ons76.cbo.2d@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
+clus0.ons76.cbo.2d@meta.data[clus0.ons76.cbo.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '0' to the two conditions
+
+Idents(clus0.ons76.cbo.2d) <- "orig.ident"
+table(Idents(clus0.ons76.cbo.2d))
+```
+
+```{r DimplotCluster0ONS76cbo2d}
+# this shows we have the cells of cluster 0 
+DimPlot(clus0.ons76.cbo.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 0
+avg.clus0 <- as.data.frame(log1p(AverageExpression(clus0.ons76.cbo.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus0
+avg.clus0$gene <- rownames(avg.clus0)
+```
+
+```{r}
+
+# UP-regulated DEGs in cluster 0
+clus0.ons76.cocult.vs.2d.pos <- FindMarkers(clus0.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus0.ons76.cocult.vs.2d.pos, n = 30)
+```
+
+```
+# UP-regulated genes in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus0.ons76.cocult.vs.2d.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus0.ons76.cocult.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.cocult.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+clus0.ons76.cocult.vs.2d.all <- FindMarkers(clus0.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus0.ons76.cocult.vs.2d.all, n = 30)
+```
+
+```
+# UP- and DOWN-regulated genes in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus0.ons76.cocult.vs.2d.all' object as a .CSV file.
+
+write.csv(clus0.ons76.cocult.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.cocult.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+```{r scatterplotCluster0DEGsONS76cboVS2d}
+# FIND DEGs IN EQUIVALENT CLUSTERS - ONS76-COCULTURE vs ONS76-2D samples
+# gene list is from the table of UP-regulated DEGs
+
+genes.to.label = c("TUBB2B", "TUBA1A", "NR2F1", "AFF3", "NKAIN3")
+
+clus0.genes.ons76cbo.vs.2d.scatterPlot <- ggplot(avg.clus0, aes(x = ONS76_2D, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) + 
+  theme_classic()
+
+clus0.genes.ons76cbo.vs.2d.scatterPlot <- LabelPoints(plot = clus0.genes.ons76cbo.vs.2d.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus0.genes.ons76cbo.vs.2d.scatterPlot 
+```
+
+```{r VolcanoPlotClus0ONS76cboVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster0 in ONS76 cells 
+# in co-culture vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus0.ons76.cocult.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus0.ons76.cocult.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus0.ons76.cocult.vs.2d.all,
+                lab = clus0.ons76.cocult.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76S-2d) for cluster 1
+# as the first step in finding DEGs
+clus1.ons76.cbo.2d <- subset(ons76.cbo.2d.clust, idents = "1")
+table(Idents(clus1.ons76.cbo.2d))
+```
+
+```{r}
+# change 'ONS76-CBO' to 'ONS76_CBO' and 'ONS76-2D' to 'ONS76_2D' because the hyphen causes problems in ggplot!
+
+clus1.ons76.cbo.2d@meta.data[clus1.ons76.cbo.2d@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
+clus1.ons76.cbo.2d@meta.data[clus1.ons76.cbo.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '1' to the two conditions
+
+Idents(clus1.ons76.cbo.2d) <- "orig.ident"
+table(Idents(clus1.ons76.cbo.2d))
+```
+
+```{r DimplotCluster1ONS76cboVS2d}
+# this shows we have the cells of cluster 1 
+DimPlot(clus1.ons76.cbo.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 1
+avg.clus1 <- as.data.frame(log1p(AverageExpression(clus1.ons76.cbo.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus1
+avg.clus1$gene <- rownames(avg.clus1)
+```
+
+```{r}
+# UP-regulated DEGs in cluster 1
+
+clus1.ons76.cocult.vs.2d.pos <- FindMarkers(clus1.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus1.ons76.cocult.vs.2d.pos, n = 30)
+```
+
+```
+# UP-regulated genes in cluster 1 in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus1.ons76.cocult.vs.2d.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus1.ons76.cocult.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.cocult.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 1
+
+clus1.ons76.cocult.vs.2d.all <- FindMarkers(clus1.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus1.ons76.cocult.vs.2d.all, n = 30)
+```
+
+```
+# UP- and DOWN-regulated genes in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus1.ons76.cocult.vs.2d.all' object as a .CSV file.
+
+write.csv(clus1.ons76.cocult.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.cocult.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+
+```{r ScatterplotCluster1DEGsONS76cboVS2d}
+# FIND DEGs IN EQUIVALENT CLUSTERS - ONS76-COCULTURE vs ONS76-2D samples
+# gene list is from the table of UP-regulated DEGs
+
+genes.to.label = c("TUBB2B", "NNAT", "TUBA1A", "NEUROD1", "CCNI")
+
+clus1.genes.ons76cbo.vs.2d.scatterPlot <- ggplot(avg.clus1, aes(x = ONS76_2D, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) + 
+  theme_classic()
+
+clus1.genes.ons76cbo.vs.2d.scatterPlot <- LabelPoints(plot = clus1.genes.ons76cbo.vs.2d.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus1.genes.ons76cbo.vs.2d.scatterPlot 
+```
+
+```{r VolcanoPlotClus1ONS76cboVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster1 in ONS76 cells 
+# in co-culture vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus1.ons76.cocult.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus1.ons76.cocult.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus1.ons76.cocult.vs.2d.all,
+                lab = clus1.ons76.cocult.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76S-2d) for cluster 2
+# as the first step in finding DEGs
+clus2.ons76.cbo.2d <- subset(ons76.cbo.2d.clust, idents = "2")
+table(Idents(clus2.ons76.cbo.2d))
+```
+
+```{r}
+# change 'ONS76-CBO' to 'ONS76_CBO' and ONS76-2D to ONS76_2D because the hyphen causes problems in ggplot!
+
+clus2.ons76.cbo.2d@meta.data[clus2.ons76.cbo.2d@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
+clus2.ons76.cbo.2d@meta.data[clus2.ons76.cbo.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '2' to the two conditions
+
+Idents(clus2.ons76.cbo.2d) <- "orig.ident"
+table(Idents(clus2.ons76.cbo.2d))
+```
+
+```{r DimplotCluster2ONS76cboVS2d}
+# this shows we have the cells of cluster 2 
+DimPlot(clus2.ons76.cbo.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression (pseudobulk) of cluster 2
+
+avg.clus2 <- as.data.frame(log1p(AverageExpression(clus2.ons76.cbo.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus2
+avg.clus2$gene <- rownames(avg.clus2)
+```
+
+```{r}
+# UP-regulated DEGs in cluster 2
+
+clus2.ons76.cocult.vs.2d.pos <- FindMarkers(clus2.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus2.ons76.cocult.vs.2d.pos, n = 30)
+```
+
+```
+# UP-regulated genes in cluster 2 in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus2.ons76.cocult.vs.2d.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus2.ons76.cocult.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.cocult.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 2
+
+clus2.ons76.cocult.vs.2d.all <- FindMarkers(clus2.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus2.ons76.cocult.vs.2d.all, n = 30)
+```
+
+```
+# UP- and DOWN-regulated genes in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus2.ons76.cocult.vs.2d.all' object as a .CSV file.
+
+write.csv(clus2.ons76.cocult.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.cocult.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+
+```{r ScatterplotCluster2DEGsONS76cboVS2d}
+# FIND DEGs IN EQUIVALENT CLUSTERS - ONS76-COCULTURE (ONS76-CBO) vs ONS76-2D samples
+# gene list is from the table of UP-regulated DEGs
+
+genes.to.label = c("PTMS", "CRMP1", "NNAT", "DCX", "MEIS2")
+
+clus2.genes.ons76cbo.vs.2d.scatterPlot <- ggplot(avg.clus2, aes(x = ONS76_2D, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) + 
+  theme_classic()
+
+clus2.genes.ons76cbo.vs.2d.scatterPlot <- LabelPoints(plot = clus2.genes.ons76cbo.vs.2d.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus2.genes.ons76cbo.vs.2d.scatterPlot 
+```
+
+```{r VolcanoPlotClus2ONS76cboVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster2 in ONS76 cells 
+# in co-culture vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+# NONE OF THE UPREGULATED GENES MEET CRITERIA FOR BOTH AVG_LOG2_FC AND ADJ_P_VAL. THIS COULD SIMPLY
+# REFLECT THE SMALL TOTAL NUMBER OF CELLS IN THIS CLUSTER
+
+# load the csv file
+clus2.ons76.cocult.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus2.ons76.cocult.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus2.ons76.cocult.vs.2d.all,
+                lab = clus2.ons76.cocult.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-cocult and ons76S-2d) for cluster 3
+# as the first step in finding DEGs
+clus3.ons76.cbo.2d <- subset(ons76.cbo.2d.clust, idents = "3")
+table(Idents(clus3.ons76.cbo.2d))
+```
+
+```{r}
+# change 'ONS76-CBO' to 'ONS76_CBO' and ONS76-2D to ONS76_2D because the hyphen causes problems in ggplot!
+
+clus3.ons76.cbo.2d@meta.data[clus3.ons76.cbo.2d@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
+clus3.ons76.cbo.2d@meta.data[clus3.ons76.cbo.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '3' to the two conditions
+
+Idents(clus3.ons76.cbo.2d) <- "orig.ident"
+table(Idents(clus3.ons76.cbo.2d))
+```
+
+```{r DimplotCluster3ONS76cboVS2d}
+# this shows we have the cells of cluster 3 
+DimPlot(clus3.ons76.cbo.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 3
+
+avg.clus3 <- as.data.frame(log1p(AverageExpression(clus3.ons76.cbo.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus3
+avg.clus3$gene <- rownames(avg.clus3)
+```
+
+```{r}
+# UP-regulated DEGs in cluster 3
+
+clus3.ons76.cocult.vs.2d.pos <- FindMarkers(clus3.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus3.ons76.cocult.vs.2d.pos, n = 30)
+```
+
+```
+# UP-regulated genes in cluster 3 in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus3.ons76.cocult.vs.2d.pos' object as a .CSV file. These are UP-regulated genes in
+# ons76 co-culture cells 
+
+write.csv(clus3.ons76.cocult.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.cocult.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 3
+
+clus3.ons76.cocult.vs.2d.all <- FindMarkers(clus3.ons76.cbo.2d, 
+                                     ident.1 = "ONS76_CBO", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus3.ons76.cocult.vs.2d.all, n = 30)
+```
+
+```
+# UP- and DOWN-regulated genes in ons76-CBO coculture cells vs ons76-2D
+# save the 'clus3.ons76.cocult.vs.2d.all' object as a .CSV file.
+
+write.csv(clus3.ons76.cocult.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.cocult.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# FIND DEGs IN EQUIVALENT CLUSTERS - ONS76-COCULTURE vs ONS76-2D samples
+# gene list is from the table of UP-regulated DEGs
+
+genes.to.label = c("NNAT", "EYA2", "NKAIN3", "TUBB2B", "KIRREL3")
+
+clus3.genes.ons76cbo.vs.2d.scatterPlot <- ggplot(avg.clus3, aes(x = ONS76_2D, y = ONS76_CBO)) + 
+  geom_point(alpha = 0.1) + 
+  theme_classic()
+
+clus3.genes.ons76cbo.vs.2d.scatterPlot <- LabelPoints(plot = clus3.genes.ons76cbo.vs.2d.scatterPlot, points = genes.to.label, repel = TRUE)
+
+clus3.genes.ons76cbo.vs.2d.scatterPlot 
+```
+
+```{r VolcanoPlotClus3ONS76cboVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster3 in ONS76 cells 
+# in co-culture vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus3.ons76.cocult.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus3.ons76.cocult.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus3.ons76.cocult.vs.2d.all,
+                lab = clus3.ons76.cocult.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+
+***-------------------------------------------------------------------------------------------------***
+***Compare gene expression in ONS76-SPHER to ONS76-2D cells*** 
+
+```{r}
+# load res0.4 clustered seurat object
+# this seurat object still has all three samples - ons76-2D, ons76-CBO and ons76-spher
+
+ons76.all.combined.sct.clust <- readRDS("outputs50K/INTEGRATE/ons76.all.combined.sct.clusters.res0.4.rds")
+```
+
+```{r}
+# THE AIM IS TO COMPARE GENE EXPRESSION IN ONS76-SPHER CELLS VS. ONS76-2D CELLS
+# extract two conditions out of three from integrated object:
+      # 'ONS76-SPHER' cells, and ONS76-2D cells
+#--------------------------------------------------------------------------------------------------
+# Normalize the original integrated object.
+# ASSIGN the normalized integrated object
+
+ons76.all.combined.sct.clust <- NormalizeData(object = ons76.all.combined.sct.clust, assay = "RNA")
+DefaultAssay(ons76.all.combined.sct.clust) <- "RNA"
+```
+
+```{r}
+ons76.spher.2d.clust <- subset(ons76.all.combined.sct.clust, subset = (orig.ident == "ons76spher" | orig.ident == "ONS76-2D"))
+```
+
+```{r}
+dim(ons76.spher.2d.clust)
+nrow(ons76.spher.2d.clust@meta.data)
+```
+
+```{r DimplotsONS76spher2d, fig.height=12, fig.width=8}
+# successfully subsetted the integrated object with 3 conditions to obtain integrated
+# object with two conditions
+p13 <- DimPlot(ons76.spher.2d.clust, reduction = "umap", group.by = "orig.ident")
+p14 <- DimPlot(ons76.spher.2d.clust, reduction = "umap", split.by = "orig.ident")
+p15 <- DimPlot(ons76.spher.2d.clust, reduction = "umap", label = TRUE, repel = TRUE)
+
+p13 / p14 / p15
+```
+
+```{r}
+table(Idents(ons76.spher.2d.clust))
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-spher and ons76-2d) for cluster 0
+# as the first step in finding DEGs
+clus0.ons76.spher.2d <- subset(ons76.spher.2d.clust, idents = "0")
+table(Idents(clus0.ons76.spher.2d))
+```
+
+```{r}
+# change 'ONS76-2D' to 'ONS76_2D' and 'ons76spher' to 'ONS76_SPHER' because the hyphen causes problems in ggplot!
+
+clus0.ons76.spher.2d@meta.data[clus0.ons76.spher.2d@meta.data == "ons76spher"] <- "ONS76_SPHER"
+clus0.ons76.spher.2d@meta.data[clus0.ons76.spher.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '0' to the two conditions
+
+Idents(clus0.ons76.spher.2d) <- "orig.ident"
+table(Idents(clus0.ons76.spher.2d))
+```
+
+```{r DimplotCluster0ONS76spherVS2d}
+# this shows we have the cells of cluster 0 
+DimPlot(clus0.ons76.spher.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression (pseudobulk) of cluster 0
+avg.clus0 <- as.data.frame(log1p(AverageExpression(clus0.ons76.spher.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus0
+avg.clus0$gene <- rownames(avg.clus0)
+```
+
+```{r}
+# find UP-regulated genes in cluster 0
+
+clus0.ons76.spher.vs.2d.pos <- FindMarkers(clus0.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus0.ons76.spher.vs.2d.pos, n = 30)
+```
+
+```
+# save the UP-REGULATED gene list as csv
+# UP-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D.
+# save the 'clus0.ons76.spher.vs.2d.pos' object as a .CSV file.
+
+write.csv(clus0.ons76.spher.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.spher.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 0
+
+clus0.ons76.spher.vs.2d.all <- FindMarkers(clus0.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus0.ons76.spher.vs.2d.all, n = 30)
+```
+
+```
+# save the UP- and DOWN-REGULATED gene list as csv
+# UP- and DOWN-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D.
+# save the 'clus0.ons76.spher.vs.2d.all' object as a .CSV file.
+
+write.csv(clus0.ons76.spher.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus0.ons76.spher.vs.2d.allDEgenes.csv", 
+          quote = F)
+
+```
+
+```{r VolcanoPlotClus0ONS76spherVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster0 in ONS76 cells 
+# in SPHER vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus0.ons76.spher.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus0.ons76.spher.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus0.ons76.spher.vs.2d.all,
+                lab = clus0.ons76.spher.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-spher and ons76-2d) for cluster 1
+# as the first step in finding DEGs
+
+clus1.ons76.spher.2d <- subset(ons76.spher.2d.clust, idents = "1")
+table(Idents(clus1.ons76.spher.2d))
+```
+
+```{r}
+# change 'ONS76-2D' to 'ONS76_2D' and 'ons76spher' to 'ONS76_SPHER' because the hyphen causes problems in ggplot!
+
+clus1.ons76.spher.2d@meta.data[clus1.ons76.spher.2d@meta.data == "ons76spher"] <- "ONS76_SPHER"
+clus1.ons76.spher.2d@meta.data[clus1.ons76.spher.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '0' to the two conditions
+
+Idents(clus1.ons76.spher.2d) <- "orig.ident"
+table(Idents(clus1.ons76.spher.2d))
+```
+
+```{r DimplotCluster1ONS76spherVS2d}
+# this shows we have the cells of cluster 1 
+DimPlot(clus1.ons76.spher.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 1
+avg.clus1 <- as.data.frame(log1p(AverageExpression(clus1.ons76.spher.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus1
+avg.clus1$gene <- rownames(avg.clus1)
+```
+
+
+```{r}
+# find UPregulated genes in cluster 1
+
+clus1.ons76.spher.vs.2d.pos <- FindMarkers(clus1.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus1.ons76.spher.vs.2d.pos, n = 30)
+```
+
+```
+# save the UP-REGULATED gene list as csv
+# UP-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D.
+# save the 'clus1.ons76.spher.vs.2d.pos' object as a .CSV file.
+
+write.csv(clus1.ons76.spher.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.spher.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 1
+
+clus1.ons76.spher.vs.2d.all <- FindMarkers(clus1.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus1.ons76.spher.vs.2d.all, n = 30)
+```
+
+```
+# save the UP- and DOWN-REGULATED gene list as csv
+# UP- and DOWN-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D.
+# save the 'clus1.ons76.spher.vs.2d.all' object as a .CSV file.
+
+write.csv(clus1.ons76.spher.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus1.ons76.spher.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+```{r VolcanoPlotClus1ONS76spherVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster1 in ONS76 cells 
+# in SPHER vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus1.ons76.spher.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus1.ons76.spher.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus1.ons76.spher.vs.2d.all,
+                lab = clus1.ons76.spher.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-spher and ons76-2d) for cluster 2
+# as the first step in finding DEGs
+
+clus2.ons76.spher.2d <- subset(ons76.spher.2d.clust, idents = "2")
+table(Idents(clus2.ons76.spher.2d))
+```
+
+```{r}
+# change 'ONS76-2D' to 'ONS76_2D' and 'ons76spher' to 'ONS76_SPHER' because the hyphen causes problems in ggplot!
+
+clus2.ons76.spher.2d@meta.data[clus2.ons76.spher.2d@meta.data == "ons76spher"] <- "ONS76_SPHER"
+clus2.ons76.spher.2d@meta.data[clus2.ons76.spher.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '2' to the two conditions
+
+Idents(clus2.ons76.spher.2d) <- "orig.ident"
+table(Idents(clus2.ons76.spher.2d))
+```
+
+```{r DimplotCluster2ONS76spherVS2d}
+# this shows we have the cells of cluster 2 
+DimPlot(clus2.ons76.spher.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 2
+avg.clus2 <- as.data.frame(log1p(AverageExpression(clus2.ons76.spher.2d, verbose = FALSE)$RNA))
+```
+
+```{r }
+# make the new 'gene' column for avg.clus2
+avg.clus2$gene <- rownames(avg.clus2)
+```
+
+
+```{r}
+# find UPregulated genes in cluster 2
+
+clus2.ons76.spher.vs.2d.pos <- FindMarkers(clus2.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus2.ons76.spher.vs.2d.pos, n = 30)
+```
+
+```
+# save the UP-REGULATED gene list as csv
+# UP-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D in cluster 2.
+# save the 'clus2.ons76.spher.vs.2d.pos' object as a .CSV file.
+
+write.csv(clus2.ons76.spher.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.spher.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+
+```{r}
+# find UP- and DOWN-regulated genes in cluster 2
+
+clus2.ons76.spher.vs.2d.all <- FindMarkers(clus2.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus2.ons76.spher.vs.2d.all, n = 30)
+```
+
+```
+# save the UP- and DOWN-REGULATED gene list as csv
+# UP- and DOWN-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D in cluster 2.
+# save the 'clus2.ons76.spher.vs.2d.all' object as a .CSV file.
+
+write.csv(clus2.ons76.spher.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus2.ons76.spher.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+
+```{r VolcanoPlotClus2ONS76spherVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster2 in ONS76 cells 
+# in SPHER vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus2.ons76.spher.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus2.ons76.spher.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus2.ons76.spher.vs.2d.all,
+                lab = clus2.ons76.spher.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+```{r}
+# subset the seurat object containing the two conditions (ons76-spher and ons76-2d) for cluster 3
+# as the first step in finding DEGs
+
+clus3.ons76.spher.2d <- subset(ons76.spher.2d.clust, idents = "3")
+table(Idents(clus3.ons76.spher.2d))
+```
+
+```{r}
+# change 'ONS76-2D' to 'ONS76_2D' and 'ons76spher' to 'ONS76_SPHER' because the hyphen causes problems in ggplot!
+
+clus3.ons76.spher.2d@meta.data[clus3.ons76.spher.2d@meta.data == "ons76spher"] <- "ONS76_SPHER"
+clus3.ons76.spher.2d@meta.data[clus3.ons76.spher.2d@meta.data == "ONS76-2D"] <- "ONS76_2D"
+```
+
+```{r}
+# switch Idents from '3' to the two conditions
+
+Idents(clus3.ons76.spher.2d) <- "orig.ident"
+table(Idents(clus3.ons76.spher.2d))
+```
+
+```{r DimplotCluster3ONS76spherVS2d}
+# this shows we have the cells of cluster 3 
+DimPlot(clus3.ons76.spher.2d, reduction = "umap", group.by = "orig.ident", label = TRUE)
+```
+
+```{r}
+# get AverageExpression of cluster 3
+avg.clus3 <- as.data.frame(log1p(AverageExpression(clus3.ons76.spher.2d, verbose = FALSE)$RNA))
+```
+
+```{r}
+# make the new 'gene' column for avg.clus3
+avg.clus3$gene <- rownames(avg.clus3)
+```
+
+
+```{r}
+# find UPregulated genes in cluster 3
+
+clus3.ons76.spher.vs.2d.pos <- FindMarkers(clus3.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     only.pos = TRUE,
+                                     verbose = FALSE)
+head(clus3.ons76.spher.vs.2d.pos, n = 30)
+```
+
+```
+# save the UP-REGULATED gene list as csv
+# UP-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D in cluster 3.
+# save the 'clus3.ons76.spher.vs.2d.pos' object as a .CSV file.
+
+write.csv(clus3.ons76.spher.vs.2d.pos, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.spher.vs.2d.posDEgenes.csv", 
+          quote = F)
+```
+```{r}
+# find UP- and DOWN-regulated genes in cluster 3
+
+clus3.ons76.spher.vs.2d.all <- FindMarkers(clus3.ons76.spher.2d, 
+                                     ident.1 = "ONS76_SPHER", 
+                                     ident.2 = "ONS76_2D",
+                                     verbose = FALSE)
+head(clus3.ons76.spher.vs.2d.all, n = 30)
+```
+
+```
+# save the UP- and DOWN-REGULATED gene list as csv
+# UP- and DOWN-regulated genes in ONS76_SPHER coculture cells vs ONS76_2D in cluster 3.
+# save the 'clus3.ons76.spher.vs.2d.all' object as a .CSV file.
+
+write.csv(clus3.ons76.spher.vs.2d.all, 
+          file = "./outputs50K/INTEGRATE/clus3.ons76.spher.vs.2d.allDEgenes.csv", 
+          quote = F)
+```
+
+```{r VolcanoPlotClus3ONS76spherVS2d, fig.height=10}
+# Volcano Plot of genes that are UP- or DOWN-regulated in shared cluster3 in ONS76 cells 
+# in SPHER vs ONS76-monolayer (ONS76_2D) cells
+# https://bioconductor.org/packages/release/bioc/html/EnhancedVolcano.html
+
+# load the csv file
+clus3.ons76.spher.vs.2d.all <- read.csv(
+  "outputs50K/INTEGRATE/clus3.ons76.spher.vs.2d.allDEgenes.csv",
+         header = TRUE,
+         stringsAsFactors = FALSE)
+
+# use adjusted p-value
+EnhancedVolcano(clus3.ons76.spher.vs.2d.all,
+                lab = clus3.ons76.spher.vs.2d.all$X,  # X is the column name that holds gene names
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
