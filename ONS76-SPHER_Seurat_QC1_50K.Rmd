@@ -410,12 +410,41 @@ DimPlot(seurat.phase,
 saveRDS(seurat.phase, "./outputs50K/ONS76_SPHER/seurat.phase.ons76spher.rds")
 ```
 
-```{r}
-sessionInfo()
+```{r remove_ribo_genes}
+# FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
+# THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
+#-------------------------------------------------------------------------------------
+
+# remove ribosomal genes first
+filt.noRibo.ons76spher <- fullFilt.ons76spher.seurat[ ! grepl('^RP[SL]', rownames(fullFilt.ons76spher.seurat)), ]
 ```
 
+```{r check_ribo_removed}
+# this has worked - 95 ribosomal genes have been removed from the new Seurat object
+dim(fullFilt.ons76spher.seurat)
+dim(filt.noRibo.ons76spher)
+```
 
+```{r remove_mitoch_genes}
+# remove mitochondrial genes 
+filt.noRiboMito.ons76spher <- filt.noRibo.ons76spher[ ! grepl("^MT-", rownames(filt.noRibo.ons76spher)), ]
+```
 
+```{r check_filtering}
+# check if ribosome and mitochondrial gene filtering works - it does!
+dim(filt.noRibo.ons76spher)
+dim(filt.noRiboMito.ons76spher)
+```
+
+```
+# SAVE this seurat object from code line 430
+
+saveRDS(filt.noRiboMito.ons76spher, file = "./outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
+```
+
+```{r load_noRiboNoMito_seuratObject}
+filt.noRiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
+```
 
 
 
