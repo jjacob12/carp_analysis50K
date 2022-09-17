@@ -17,20 +17,23 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 ```{r libraries}
+suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
 library(Matrix)
+library(ggVennDiagram)
 library(patchwork)
 library(tidyverse)
+})
 ```
 
-```{r load_filteredSeuratObject}
+```{r}
 # load full filtered (genes and cells) seurat object
 
 filt.cboONS76.seurat <- readRDS("outputs50K/ONS76-CBO/filtCellsGenes.ons76cbo.seurat.rds")
 ```
 
-```{r Plot1_SCTransform_UMAPclustering}
+```{r DimPlot1RiboMito}
 # Perform SCTransform
 # Perform dimensionality reduction by PCA and UMAP embedding
 # FindClusters is run with only the default resolution parameter (= 0.8)
@@ -56,7 +59,7 @@ DimPlot(filt.cboONS76.clusters.seurat, label = TRUE) # '+ NoLegend()' is an opti
 
 saveRDS(filt.cboONS76.clusters.seurat, file = "./outputs50K/ONS76-CBO/filt.cboONS76.clusters.seurat.rds")
 ```
-```{r load_clustered_SeuratObject}
+```{r}
 filt.cboONS76.clusters <- readRDS("outputs50K/ONS76-CBO/filt.cboONS76.clusters.seurat.rds")
 ```
 
@@ -65,12 +68,12 @@ filt.cboONS76.clusters <- readRDS("outputs50K/ONS76-CBO/filt.cboONS76.clusters.s
 
 saveRDS(filt.cboONS76.seurat, file = "./outputs50K/ONS76-CBO/filt.cboONS76.seurat.rds")
 ```
-```{r load_last_filt.cboONS76.seurat_object}
+```{r}
 filt.cboONS76 <- readRDS("outputs50K/ONS76-CBO/filt.cboONS76.seurat.rds")
 ```
 
 
-```{r ElbowPlot_ndims=50}
+```{r ElbowPlot1RiboMito}
 # elbow plot shows that there is an elbow at PC ~10, but the graph does not level off after
 # PC 15 showing there is some additional information to ~ PC 40.
 # The input object is the CLUSTERED saved seurat object, and this gives the same result as
@@ -79,12 +82,12 @@ filt.cboONS76 <- readRDS("outputs50K/ONS76-CBO/filt.cboONS76.seurat.rds")
 ElbowPlot(filt.cboONS76.clusters, ndims = 50, reduction = "pca")
 ```
 
-```{r differential_genes_by_cluster_cboONS76_SCT}
+```{r}
 # Find positive markers for each of the 11 clusters
 cboONS76.cluster.markers <- FindAllMarkers(filt.cboONS76.clusters, min.pct = 0.25, only.pos = TRUE)
 ```
 
-```{r cell_counts_perCluster}
+```{r}
 # there are 2545 cells in total (BEFORE any ribosome filtering), which is correct, and the cell numbers 
 # per cluster are shown below.
 
@@ -105,7 +108,8 @@ cboONS76.cluster.markers <- read.csv("outputs50K/ONS76-CBO/cboONS76.cluster.mark
                                     stringsAsFactors = FALSE)
 ```
 
-```{r cluster0_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 0 top 10 markers
 # cluster 0 = roof plate/choroid plexus
 cluster0.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 0, ] %>%
   head(n=20)
@@ -113,7 +117,8 @@ cluster0.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster0.markers
 ```
 
-```{r cluster1_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 1 top 10 markers
 # cluster 1 = probable glia
 cluster1.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 1, ] %>%
   head(n=20)
@@ -121,7 +126,8 @@ cluster1.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster1.markers
 ```
 
-```{r cluster2_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 2 top 10 markers
 # cluster 2 = 4th ventricle derivatives/choroid plexus
 cluster2.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 2, ] %>%
   head(n=20)
@@ -129,7 +135,8 @@ cluster2.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster2.markers
 ```
 
-```{r cluster3_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 3 top 10 markers
 # cluster 3 = GCP/granule neuron
 cluster3.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 3, ] %>%
   head(n=20)
@@ -137,7 +144,8 @@ cluster3.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster3.markers
 ```
 
-```{r cluster4_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 4 top 10 markers
 # cluster 4 = rhombic lip/GCP lineage
 cluster4.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 4, ] %>%
   head(n=20)
@@ -145,7 +153,8 @@ cluster4.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster4.markers
 ```
 
-```{r cluster5_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 5 top 10 markers
 # cluster 5 = ?ONS76 cells
 cluster5.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 5, ] %>%
   head(n=20)
@@ -153,7 +162,8 @@ cluster5.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster5.markers
 ```
 
-```{r cluster6_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 6 top 10 markers
 # cluster 6 = could be inhibitory GABAergic cerebellar nuclei/interneurons/PN
 cluster6.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 6, ] %>%
   head(n=20)
@@ -161,7 +171,8 @@ cluster6.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster6.markers
 ```
 
-```{r cluster7_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 7 top 10 markers
 # cluster 7 = GCP/granule neuron
 cluster7.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 7, ] %>%
   head(n=20)
@@ -169,7 +180,8 @@ cluster7.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster7.markers
 ```
 
-```{r cluster8_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 8 top 10 markers
 # cluster 8 = ?glia (but could these be ONS76 cells??)
 cluster8.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 8, ] %>%
   head(n=20)
@@ -177,7 +189,8 @@ cluster8.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster8.markers
 ```
 
-```{r cluster9_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 9 top 20 markers
 # cluster 9 =  most likely glia 
 cluster9.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 9, ] %>%
   head(n=20)
@@ -185,7 +198,8 @@ cluster9.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster ==
 cluster9.markers
 ```
 
-```{r cluster10_cbo.cluster.markers_top10markers}
+```{r}
+# cluster 10 top 20 markers
 # cluster 10 = ONS76 cells
 cluster10.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster == 10, ] %>%
   head(n=20)
@@ -193,20 +207,20 @@ cluster10.markers <- cboONS76.cluster.markers[cboONS76.cluster.markers$cluster =
 cluster10.markers
 ```
 
-```{r}
-# cluster 5 contained many ribosomal genes, so TRY FILTERING ON RIBOSOMAL GENE PERCENTAGE
+***COMMENT***
+cluster 5 contained many ribosomal genes, so TRY FILTERING ON RIBOSOMAL GENE PERCENTAGE
 #----------------------------------------------------------------------------------------
 
-# use the full filtered (for cells and genes and mitoch percent) seurat object
-```
+use the full filtered (for cells and genes and mitoch percent) seurat object
 
-```{r load_filteredSeuratObject}
+
+```{r}
 # load full filtered (genes and cells) seurat object
 
 filt.cboONS76.seurat <- readRDS("outputs50K/ONS76-CBO/filtCellsGenes.ons76cbo.seurat.rds")
 ```
 
-```{r calc_ribosomal_percent}
+```{r}
 # calculate ribosomal percentage
 
 filt.cboONS76.seurat[["percent.ribo"]] <- PercentageFeatureSet(filt.cboONS76.seurat, pattern = "^RP[SL]")
@@ -221,185 +235,6 @@ VlnPlot(filt.cboONS76.seurat, features = c("percent.mt", "percent.ribo"), ncol =
 ```
 
 ```{r}
-# In https://kb.10xgenomics.com/hc/en-us/articles/218169723-What-fraction-of-reads-map-to-ribosomal-proteins- on the 10X Genomics scRNA-seq website there is a table of percent ribosomal genes in different cell types. For neurons the upper limit is 20%. So try filtering 'filt.cboONS76.seurat' for ribosomal genes and repeat the clustering.
-
-# View metadata data frame, stored in object@meta.data
-metadata <- filt.cboONS76.seurat[[]]
-
-# number of cells with percent.ribo > 20%: 1229 cells
-# number of cells with percent.ribo < 20%: 1316 cells
-
-nrow(metadata[metadata$percent.ribo > 20, ])
-
-nrow(metadata[metadata$percent.ribo < 20, ])
-```
-
-```{r filter_on_percent.ribo<20}
-# this object, as expected, has 1316 cells, in which all cells have percent.ribo < 20%
-
-full.ribo.filt.cboONS76 <- subset(filt.cboONS76.seurat, subset = percent.ribo < 20)
-dim(full.ribo.filt.cboONS76)
-```
-
-```{r Plot_SCTransform_UMAP_clustering}
-# Perform SCTransform
-# Perform dimensionality reduction by PCA and UMAP embedding
-# FindClusters is run with only the default resolution parameter (= 0.8)
-# 10 clusters identified
-
-full.ribo.filt.cboONS76 <- SCTransform(full.ribo.filt.cboONS76, method = "glmGamPoi", verbose = FALSE)
-
-full.ribo.filt.cboONS76 <- RunPCA(full.ribo.filt.cboONS76, verbose = FALSE)
-
-full.ribo.filt.cboONS76 <- RunUMAP(full.ribo.filt.cboONS76, dims = 1:30, verbose = FALSE)
-
-full.ribo.filt.cboONS76 <- FindNeighbors(full.ribo.filt.cboONS76, dims = 1:30, verbose = FALSE)
-
-full.ribo.filt.clust.cboONS76 <- FindClusters(full.ribo.filt.cboONS76, verbose = FALSE)
-
-# 11 clusters are now detected
-DimPlot(full.ribo.filt.clust.cboONS76, label = TRUE) # '+ NoLegend()' is an option to insert here
-```
-
-```
-# saved the last seurat object, 'full.ribo.filt.cboONS76'
-
-saveRDS(full.ribo.filt.cboONS76, file = "./outputs50K/ONS76-CBO/full.ribo.filt.cboONS76.rds")
-```
-
-```
-# saved the CLUSTERED 'full.ribo.filt.clust.cboONS76' Seurat object to the folder 'outputs50K'
-
-saveRDS(full.ribo.filt.clust.cboONS76, file = "./outputs50K/ONS76-CBO/full.ribo.filt.clust.cboONS76.rds")
-```
-
-
-```{r cell_counts_perCluster_ribo_filtered}
-# there are 1316 cells in total, which is correct, and the cell numbers per cluster are shown below.
-
-cell.num.riboFilt <- table(full.ribo.filt.clust.cboONS76@active.ident)
-cell.num.riboFilt
-sum(cell.num.riboFilt)
-```
-
-## save the ribosome expression filtered seurat objects (incl. clustered object)
-
-```{r differential_genes_by_cluster_cboONS76_ribo<20%}
-# Find positive markers for each of the 9 clusters
-cboONS76.cluster.markers.ribo20 <- FindAllMarkers(full.ribo.filt.clust.cboONS76, min.pct = 0.25, only.pos = TRUE)
-```
-
-```
-# save cboONS76.cluster.markers.ribo20 as a csv file. This object has percent.ribo < 20
-
-write.csv(cboONS76.cluster.markers.ribo20, "./outputs50K/ONS76-CBO/cboONS76.cluster.markers.ribo20.csv", quote = F)
-```
-
-```{r load_clusterMarkersCSV_ribo<20}
-cboONS76.cluster.markers.ribo20 <- read.csv("outputs50K/ONS76-CBO/cboONS76.cluster.markers.ribo20.csv", 
-                                       header = TRUE, 
-                                       stringsAsFactors = FALSE)
-```
-
-```{r cluster0_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 0 = probable roof plate/choroid plexus
-cluster0.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 0, ] %>%
-  head(n=20)
-
-cluster0.markers.ribo20
-```
-
-```{r cluster1_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 1 = GCP/RL lineage (incl UBC)/granule neuron
-
-cluster1.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 1, ] %>%
-  head(n=20)
-
-cluster1.markers.ribo20
-```
-
-```{r cluster2_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 2 = RL/GCP/granule neuron
-
-cluster2.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 2, ] %>%
-  head(n=20)
-
-cluster2.markers.ribo20
-```
-
-```{r cluster3_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 3 = inhibitory GABAergic cerebellar nuclei/interneurons/PN
-
-cluster3.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 3, ] %>%
-  head(n=20)
-
-cluster3.markers.ribo20
-```
-
-```{r cluster4_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 4 = probable glia
-
-cluster4.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 4, ] %>%
-  head(n=20)
-
-cluster4.markers.ribo20
-```
-
-```{r cluster5_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 5 = probable glia
-
-cluster5.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 5, ] %>%
-  head(n=20)
-
-cluster5.markers.ribo20
-```
-
-```{r cluster6_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 6 = undetermined (??ONS76 cells)
-
-cluster6.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 6, ] %>%
-  head(n=20)
-
-cluster6.markers.ribo20
-```
-
-```{r cluster7_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 7 = rhombic lip/proliferative granule cells/GCP. ?related to ONS76 cells
-
-cluster7.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 7, ] %>%
-  head(n=20)
-
-cluster7.markers.ribo20
-```
-
-```{r cluster8_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 8 = ?ONS76 cells which are in RL lineage.
-
-cluster8.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 8, ] %>%
-  head(n=20)
-
-cluster8.markers.ribo20
-```
-
-```{r cluster9_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 9 = glia
-
-cluster9.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 9, ] %>%
-  head(n=20)
-
-cluster9.markers.ribo20
-```
-
-```{r cluster10_cboONS76.cluster.markers.ribo20_top10markers}
-# cluster 10 = RL/GCP lineage
-
-cluster10.markers.ribo20 <- cboONS76.cluster.markers.ribo20[cboONS76.cluster.markers.ribo20$cluster == 10, ] %>%
-  head(n=20)
-
-cluster10.markers.ribo20
-```
-
-```{r remove_ribo_genes}
 # FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
 # THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
 #-------------------------------------------------------------------------------------
@@ -408,18 +243,20 @@ cluster10.markers.ribo20
 filt.noRibo.ons76cbo <- filt.cboONS76.seurat[ ! grepl('^RP[SL]', rownames(filt.cboONS76.seurat)), ]
 ```
 
-```{r check_ribo_removed}
+```{r}
+# check ribosomal genes removed:
 # this has worked - 97 ribosomal genes have been removed from the new Seurat object
+
 dim(filt.cboONS76.seurat)
 dim(filt.noRibo.ons76cbo)
 ```
 
-```{r remove_mitoch_genes}
+```{r}
 # remove mitochondrial genes 
 filt.noRiboMito.ons76cbo <- filt.noRibo.ons76cbo[ ! grepl("^MT-", rownames(filt.noRibo.ons76cbo)), ]
 ```
 
-```{r check_filtering}
+```{r}
 # check if ribosome and mitochondrial gene filtering works - it does!
 dim(filt.noRibo.ons76cbo)
 dim(filt.noRiboMito.ons76cbo)
@@ -431,11 +268,13 @@ dim(filt.noRiboMito.ons76cbo)
 saveRDS(filt.noRiboMito.ons76cbo, file = "./outputs50K/ONS76-CBO/filt.NoRiboNoMito.cboONS76.rds")
 ```
 
-```{r load_ons76cbo_NoRiboNoMito}
+```{r}
+# load the cell AND GENE AND mitoch AND ribosomal gene filtered object
+
 filt.noRiboMito.ons76cbo <- readRDS("outputs50K/ONS76-CBO/filt.NoRiboNoMito.cboONS76.rds")
 ```
 
-```{r DimPlot_SCTransform_UMAPclustering}
+```{r DimPlot2NoRiboNoMito}
 # Perform SCTransform
 # Perform dimensionality reduction by PCA and UMAP embedding
 # FindClusters is run with only the default resolution parameter (= 0.8)
@@ -460,19 +299,20 @@ DimPlot(filt.noRiboMito.ons76cbo.clusters, label = TRUE) # '+ NoLegend()' is an 
 saveRDS(filt.noRiboMito.ons76cbo.clusters, file = "./outputs50K/ONS76-CBO/filt.noRiboMito.ons76cbo.clusters.rds")
 ```
 
-```{r load_filt.noRiboMito.ons76cbo.clusters.rds}
+```{r}
 # load the saved clustered seurat object with ribosome and mitoch genes removed
 
 filt.noRiboMito.ons76cbo.clusters <- readRDS("outputs50K/ONS76-CBO/filt.noRiboMito.ons76cbo.clusters.rds")
 ```
 
-```{r differential_genes_by_cluster_filt.noRiboMito.ons76cbo.clusters}
+```{r}
 # Find positive markers for each of the 11 clusters of 'filt.noRiboMito.cbo.clusters'
 
 ons76cbo.cluster.markers.noRiboMito <- FindAllMarkers(filt.noRiboMito.ons76cbo.clusters, min.pct = 0.25, only.pos = TRUE)
 ```
 
-```{r cell_counts_perCluster}
+```{r}
+# find cell counts per cluster
 # there are 2545 cells in total, which is correct, and the cell numbers per cluster are shown below.
 
 cell.num.riboFilt <- table(filt.noRiboMito.ons76cbo.clusters@active.ident)
@@ -490,14 +330,16 @@ write.csv(ons76cbo.cluster.markers.noRiboMito,
           quote = F)
 ```
 
-```{r load_ons76cbo.cluster.markers.noRiboMito.csv}
+```{r}
+# load the csv file
 ons76cbo.cluster.markers.noRiboMito <- read.csv(
                                       "outputs50K/ONS76-CBO/ons76cbo.cluster.markers.noRiboMito.csv", 
                                        header = TRUE, 
                                        stringsAsFactors = FALSE)
 ```
 
-```{r cluster0_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 0 no ribo and no mitoch top 10 markers
 # cluster 0 manual = roof plate/CP 
 
 cluster0.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 0, ] %>%
@@ -506,7 +348,8 @@ cluster0.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster0.markers
 ```
 
-```{r cluster1_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 0 no ribo and no mitoch top 10 markers
 # cluster 1 manual = possible glia??
 cluster1.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 1, ] %>%
   head(n=10)
@@ -514,7 +357,8 @@ cluster1.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster1.markers
 ```
 
-```{r cluster2_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 2 no ribo and no mitoch top 20 markers
 # cluster 2 manual = GCP/granule but could be ONS76
 
 cluster2.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 2, ] %>%
@@ -523,7 +367,8 @@ cluster2.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster2.markers
 ```
 
-```{r cluster3_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 3 no ribo and no mitoch top 10 markers
 # cluster 3 manual = CP/4th ventricle
 
 cluster3.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 3, ] %>%
@@ -532,15 +377,17 @@ cluster3.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster3.markers
 ```
 
-```{r cluster4_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 4 no ribo and no mitoch top 30 markers
 # cluster 4 manual = possible glia
 cluster4.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 4, ] %>%
-  head(n=10)
+  head(n=30)
 
 cluster4.markers
 ```
 
-```{r cluster5_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 5 no ribo and no mitoch top 10 markers
 # cluster 5 manual = possible inhibitory GABAergic cerebellar nuclei/interneurons/PN
 
 cluster5.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 5, ] %>%
@@ -549,7 +396,8 @@ cluster5.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster5.markers
 ```
 
-```{r cluster6_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 6 no ribo and no mitoch top 20 markers
 # cluster 6 manual = GCP/granule neuron - a bit more similar to cluster 6 of CBO sample
 
 cluster6.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 6, ] %>%
@@ -558,7 +406,8 @@ cluster6.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster6.markers
 ```
 
-```{r cluster7_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 7 no ribo and no mitoch top 20 markers
 # cluster 7 manual = glial cells
 
 cluster7.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 7, ] %>%
@@ -567,7 +416,8 @@ cluster7.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster7.markers
 ```
 
-```{r cluster8_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 8 no ribo and no mitoch top 20 markers
 # cluster 8 manual = rhombic lip, GCP, proliferative granule cells
 
 cluster8.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 8, ] %>%
@@ -576,15 +426,17 @@ cluster8.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers
 cluster8.markers
 ```
 
-```{r cluster9_ons76cbo.cluster.markers.noRiboMito_top10markers}
-# cluster 9 manual = uncertain
+```{r}
+# cluster 9 no ribo and no mitoch top 20 markers
+# cluster 9 manual = granule/GCP lineage
 cluster9.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 9, ] %>%
   head(n=10)
 
 cluster9.markers
 ```
 
-```{r cluster10_ons76cbo.cluster.markers.noRiboMito_top10markers}
+```{r}
+# cluster 10 no ribo and no mitoch top 20 markers
 # cluster 10 manual = ONS76 cells?
 cluster10.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 10, ] %>%
   head(n=20)
@@ -592,7 +444,7 @@ cluster10.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.marker
 cluster10.markers
 ```
 
-```{r Dotplot_all_seppMarkers+cilia, fig.height=10}
+```{r DotplotAllSeppMarkersAndCilia, fig.height=10}
 # from the Sepp paper repeat Dotplot with TF and some key non-TF markers
 # added markers of ciliated cells from cluster10 above.
 # used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
@@ -621,17 +473,18 @@ DotPlot(object = filt.noRiboMito.ons76cbo.clusters, features = seppAll.cilia.ste
   coord_flip()
 ```
 
-```{r granule_lineage_by_cluster, fig.height=10}
+```{r ViolinPlotGranuleClusterGenes, fig.height=10}
 # plot of the clusters containing granule/RL lineage - clusters 2, 4, 6, 9 and 10 contain RL/granule
 # lineage.
 # CDH1 is expressed (in WT cells and ONS76 cells), but CDH5 (marker of ONS76 cells) is not expressed.
 # CD44 is not expressed or expressed very little.
 # ITGB1 is also not good at discriminating WT CBO from ONS76-CBO samples
 
-VlnPlot(filt.noRiboMito.ons76cbo.clusters, features = c("PAX6", "NEUROD1", "CNTN1", "CNTN2", "MEIS1", "GRIA4", "POU3F2"))
+VlnPlot(filt.noRiboMito.ons76cbo.clusters, 
+        features = c("HOXB2", "NEUROD1", "CNTN1", "CNTN2", "MEIS1", "MEIS2", "GRIA4", "POU3F2", "RRM2", "ACTC1"))
 ```
 
-```{r cntn2_cluster2,10}
+```{r}
 # CHECK ABOVE CANDIDATE GENES WHICH ARE UPREGULATED IN ONS76 CELLS VS WT CELLS IN CO-CULTURE
 #----------------------------------------------------------------------------------------------------
 # CLUSTER 2, MEIS1 expression in cells: pct.1 = 28%, pct.2 (all other cells) = 7%, avg_log2FC = 0.429;
@@ -645,7 +498,7 @@ cntn2.clusters.2.10 <- ons76cbo.cluster.markers.noRiboMito[((ons76cbo.cluster.ma
 cntn2.clusters.2.10
 ```
 
-```{r meis1_cluster10}
+```{r}
 # CLUSTER 10, MEIS1 expression in cells: pct.1 = 70%, pct.2 = 2%, avg_log2FC = 1.783;
 # adj p-val = 2.349e-195
 
@@ -654,7 +507,7 @@ meis1.cluster.10 <- ons76cbo.cluster.markers.noRiboMito[(ons76cbo.cluster.marker
 meis1.cluster.10
 ```
 
-```{r gria4_cluster10}
+```{r}
 # CLUSTER 10, GRIA4 expression in cells: pct.1 = 29%, pct.2 = 1%, avg_log2FC = 0.688;
 # adj p-val = 1.721e-60
 
@@ -663,7 +516,7 @@ gria4.cluster.10 <- ons76cbo.cluster.markers.noRiboMito[(ons76cbo.cluster.marker
 gria4.cluster.10
 ```
 
-```{r pou3f2_cluster10}
+```{r}
 # CLUSTER 10, POU3F2 expression in cells: pct.1 = 50%, pct.2 = 0.9%, avg_log2FC = 0.997;
 # adj p-val = 7.905e-169
 
@@ -672,6 +525,90 @@ pou3f2.cluster.10 <- ons76cbo.cluster.markers.noRiboMito[(ons76cbo.cluster.marke
 pou3f2.cluster.10
 ```
 
+```{r}
+# ISOLATE AND EXTRACT ONLY ONS76 CELLS
+#------------------------------------------------------------------------------------------------------
+# reminder there are 11 clusters
+levels(filt.noRiboMito.ons76cbo.clusters)
+
+# ons76 cells are in clusters 6, 9 and 10 of ONS76-CBO sample - isolate and extract these cells
+ons76.cells.cocult <- subset(filt.noRiboMito.ons76cbo.clusters, idents = c("6", "9", "10"))
+dim(ons76.cells.cocult)
+```
+
+```
+# save the ons76.cells.cocult seurat object
+
+saveRDS(ons76.cells.cocult, file = "./outputs50K/ONS76-CBO/ons76.cells.only.rds")
+```
+
+```{r}
+# load the seurat object
+
+ons76.cells.cocult <- readRDS(file = "outputs50K/ONS76-CBO/ons76.cells.only.rds")
+```
+
+***Venn diagrams for overlap of upregulated genes***
+
+```{r}
+cluster2.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 2, ]
+cluster6.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 6, ]
+cluster9.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 9, ]
+cluster10.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 10, ]
+```
+
+
+```{r}
+write.csv(cluster2.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster2.csv")
+write.csv(cluster6.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster6.csv")
+write.csv(cluster9.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster9.csv")
+write.csv(cluster10.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster10.csv")
+```
+
+```{r}
+ONS76cbo_clus2 <- read.csv("outputs50K/DEG_VennDiag/ONS76cbo_cluster2.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+ONS76cbo_clus6 <- read.csv("outputs50K/DEG_VennDiag/ONS76cbo_cluster6.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+ONS76cbo_clus9 <- read.csv("outputs50K/DEG_VennDiag/ONS76cbo_cluster9.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+ONS76cbo_clus10 <- read.csv("outputs50K/DEG_VennDiag/ONS76cbo_cluster10.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+cbo_clus6_granule <- read.csv("outputs50K/DEG_VennDiag/cbo_cluster6_granule.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+```
+
+```{r VennDiagClus6CBOvsClus6ONS76CBO}
+gene_list1 <- list(cbo_clus6_granule$gene, ONS76cbo_clus6$gene)
+cbo.clus6.granule_ons76cbo.clus6 <- ggVennDiagram(gene_list1, category.names = c("cbo_clus6_granule", "ONS76cbo_clus6"))
+cbo.clus6.granule_ons76cbo.clus6
+```
+
+```{r VennDiagClus6CBOvsClus2ONS76CBO}
+# cluster 2 in ONS76-CBO and cluster 6 in CBO seem to share the greatest percentage of genes,
+# so it is likely that CBO cluster 6 and ONS76-CBO cluster 2 are the most similar
+
+gene_list2 <- list(cbo_clus6_granule$gene, ONS76cbo_clus2$gene)
+cbo.clus6.granule_ons76cbo.clus2 <- ggVennDiagram(gene_list2, category.names = c("cbo_clus6_granule", "ONS76cbo_clus2"))
+cbo.clus6.granule_ons76cbo.clus2
+```
+
+```{r VennDiagClus6CBOvsClus9ONS76CBO}
+gene_list3 <- list(cbo_clus6_granule$gene, ONS76cbo_clus9$gene)
+cbo.clus6.granule_ons76cbo.clus9 <- ggVennDiagram(gene_list3, category.names = c("cbo_clus6_granule", "ONS76cbo_clus9"))
+cbo.clus6.granule_ons76cbo.clus9
+```
+
+```{r VennDiagClus6CBOvsClus10ONS76CBO}
+gene_list4 <- list(cbo_clus6_granule$gene, ONS76cbo_clus10$gene)
+cbo.clus6.granule_ons76cbo.clus10 <- ggVennDiagram(gene_list4, category.names = c("cbo_clus6_granule", "ONS76cbo_clus10"))
+cbo.clus6.granule_ons76cbo.clus10
+```
 
 
 
