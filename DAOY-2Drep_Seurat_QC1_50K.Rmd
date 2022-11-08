@@ -1,0 +1,640 @@
+---
+title: "DAOY-2D_Seurat_QC1_50K"
+author: "JJ"
+date: "02/10/2022"
+output: html_document
+---
+Sequencing was done on the repeat DAOY-2D sample, which was a very high number of reads on 2922 cells
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+})
+```
+
+```{r path_to_data}
+data_dir <- "./working_data/DAOY-2D/"   # the dot is essential!
+
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r read_expression_matrix}
+# note these are .gz files which can be directly read. The number of barcodes detected
+# is 2922 and there are 36,601 genes
+
+daoy.2d.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+
+dim(daoy.2d.data)
+```
+
+```{r distrib_detect_genes_stats}
+# Check how many genes have at least one transcript in each cell. 
+
+at_least_one <- apply(daoy.2d.data, 2, function(x) sum(x>0)) # counts the sum of rows that have a                                                                         count value (x > 0) for each column
+summary(at_least_one) # median number of genes is higher than for 20K dataset
+
+# summary of total expression per cell. It's high (median total expressn=61,834 genes/cell), which is just reflecting that very deep sequencing was performed on the repeat sample.
+summary(colSums(daoy.2d.data))
+```
+
+```{r Plots_GenesPerCell, fig.height=10, fig.width=8}
+
+par(mfrow = c(2, 1))
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(daoy.2d.data),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+```
+
+```{r genesPerCell}
+# manually check the number of genes (that have transcripts) detected in three or more cells
+# ~28.4K genes are expressed in at least 3 cells
+# ~8.1K genes are not expressed in at least 3 cells
+tmp <- apply(daoy.2d.data, 1, function(x) sum(x > 0))
+table(tmp >= 3)
+length(tmp) # total number of genes expressed by all cells in dataset
+```
+
+```{r cells_200genes}
+# NOT all 2922 cells have at least 200 (common Seurat threshold) expressed genes
+# (min = 61 genes, see below)
+
+keep <- tmp>=3                  # for each gene this states TRUE or FALSE
+
+tmp2 <- daoy.2d.data[keep, ]   # subset ons76.2d.data to keep only TRUE values, i.e. genes which 
+                                # are expressed in 3 or more cells
+
+dim(tmp2)                       # dim is 19,194 by 2922, as, for example for some genes the 2922th cell may
+                                # be one of the cells expressing that gene
+
+genes_in_3orMoreCells <- apply(tmp2, 2, function(x) sum(x > 0))   # for each cell, this counts the number 
+                                                                  # of genes that cell expresses for all
+                                                                  # genes expressed in 3 or more cells
+
+summary(genes_in_3orMoreCells)
+```
+
+```{r Plot_sorted_genesPerCell}
+# shape of graph is as expected
+genes_per_cell <- Matrix::colSums(daoy.2d.data > 0) # count gene only if it has non-zero reads                                                             mapped.
+
+plot(sort(genes_per_cell), 
+     xlab='cell',
+     ylab = "sorted genes per cell",
+     log = "y",                             # only y axis is logarithmic
+     main='Genes per cell (ordered)') 
+```
+
+```{r create_seurat_object}
+# no. of genes has dropped to 28,422 when min.cells = 3
+
+daoy.2d.seurat <- CreateSeuratObject(counts = daoy.2d.data, 
+                                    min.cells = 3, 
+                                    min.genes = 200, 
+                                    project = "DAOY_2Drep")
+dim(daoy.2d.seurat)
+```
+
+```{r add_percent_mitochondria_meta.data}
+# add mitochondrial percentage to metadata
+# the 'orig.ident' field is labelled based on the CreateSeuratObject(project=) function. So this field can
+# be changed by going back into the CreateSeuratObject () function and making the change to that command.
+daoy.2d.seurat[["percent.mt"]] <- PercentageFeatureSet(daoy.2d.seurat, pattern = "^MT-")
+head(daoy.2d.seurat@meta.data)
+```
+
+```{r metadata_dataframe_2922cells}
+# create metadata dataframe on its own
+metadata <- daoy.2d.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+# Rename columns to be more intuitive
+metadata <- metadata %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+dim(metadata)
+```
+
+```{r violinPlot_genes_transcripts_percent.mt_2922cells, fig.height=10, fig.width=5}
+# there are some cells with excessive mitochondrial transcripts
+# the data looks bimodal, smaller lower 'bulge'
+
+p1 <- metadata %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.2)
+
+p2 <- metadata %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.2)
+
+p3 <- metadata %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.2)
+
+p1 / p2 / p3
+```
+
+```{r Plot_UMIcountsPerCell_2922cells}
+# visualise number of UMIs (transcripts) per cell using all 2922 cells. 
+# In geom_density use (y = ..scaled..) value that stat_density provides
+
+metadata %>% 
+        ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..)) +
+        scale_x_log10() +
+        theme_classic() +
+        ylab("cell density") +
+        geom_vline(xintercept = 500, color = "blue")
+```
+
+```{r mitochondrial_thresholds}
+# number of cells with percent.mt > 10%: 282 cells
+# number of cells with percent.mt < 10%: 2640 cells
+
+nrow(metadata[metadata$percent.mt > 10, ])
+
+nrow(metadata[metadata$percent.mt < 10, ])
+```
+
+```{r filtered_mitoch_seuratObject}
+# remove cells with percent mitochondrial gene expression > 10, i.e. remove 282 cells
+# CELL-LEVEL filtering leaves 2640 cells
+
+filtered_daoy.2d.seurat <- subset(daoy.2d.seurat, subset = nFeature_RNA > 200 & percent.mt < 10)
+dim(filtered_daoy.2d.seurat)
+```
+
+```{r violinPlot_genes_transcripts_percent.mt_2640cells, fig.height=10, fig.width=5}
+# create a metadata dataframe
+# new plots show remaining data looks unimodal
+# mitochondrial gene filtration successful
+
+metadata.2 <- filtered_daoy.2d.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata.2$cells <- rownames(metadata.2)
+
+# Rename columns to be more intuitive
+metadata.2 <- metadata.2 %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+p4 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p5 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p6 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        ylim(0, 100) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p4 / p5 / p6
+```
+
+```{r extract_countsSlot_2640cells}
+# subset '@counts' slot (matrix) of filtered seurat object
+counts.2640 <- GetAssayData(object = filtered_daoy.2d.seurat, slot = "counts")
+```
+
+```{r summarise_stats_2640cells}
+# median genes per cell and expression sum, as above. Min. genes = 561. Median = 9526.
+# Median genes is higher than before cells with high mitoch reads filtered out, which makes sense as the latter cells typically have lower number of genes expressed
+
+at_least_one.2640 <- apply(counts.2640, 2, function(x) sum(x>0))
+
+summary(at_least_one.2640)
+
+summary(colSums(counts.2640))
+```
+
+```{r Plots_GenesPerCell_2640cells, fig.height=10, fig.width=8}
+# 1 major peak now, but still quite a large group of cells to the left with lower gene expression. 
+# There are a few cells in the tail to the right of each graph which look like outliers with 
+# very high gene expression.
+# In the bottom graph far fewer cells with low expression sum
+
+par(mfrow = c(2, 1))
+
+hist(at_least_one.2640, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(counts.2640),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+```
+
+```{r Plots_UMI_gene_expression_2640cells, fig.height=10, fig.width=5}
+
+# there is a hump/peak of cells expressing < 3000 genes, most of the filtered cells have UMI counts >10,000 and <100,000 and express 3,000-10,000 genes
+
+p7 <- metadata.2 %>% 
+       ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..), colour = "blue", fill = "blue", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p8 <- metadata.2 %>% 
+        ggplot(aes(x = nGene)) +
+        geom_density(aes(y = ..scaled..), colour = "brown1", fill = "brown1", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p7 / p8
+```
+
+```{r Plot_UMI_v_genes_2640cells}
+# plot of UMI count vs no. of genes
+
+p9 <- FeatureScatter(filtered_daoy.2d.seurat, 
+                      feature1 = "nCount_RNA",        # nCount_RNA is same as UMI count
+                      feature2 = "nFeature_RNA")
+
+p9
+```
+
+Comparing this sample with the ONS76-2D sample, after cell-level filtering, unimodal histograms were generated. So, bearing in mind the sequencing was done to a much higher depth, subset the seurat object so that cells with nUMI <= 1e+4 (10,000) are excluded
+
+```{r 1115cells}
+# after additional filtering, left with 1115 cells
+filtered_daoy.2d.seurat <- subset(filtered_daoy.2d.seurat, subset = nFeature_RNA > 10000 & percent.mt < 10)
+dim(filtered_daoy.2d.seurat)
+```
+
+Let's look at plots of nUMI and gene expression following this additional filtering step
+```{r Plot-UMI-gene-percentMT_1115cells, fig.height=8}
+metadata.3 <- filtered_daoy.2d.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata.3$cells <- rownames(metadata.3)
+
+# Rename columns to be more intuitive
+metadata.3 <- metadata.3 %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+p10 <- metadata.3 %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p11 <- metadata.3 %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p12 <- metadata.3 %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        ylim(0, 100) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p10 / p11 / p12
+```
+
+```{r PlotSortedGenesPerCell1115cells}
+# shape of graph is now as expected
+genes_per_cell <- Matrix::colSums(filtered_daoy.2d.seurat) # count gene only if it has non-zero reads                                                             mapped.
+
+plot(sort(genes_per_cell), 
+     xlab='cell',
+     ylab = "sorted genes per cell",
+     log = "y",                             # only y axis is logarithmic
+     main='Genes per cell (ordered)') 
+```
+
+```{r PlotsUMIgeneExpression1115cells, fig.height=10, fig.width=5}
+
+# the plot is better than before, and looks more unimodal
+
+p13 <- metadata.3 %>% 
+       ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..), colour = "blue", fill = "blue", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p14 <- metadata.3 %>% 
+        ggplot(aes(x = nGene)) +
+        geom_density(aes(y = ..scaled..), colour = "brown1", fill = "brown1", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p13 / p14
+```
+
+```{r filtered_seuratObject_GeneLevel}
+# GENE LEVEL FILTERING (applied on cell-filtered Seurat object)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#  we will have many genes with zero counts, which can dramatically reduce the average expression for a cell and so we will remove them from our data. Remove genes that have zero expression in all cells.
+
+# # Extract counts
+counts <- GetAssayData(object = filtered_daoy.2d.seurat, slot = "counts")
+
+# Output a logical vector for every gene on whether there are more than zero counts per cell
+nonzero <- counts > 0
+
+# If a gene is only expressed in a handful of cells, it is not particularly meaningful as it still brings down the averages for all other cells it is not expressed in. For our data we choose to keep only genes which are expressed in 10 or more cells.
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10    # sum the TRUE values in a row with 'gene' as rowname
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+
+# Reassign to filtered Seurat object
+filtCellsGenes.daoy.2d.seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered_daoy.2d.seurat@meta.data)
+
+dim(filtCellsGenes.daoy.2d.seurat)       # number of genes further reduced to ~ 23.9K genes from ~28.4K genes                                                     for only cell-level filtering
+```
+
+```
+# saved the 'filtCellsGenes.ons76.2d.seurat' object to outputs50K/ONS76_2D folder
+
+saveRDS(filtCellsGenes.daoy.2d.seurat, file = "./outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
+
+```
+
+--------------------------------------------------------------------------------------------
+***Filter the above Seurat object further to remove mitochondrial and ribosomal genes***
+
+```{r}
+filtCellsGenes.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
+```
+
+```{r removeRiboGenes}
+# FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
+# THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
+#-------------------------------------------------------------------------------------
+
+# remove ribosomal genes first
+filt.CellsGenesRibo.daoy2d <- filtCellsGenes.daoy.2d.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.daoy.2d.seurat)), ]
+
+# removal of ribosomal genes works - from 23,963 genes down to 23,865 genes
+dim(filtCellsGenes.daoy.2d.seurat)
+dim(filt.CellsGenesRibo.daoy2d)
+```
+
+```{r removeMitochGenes}
+# remove mitochondrial genes
+filt.CellsGenesRiboMito.daoy2d <- filt.CellsGenesRibo.daoy2d[ ! grepl("^MT-", 
+                                                                      rownames(filt.CellsGenesRibo.daoy2d)), ]
+
+# check if ribosome and mitochondrial gene filtering works - it does:
+# reduced from 23,865 genes to 23,852 genes
+dim(filt.CellsGenesRibo.daoy2d)
+dim(filt.CellsGenesRiboMito.daoy2d)
+```
+
+```
+# save the cell, gene, ribosomal, mitochodrial gene filtered seurat object - no mitochondrial or 
+# ribosomal genes.
+saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2d.seurat.rds")
+```
+
+
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
+
+Load the Seurat object  with only filtering of cells and genes
+```{r load_filtered_CellsGenes_SeuratObject}
+# the name of this object reflects it has undergone filtering for cells AND genes
+
+
+fullFilt.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
+```
+
+```{r normalize_fully_filtered_seuratObject}
+# standard normalization function is sufficient to explore whether cells cluster by cell-cycle phase
+
+seurat.phase <- NormalizeData(fullFilt.daoy.2d.seurat)
+seurat.phase <- FindVariableFeatures(seurat.phase, selection.method = "vst")
+seurat.phase <- ScaleData(seurat.phase, features = rownames(seurat.phase))
+seurat.phase <- RunPCA(seurat.phase, features = VariableFeatures(seurat.phase))
+```
+
+```{r fig.height=6}
+DimHeatmap(seurat.phase, dims = c(2,3,4))
+```
+
+
+```{r cellCycle_effects}
+# Score cells for cell cycle.
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+seurat.phase <- CellCycleScoring(seurat.phase,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+```
+
+```{r}
+head(seurat.phase@meta.data)
+```
+
+Looks like phase in the cell cycle has a significant effect on clustering!
+```{r DimplotCellCycleEffect}
+seurat.phase <- RunPCA(seurat.phase, features = c(s.genes, g2m.genes))
+DimPlot(seurat.phase, reduction = "pca", group.by = "Phase")
+```
+
+Next step is to adjust for the cell cycle  (based on https://satijalab.org/seurat/articles/cell_cycle_vignette.html).
+We do not want to entirely regress out the cell cycle, as we want to separate apart cycling from NON-cycling cells. However, differences in cell cycle phase among proliferating cells will be regressed out.
+```{r }
+seurat.phase$CC.difference <- seurat.phase$S.Score - seurat.phase$G2M.Score
+seurat.phase <- ScaleData(seurat.phase, vars.to.regress = "CC.difference", features = rownames(seurat.phase))
+```
+
+```{r}
+# cell cycle effects strongly mitigated in PCA
+seurat.phase <- RunPCA(seurat.phase, features = VariableFeatures(seurat.phase), nfeatures.print = 10)
+```
+This worked! Compared to before regressing out the 'cell cycle difference', the DimPlot below recapitulates the final DimPlot on that webpage.
+```
+# when running a PCA on cell cycle genes, actively proliferating cells remain distinct from G1
+# cells however, within actively proliferating cells, G2M and S phase cells group together
+# the two lines of code in this chunk are NECESSARY and should be run BEFORE the saveRDS() function!!!
+
+seurat.phase <- RunPCA(seurat.phase, features = c(s.genes, g2m.genes))
+DimPlot(seurat.phase,reduction = "pca", group.by = "Phase")
+```
+
+```
+# save the seurat.phase object as a .RDS file in outputs50K
+saveRDS(seurat.phase, file = "./outputs50K/DAOY_2D/seurat.phase.regressedCCdiff.daoy.2d.rds")
+```
+
+```{r}
+seurat.phase.daoy2d <- readRDS("outputs50K/DAOY_2D/seurat.phase.regressedCCdiff.daoy.2d.rds")
+```
+
+
+```{r DimplotRegressOutCCdifference}
+DimPlot(seurat.phase.daoy2d, reduction = "pca", group.by = "Phase")
+```
+
+The mitochondrial-based clustering shows no clustering by percent mitochondrial reads
+```{r mitochondrial_expression}
+# Check quartile values
+summary(seurat.phase@meta.data$percent.mt)
+
+# Turn percent.mt into categorical factor vector based on quartile values
+seurat.phase@meta.data$mito.prop <- cut(seurat.phase@meta.data$percent.mt, 
+                  breaks=c(-Inf, 1.8, 5.0, 9.99, Inf), 
+                  labels=c("Low","Medium","Medium high", "High"))
+```
+
+```{r plot_mitochondrialExpression}
+# repeat PCA and plot the PCA colored by mitochondrial percentage - this variable has no effect
+# on the clustering.
+seurat.phase <- RunPCA(seurat.phase)
+
+DimPlot(seurat.phase,
+        reduction = "pca",
+        group.by= "mito.prop"
+        )
+```
+
+-------------------------------------------------------------------------------------
+***Using SCTransform with cell cycle regression***
+```{r}
+# normalise data
+seurat.phase.sct <- NormalizeData(fullFilt.daoy.2d.seurat)
+
+# run cell cycle scoring
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+seurat.phase.sct <- CellCycleScoring(seurat.phase.sct,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+
+```
+
+Normalisation, followed by CellCycleScoring, then SCTransform, then PCA worked! Get a similar result to DimplotRegressOutCCdifference code chunk above. Much faster to run. This code separates G1 from other cell cycle phases.
+```{r DimplotSCTRegressOutCCdifference}
+seurat.phase.sct$CC.difference <- seurat.phase.sct$S.Score - seurat.phase.sct$G2M.Score
+
+seurat.phase.sct <- SCTransform(seurat.phase.sct,
+                                   vars.to.regress = "CC.difference",
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+seurat.phase.sct <- RunPCA(seurat.phase.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(seurat.phase.sct, reduction = "pca", group.by = "Phase")
+```
+
+```
+# save the seurat.phase.sct object - this object still has ribosomal and mitochondrial genes
+
+saveRDS(seurat.phase.sct, file = "./outputs50K/DAOY_2D/seurat.phase.SCT.regressedCCdiff.daoy.2d.rds")
+```
+-------------------------------------------------------------------------------------------
+Run the SCTransform analysis and check whether the 'seurat.phase' objects look the same as the seurat object which has had mitochondrial and ribosomal genes removed. Answer - cell cycle dependent clustering is retained
+```{r}
+# load the seurat object
+filt.CellsGenesRiboMito.daoy2d <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2d.seurat.rds")
+
+# normalise data
+phase.daoy2d.filtRiboMito.sct <- NormalizeData(filt.CellsGenesRiboMito.daoy2d)
+
+# run cell cycle scoring
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+phase.daoy2d.filtRiboMito.sct <- CellCycleScoring(phase.daoy2d.filtRiboMito.sct,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+
+```
+
+First run SCTransfrom WITHOUT vars.to.regress argument
+```{r DimplotSCTRegressOutCCdifference}
+# there is clustering by cell cycle
+phase.daoy2d.filtRiboMito.sct <- SCTransform(phase.daoy2d.filtRiboMito.sct,
+                                   
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.daoy2d.filtRiboMito.sct <- RunPCA(phase.daoy2d.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.daoy2d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+```
+
+Then run SCTransform with vars.to.regress argument = cell cycle difference
+```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
+# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+
+phase.daoy2d.filtRiboMito.sct$CC.difference <- phase.daoy2d.filtRiboMito.sct$S.Score - phase.daoy2d.filtRiboMito.sct$G2M.Score
+
+phase.daoy2d.filtRiboMito.sct <- SCTransform(phase.daoy2d.filtRiboMito.sct,
+                                   vars.to.regress = "CC.difference",
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.daoy2d.filtRiboMito.sct <- RunPCA(phase.daoy2d.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.daoy2d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+```
+
+```
+# save the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
+
+saveRDS(phase.daoy2d.filtRiboMito.sct, file = "./outputs50K/DAOY_2D/phase.filtRiboMito.SCT.regressedCCdiff.daoy.2d.rds")
+```
+
+
+
+
+
+
+
+
+
