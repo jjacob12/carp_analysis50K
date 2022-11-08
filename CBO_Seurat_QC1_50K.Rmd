@@ -335,6 +335,43 @@ Fullfilt.cbo.seurat <- readRDS("outputs50K/CBO/filtered.cbo.seurat.rds")
 
 dim(Fullfilt.cbo.seurat)
 ```
+***Additional filtering for mitochondrial and ribosomal genes***
+---------------------------------------------------------------------------------------------
+Generate a seurat object filtered for CELLS, GENES, RIBOSOMAL and MITOCHONDRIAL genes:
+```{r remove_ribo_genes}
+# FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
+# THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
+#-------------------------------------------------------------------------------------
+
+# remove ribosomal genes first
+filt.Ribo.cbo <- Fullfilt.cbo.seurat[ ! grepl('^RP[SL]', rownames(Fullfilt.cbo.seurat)), ]
+```
+
+```{r}
+# check ribosomal genes removed
+# this has worked - 97 ribosomal genes have been removed from the new Seurat object
+dim(Fullfilt.cbo.seurat)
+dim(filt.Ribo.cbo)
+```
+
+```{r remove_mitoch_genes}
+# remove mitochondrial genes 
+filt.RiboMito.cbo <- filt.Ribo.cbo[ ! grepl("^MT-", rownames(filt.Ribo.cbo)), ]
+```
+
+```{r}
+# check if ribosome and mitochondrial gene filtering works - it does!
+dim(filt.Ribo.cbo)
+dim(filt.RiboMito.cbo)
+```
+
+```
+# save the seurat object which has undergone filtering for CELLS, GENES, RIBOSOMAL, and MITOCHONDRIAL genes
+saveRDS(filt.RiboMito.cbo, file = "./outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
+```
+
+-------------------------------------------------------------------------------------
+***Using SCTransform with cell cycle regression***
 
 ```{r}
 #--------------------------------------------------------------------------------------------
@@ -342,72 +379,54 @@ dim(Fullfilt.cbo.seurat)
 # EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
 ```
 
-```{r normalize_fully_filtered_seuratObject}
-# standard normalization function is sufficient to explore whether cells cluster by cell-cycle phase
-
-seurat.phase <- NormalizeData(Fullfilt.cbo.seurat)
+Read in the seurat object
+```{r}
+filt.RiboMito.cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
 ```
 
-```{r cellCycle_effects}
-# Score cells for cell cycle.
+```{r}
+# normalise data
+phase.cbo.sct <- NormalizeData(filt.RiboMito.cbo)
+
+# run cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
-seurat.phase <- CellCycleScoring(seurat.phase,
+phase.cbo.sct <- CellCycleScoring(phase.cbo.sct,
                                  g2m.features = g2m.genes,
                                  s.features = s.genes)
 ```
 
-```{r}
-head(seurat.phase@meta.data)
+First run SCTransfrom WITHOUT vars.to.regress argument
+```{r DimplotSCTRegressOutCCdifference}
+# there is clustering by cell cycle
+phase.cbo.sct <- SCTransform(phase.cbo.sct,
+                            method = "glmGamPoi", 
+                            verbose = FALSE)
+
+phase.cbo.sct <- RunPCA(phase.cbo.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.cbo.sct, reduction = "pca", group.by = "Phase")
 ```
 
-```{r cellCycle_genes}
-# After scoring the cells for cell cycle, check whether cell cycle is 
-# a major source of variation in our dataset using PCA. 
-# To perform PCA, we need to first choose the most variable features, then scale the data.
-seurat.phase <- FindVariableFeatures(seurat.phase, 
-                     selection.method = "vst",
-                     nfeatures = 2000, 
-                     verbose = FALSE)
+Then run SCTransfrom WITH vars.to.regress argument - remember we want to keep the differences between cycling and non-cycliing cells, but within the cohort of cycling cells, we don't care what phase they are in.
+```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
+# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
 
-seurat.phase <- ScaleData(seurat.phase)
+phase.cbo.sct$CC.difference <- phase.cbo.sct$S.Score - phase.cbo.sct$G2M.Score
+
+phase.cbo.sct <- SCTransform(phase.cbo.sct,
+                                   vars.to.regress = "CC.difference",
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.cbo.sct <- RunPCA(phase.cbo.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.cbo.sct, reduction = "pca", group.by = "Phase")
 ```
 
-```{r Plot_PCA}
-# cells do not obviously segregate by cell-cycle phase.
-
-# Perform PCA
-seurat.phase <- RunPCA(seurat.phase)
-
-# Plot the PCA colored by cell cycle phase - cell cycle for G2M vs S not obviously having an effect on clustering, as there is considerable overlap. There is perhaps some clustering/separation for G1 vs G2M phases. Not sure it is significant.
-DimPlot(seurat.phase,
-        reduction = "pca",
-        group.by= "Phase")
 ```
-
-```{r mitochondrial_expression}
-# Check quartile values
-summary(seurat.phase@meta.data$percent.mt)
-
-# Turn percent.mt into categorical factor vector based on quartile values
-seurat.phase@meta.data$mito.prop <- cut(seurat.phase@meta.data$percent.mt, 
-                  breaks=c(-Inf, 1.8, 5.0, 9.99, Inf), 
-                  labels=c("Low","Medium","Medium high", "High"))
-```
-
-```{r plot_mitochondrialExpression}
-# repeat PCA and plot the PCA colored by mitochondrial percentage - this variable has no effect
-# on the clustering, just like cell-cycle phase
-seurat.phase <- RunPCA(seurat.phase)
-
-DimPlot(seurat.phase,
-        reduction = "pca",
-        group.by= "mito.prop",
-        split.by = "mito.prop")
-```
-
-```{r}
-saveRDS(seurat.phase, "./outputs50K/CBO/seurat.phase.cbo.rds")
+# save the 'phase.cbo.sct' above (ie. where there has been regression of cell cycle difference)
+saveRDS(phase.cbo.sct, file = "./outputs50K/CBO/phase.cbo.filtRiboMito.SCT.CCdiffRegress.rds")
 ```
 
 ```{r}
