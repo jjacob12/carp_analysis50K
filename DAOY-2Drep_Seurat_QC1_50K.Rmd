@@ -1,5 +1,5 @@
 ---
-title: "DAOY-2D_Seurat_QC1_50K"
+title: "DAOY-2D_rep_Seurat_QC1_50K"
 author: "JJ"
 date: "02/10/2022"
 output: html_document
