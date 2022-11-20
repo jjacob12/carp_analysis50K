@@ -329,87 +329,8 @@ dim(filtCellsGenes.ons76spher.seurat)
 saveRDS(filtCellsGenes.ons76spher.seurat, file = "./outputs50K/ONS76_SPHER/filtCellsGenes.ons76spher.seurat.rds")
 ```
 
-```{r}
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
-# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
-```
-
-```{r load_filtered_CellsGenes_SeuratObject}
-# the name of this object reflects it has undergone filtering for cells AND genes
-
-fullFilt.ons76spher.seurat <- readRDS("outputs50K/ONS76_SPHER/filtCellsGenes.ons76spher.seurat.rds")
-```
-
-```{r normalize_fully_filtered_seuratObject}
-# standard normalization function is sufficient to explore whether cells cluster by cell-cycle phase
-
-seurat.phase <- NormalizeData(fullFilt.ons76spher.seurat)
-```
-
-```{r cellCycle_effects}
-# Score cells for cell cycle.
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-seurat.phase <- CellCycleScoring(seurat.phase,
-                                 g2m.features = g2m.genes,
-                                 s.features = s.genes)
-```
-
-```{r display_cellCycleScoring}
-head(seurat.phase@meta.data)
-```
-
-```{r cellCycle_genes}
-# After scoring the cells for cell cycle, check whether cell cycle is 
-# a major source of variation in our dataset using PCA. 
-# To perform PCA, we need to first choose the most variable features, then scale the data.
-seurat.phase <- FindVariableFeatures(seurat.phase, 
-                     selection.method = "vst",
-                     nfeatures = 2000, 
-                     verbose = FALSE)
-
-seurat.phase <- ScaleData(seurat.phase)
-```
-
-```{r Plot_PCA}
-# cells do not obviously segregate by cell-cycle phase.
-
-# Perform PCA
-seurat.phase <- RunPCA(seurat.phase)
-
-# Plot the PCA colored by cell cycle phase - cell cycle for G2M vs S vs G1 not obviously having an effect on clustering, as there is considerable overlap.
-DimPlot(seurat.phase,
-        reduction = "pca",
-        group.by= "Phase")
-```
-
-```{r mitochondrial_expression}
-# Check quartile values
-summary(seurat.phase@meta.data$percent.mt)
-
-# Turn percent.mt into categorical factor vector based on quartile values
-seurat.phase@meta.data$mito.prop <- cut(seurat.phase@meta.data$percent.mt, 
-                  breaks=c(-Inf, 1.8, 5.0, 9.99, Inf), 
-                  labels=c("Low","Medium","Medium high", "High"))
-```
-
-```{r plot_mitochondrialExpression}
-# repeat PCA and plot the PCA colored by mitochondrial percentage - this variable has no effect
-# on the clustering, just like cell-cycle phase
-seurat.phase <- RunPCA(seurat.phase)
-
-DimPlot(seurat.phase,
-        reduction = "pca",
-        group.by= "mito.prop",
-        split.by = "mito.prop")
-
-```
-
-```{r}
-saveRDS(seurat.phase, "./outputs50K/ONS76_SPHER/seurat.phase.ons76spher.rds")
-```
-
+-------------------------------------------------------------------------------------
+***Remove mitochondrial and ribosomal genes***
 ```{r remove_ribo_genes}
 # FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
 # THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
@@ -437,16 +358,71 @@ dim(filt.noRiboMito.ons76spher)
 ```
 
 ```
-# SAVE this seurat object from code line 430
+# SAVE the seurat object above (filt.noRiboMito.ons76spher) which has been filtered for CELLS, GENES, RIBOSOMAL and MITOCHODRIAL genes
 
 saveRDS(filt.noRiboMito.ons76spher, file = "./outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ```
 
-```{r load_noRiboNoMito_seuratObject}
-filt.noRiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
+```{r}
+# load the 'filt.noRiboMito.ons76spher' .RDS seurat object
+
+filt.RiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ```
 
+```{r}
+#--------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
+# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
+```
 
+Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
+```{r}
+# normalise data
+phase.ons76spher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.ons76spher)
+
+# run cell cycle scoring
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+phase.ons76spher.filtRiboMito.sct <- CellCycleScoring(phase.ons76spher.filtRiboMito.sct,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+```
+
+First run SCTransfrom WITHOUT vars.to.regress argument
+```{r DimplotSCTRegressOutCCdifference}
+# there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
+phase.ons76spher.filtRiboMito.sct <- SCTransform(phase.ons76spher.filtRiboMito.sct,
+                                   
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.ons76spher.filtRiboMito.sct <- RunPCA(phase.ons76spher.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.ons76spher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+```
+
+Then run SCTransform with vars.to.regress argument = cell cycle difference
+```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
+# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+
+phase.ons76spher.filtRiboMito.sct$CC.difference <- phase.ons76spher.filtRiboMito.sct$S.Score - phase.ons76spher.filtRiboMito.sct$G2M.Score # get the cell cycle difference
+
+phase.ons76spher.filtRiboMito.sct <- SCTransform(phase.ons76spher.filtRiboMito.sct,
+                                   vars.to.regress = "CC.difference",
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.ons76spher.filtRiboMito.sct <- RunPCA(phase.ons76spher.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.ons76spher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+
+```
+
+```
+# saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
+
+saveRDS(phase.ons76spher.filtRiboMito.sct, file = "./outputs50K/ONS76_SPHER/phase.ons76spher.filtRiboMito.SCT.regressedCCdiff.rds")
+```
 
 
 
