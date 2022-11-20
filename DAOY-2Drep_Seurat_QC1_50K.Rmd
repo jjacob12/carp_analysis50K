@@ -78,7 +78,7 @@ length(tmp) # total number of genes expressed by all cells in dataset
 
 ```{r cells_200genes}
 # NOT all 2922 cells have at least 200 (common Seurat threshold) expressed genes
-# (min = 61 genes, see below)
+# (min = 363 genes, see below)
 
 keep <- tmp>=3                  # for each gene this states TRUE or FALSE
 
@@ -96,7 +96,7 @@ summary(genes_in_3orMoreCells)
 ```
 
 ```{r Plot_sorted_genesPerCell}
-# shape of graph is as expected
+# shape of graph is different from expected. Appears to be an elbow at sorted genes per cell=2000
 genes_per_cell <- Matrix::colSums(daoy.2d.data > 0) # count gene only if it has non-zero reads                                                             mapped.
 
 plot(sort(genes_per_cell), 
@@ -107,11 +107,11 @@ plot(sort(genes_per_cell),
 ```
 
 ```{r create_seurat_object}
-# no. of genes has dropped to 28,422 when min.cells = 3
+# no. of genes has dropped to 28,396 when min.cells = 3, and set min.featres = 2000
 
 daoy.2d.seurat <- CreateSeuratObject(counts = daoy.2d.data, 
                                     min.cells = 3, 
-                                    min.genes = 200, 
+                                    min.features = 2000, # set this number high as sequencing depth was v. high
                                     project = "DAOY_2Drep")
 dim(daoy.2d.seurat)
 ```
@@ -139,7 +139,7 @@ metadata <- metadata %>%
 dim(metadata)
 ```
 
-```{r violinPlot_genes_transcripts_percent.mt_2922cells, fig.height=10, fig.width=5}
+```{r violinPlot_genes_transcripts_percent.mt_2120cells, fig.height=10, fig.width=5}
 # there are some cells with excessive mitochondrial transcripts
 # the data looks bimodal, smaller lower 'bulge'
 
@@ -187,14 +187,14 @@ nrow(metadata[metadata$percent.mt < 10, ])
 ```
 
 ```{r filtered_mitoch_seuratObject}
-# remove cells with percent mitochondrial gene expression > 10, i.e. remove 282 cells
-# CELL-LEVEL filtering leaves 2640 cells
+# remove cells with percent mitochondrial gene expression > 10, i.e. remove 185 cells
+# CELL-LEVEL filtering leaves 1935 cells
 
 filtered_daoy.2d.seurat <- subset(daoy.2d.seurat, subset = nFeature_RNA > 200 & percent.mt < 10)
 dim(filtered_daoy.2d.seurat)
 ```
 
-```{r violinPlot_genes_transcripts_percent.mt_2640cells, fig.height=10, fig.width=5}
+```{r violinPlot_genes_transcripts_percent.mt1935cells, fig.height=10, fig.width=5}
 # create a metadata dataframe
 # new plots show remaining data looks unimodal
 # mitochondrial gene filtration successful
@@ -232,42 +232,41 @@ p6 <- metadata.2 %>%
 p4 / p5 / p6
 ```
 
-```{r extract_countsSlot_2640cells}
+```{r extract_countsSlot1935cells}
 # subset '@counts' slot (matrix) of filtered seurat object
-counts.2640 <- GetAssayData(object = filtered_daoy.2d.seurat, slot = "counts")
+counts.1935 <- GetAssayData(object = filtered_daoy.2d.seurat, slot = "counts")
 ```
 
-```{r summarise_stats_2640cells}
-# median genes per cell and expression sum, as above. Min. genes = 561. Median = 9526.
+```{r summarise_stats1935cells}
+# median genes per cell and expression sum, as above. Min. genes = 561. Median = 9526, Max = 15K genes!
 # Median genes is higher than before cells with high mitoch reads filtered out, which makes sense as the latter cells typically have lower number of genes expressed
 
-at_least_one.2640 <- apply(counts.2640, 2, function(x) sum(x>0))
+at_least_one.1935 <- apply(counts.1632, 2, function(x) sum(x>0))
 
-summary(at_least_one.2640)
+summary(at_least_one.1935)
 
-summary(colSums(counts.2640))
+summary(colSums(counts.1935))
 ```
 
-```{r Plots_GenesPerCell_2640cells, fig.height=10, fig.width=8}
-# 1 major peak now, but still quite a large group of cells to the left with lower gene expression. 
-# There are a few cells in the tail to the right of each graph which look like outliers with 
-# very high gene expression.
+```{r Plots_GenesPerCell1935cells, fig.height=10, fig.width=8}
+# 1 major peak now, but still quite a large group of cells to the left with lower gene expression,
+# and there is a tail on the right for cells expressing v. large number of genes.
 # In the bottom graph far fewer cells with low expression sum
 
 par(mfrow = c(2, 1))
 
-hist(at_least_one.2640, breaks = 100,
+hist(at_least_one.1935, breaks = 100,
      main = "Distribution of detected genes",
      xlab = "Genes with at least one transcript")
 
-hist(colSums(counts.2640),                             # total counts (expression) per cell
+hist(colSums(counts.1935),                             # total counts (expression) per cell
      breaks = 100, main = "Expression sum per cell",
      xlab = "Sum expression")
 ```
 
-```{r Plots_UMI_gene_expression_2640cells, fig.height=10, fig.width=5}
+```{r Plots_UMI_gene_expression_1935cells, fig.height=10, fig.width=5}
 
-# there is a hump/peak of cells expressing < 3000 genes, most of the filtered cells have UMI counts >10,000 and <100,000 and express 3,000-10,000 genes
+# unimodal plots with cells expressing 3e+04 (30,000) to 1e+05 (100,000) UMIs and around 10,000 genes
 
 p7 <- metadata.2 %>% 
        ggplot(aes(x = nUMI)) +
@@ -286,7 +285,7 @@ p8 <- metadata.2 %>%
 p7 / p8
 ```
 
-```{r Plot_UMI_v_genes_2640cells}
+```{r Plot_UMI_v_genes_1935cells}
 # plot of UMI count vs no. of genes
 
 p9 <- FeatureScatter(filtered_daoy.2d.seurat, 
@@ -296,50 +295,7 @@ p9 <- FeatureScatter(filtered_daoy.2d.seurat,
 p9
 ```
 
-Comparing this sample with the ONS76-2D sample, after cell-level filtering, unimodal histograms were generated. So, bearing in mind the sequencing was done to a much higher depth, subset the seurat object so that cells with nUMI <= 1e+4 (10,000) are excluded
-
-```{r 1115cells}
-# after additional filtering, left with 1115 cells
-filtered_daoy.2d.seurat <- subset(filtered_daoy.2d.seurat, subset = nFeature_RNA > 10000 & percent.mt < 10)
-dim(filtered_daoy.2d.seurat)
-```
-
-Let's look at plots of nUMI and gene expression following this additional filtering step
-```{r Plot-UMI-gene-percentMT_1115cells, fig.height=8}
-metadata.3 <- filtered_daoy.2d.seurat@meta.data
-
-# Add cell IDs to metadata
-metadata.3$cells <- rownames(metadata.3)
-
-# Rename columns to be more intuitive
-metadata.3 <- metadata.3 %>%
-        dplyr::rename(sample = orig.ident,
-                      nUMI = nCount_RNA,
-                      nGene = nFeature_RNA)
-
-p10 <- metadata.3 %>% 
-        ggplot(aes(x = sample, y = nUMI)) +
-        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
-        theme_classic() +
-        geom_jitter(alpha = 0.1)
-
-p11 <- metadata.3 %>% 
-        ggplot(aes(x = sample, y = nGene)) +
-        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
-        theme_classic() +
-        geom_jitter(alpha = 0.1)
-
-p12 <- metadata.3 %>% 
-        ggplot(aes(x = sample, y = percent.mt)) +
-        ylim(0, 100) +
-        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
-        theme_classic() +
-        geom_jitter(alpha = 0.1)
-
-p10 / p11 / p12
-```
-
-```{r PlotSortedGenesPerCell1115cells}
+```{r PlotSortedGenesPerCell1935cells}
 # shape of graph is now as expected
 genes_per_cell <- Matrix::colSums(filtered_daoy.2d.seurat) # count gene only if it has non-zero reads                                                             mapped.
 
@@ -350,26 +306,6 @@ plot(sort(genes_per_cell),
      main='Genes per cell (ordered)') 
 ```
 
-```{r PlotsUMIgeneExpression1115cells, fig.height=10, fig.width=5}
-
-# the plot is better than before, and looks more unimodal
-
-p13 <- metadata.3 %>% 
-       ggplot(aes(x = nUMI)) +
-        geom_density(aes(y = ..scaled..), colour = "blue", fill = "blue", alpha = 0.2) +
-        theme_classic() +
-        scale_x_log10() +
-        ylab("Cell density")
-
-p14 <- metadata.3 %>% 
-        ggplot(aes(x = nGene)) +
-        geom_density(aes(y = ..scaled..), colour = "brown1", fill = "brown1", alpha = 0.2) +
-        theme_classic() +
-        scale_x_log10() +
-        ylab("Cell density")
-
-p13 / p14
-```
 
 ```{r filtered_seuratObject_GeneLevel}
 # GENE LEVEL FILTERING (applied on cell-filtered Seurat object)
@@ -393,14 +329,12 @@ filtered_counts <- counts[keep_genes, ]
 # Reassign to filtered Seurat object
 filtCellsGenes.daoy.2d.seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered_daoy.2d.seurat@meta.data)
 
-dim(filtCellsGenes.daoy.2d.seurat)       # number of genes further reduced to ~ 23.9K genes from ~28.4K genes                                                     for only cell-level filtering
+dim(filtCellsGenes.daoy.2d.seurat)       # number of genes further reduced to ~ 24.7K genes from ~ 28.4K genes                                                        for only cell-level filtering
 ```
 
-```
+```{r}
 # saved the 'filtCellsGenes.ons76.2d.seurat' object to outputs50K/ONS76_2D folder
-
 saveRDS(filtCellsGenes.daoy.2d.seurat, file = "./outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
-
 ```
 
 --------------------------------------------------------------------------------------------
@@ -416,9 +350,10 @@ filtCellsGenes.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filtCellsGenes.daoy
 #-------------------------------------------------------------------------------------
 
 # remove ribosomal genes first
-filt.CellsGenesRibo.daoy2d <- filtCellsGenes.daoy.2d.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.daoy.2d.seurat)), ]
+filt.CellsGenesRibo.daoy2d <- filtCellsGenes.daoy.2d.seurat[ ! grepl('^RP[SL]', 
+                                                                     rownames(filtCellsGenes.daoy.2d.seurat)), ]
 
-# removal of ribosomal genes works - from 23,963 genes down to 23,865 genes
+# removal of ribosomal genes works - from 24,726 genes down to 24,628 genes
 dim(filtCellsGenes.daoy.2d.seurat)
 dim(filt.CellsGenesRibo.daoy2d)
 ```
@@ -429,7 +364,7 @@ filt.CellsGenesRiboMito.daoy2d <- filt.CellsGenesRibo.daoy2d[ ! grepl("^MT-",
                                                                       rownames(filt.CellsGenesRibo.daoy2d)), ]
 
 # check if ribosome and mitochondrial gene filtering works - it does:
-# reduced from 23,865 genes to 23,852 genes
+# reduced from 24,628 genes to 24,615 genes
 dim(filt.CellsGenesRibo.daoy2d)
 dim(filt.CellsGenesRiboMito.daoy2d)
 ```
@@ -437,7 +372,7 @@ dim(filt.CellsGenesRiboMito.daoy2d)
 ```
 # save the cell, gene, ribosomal, mitochodrial gene filtered seurat object - no mitochondrial or 
 # ribosomal genes.
-saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2d.seurat.rds")
+saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 ```
 
 
@@ -448,7 +383,6 @@ saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsG
 Load the Seurat object  with only filtering of cells and genes
 ```{r load_filtered_CellsGenes_SeuratObject}
 # the name of this object reflects it has undergone filtering for cells AND genes
-
 
 fullFilt.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
 ```
@@ -500,7 +434,7 @@ seurat.phase <- RunPCA(seurat.phase, features = VariableFeatures(seurat.phase), 
 This worked! Compared to before regressing out the 'cell cycle difference', the DimPlot below recapitulates the final DimPlot on that webpage.
 ```
 # when running a PCA on cell cycle genes, actively proliferating cells remain distinct from G1
-# cells however, within actively proliferating cells, G2M and S phase cells group together
+# cells however, within actively proliferating cells, G2M and S phase cells group together.
 # the two lines of code in this chunk are NECESSARY and should be run BEFORE the saveRDS() function!!!
 
 seurat.phase <- RunPCA(seurat.phase, features = c(s.genes, g2m.genes))
