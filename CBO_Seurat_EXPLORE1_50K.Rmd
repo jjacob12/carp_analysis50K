@@ -67,6 +67,12 @@ phase.cbo.sct.clusters <-
   readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
 ```
 
+```{r DimPlotPhaseCBOsctClusters}
+# there are 12 clusters (0 - 11)
+DimPlot(phase.cbo.sct.clusters)
+```
+
+
 ```{r ElbowPlotGeneCellFilt}
 # elbow plot shows that there is an elbow at PC 15, but the graph does not level off after
 # PC 15 showing there is some additional information to ~ PC 40.
@@ -132,6 +138,19 @@ markers.pos %>%
 
 saveRDS(markers.pos, file = "outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
 ```
+```{r}
+markers.pos <- readRDS("outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
+```
+
+```{r}
+top10 <- markers.pos %>% 
+  group_by(cluster_ID) %>% 
+  top_n(10, -p_val_adj)
+```
+
+```{r}
+top10
+```
 
 
 ```{r DotplotSeppTFmarkers_some}
@@ -180,14 +199,21 @@ DotPlot(object = phase.cbo.sct.clusters, features = seppAll.cilia.stem.markers, 
   coord_flip()
 ```
 
-```{r ViolinPlotGranuleLineageByCluster, fig.height=8}
+```{r ViolinPlotGranuleLineageByCluster, fig.height=10}
 # plot of the clusters containing granule/RL lineage suggests RL-derived clusters are 6, 7, 8
 # CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
 # CD44 is not expressed or expressed very little.
 # ITGB1 is expressed at quite a high level across most cell types
+# In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
 
-VlnPlot(phase.cbo.sct.clusters, features = c("HOXB2", "NEUROD1", "MEIS1", "MEIS2", "GRIA4", "POU3F2"))
+VlnPlot(phase.cbo.sct.clusters, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1"))
 ```
+
+```{r fig.height=10}
+VlnPlot(phase.cbo.sct.clusters, features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3", "MIR124-2HG", 
+                                             "POU3F2", "MEIS1", "LHX9", "CHCHD2", "PRRX1"))
+```
+
 
 ***Clustree***
 ```{r}
