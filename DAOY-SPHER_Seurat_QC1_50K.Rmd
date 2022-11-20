@@ -1,0 +1,441 @@
+---
+title: "DAOY-Spher_Seurat_analysis_QC1_50K"
+author: "JJ"
+date: "06/10/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+})
+```
+
+```{r PathToData}
+data_dir <- "./working_data/DAOY-SPHER/"   # the dot is current dir and is essential!
+
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r ReadExpressionMatrix}
+# note these are .gz files which can be directly read. There are 761 cells.
+
+daoySpher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+
+dim(daoySpher.data)
+```
+
+```{r distrib_detect_genes_stats}
+# Check how many genes have at least one transcript in each cell.
+# Minimum genes per cell is 69.
+# Median expression per cell (4689) is higher than for ONS76 spheroid
+
+at_least_one <- apply(daoySpher.data, 2, function(x) sum(x>0)) # counts the sum of rows that have a                                                                        count value (x > 0) for each column (counts                                                                  the number of TRUE values per column)
+summary(at_least_one)
+
+# summary of total expression per cell.
+summary(colSums(daoySpher.data))
+```
+
+```{r PlotsGenesPerCell, fig.height=10, fig.width=8}
+
+par(mfrow = c(2, 1))
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(daoySpher.data),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+```
+
+```{r genesPerCell}
+# manually check the number of genes detected in three or more cells
+# ~19.6K genes are expressed in at least 3 cells
+# ~17.0K genes are not expressed in at least 3 cells
+tmp <- apply(daoySpher.data, 1, function(x) sum(x > 0))
+table(tmp >= 3)
+```
+
+```{r cells_gene_counts}
+# Do all 761 cells have at least 200 expressed genes? Ans = NO! Min. genes = 67
+
+keep <- tmp>=3                  # for each gene this states TRUE or FALSE
+
+tmp2 <- daoySpher.data[keep, ]        # subset daoySpher.data to keep only TRUE values, i.e. genes which 
+                                      # are expressed in 3 or more cells
+
+genes_in_3orMoreCells <- apply(tmp2, 2, function(x) sum(x > 0))   # for each cell, this counts the number 
+                                                                  # of genes that cell expresses for all
+                                                                  # genes expressed in 3 or more cells
+
+summary(genes_in_3orMoreCells)
+```
+
+```{r Plot_sorted_genesPerCell}
+# rank each cell by its library complexity, i.e. number of genes detected per cell
+
+genes_per_cell <- Matrix::colSums(daoySpher.data > 0) # count gene only if it has non-zero reads                                                                    mapped.
+
+plot(sort(genes_per_cell), 
+     xlab='cell',
+     ylab = "sorted genes per cell",
+     log = "y",                             # only y axis is logarithmic
+     main='Genes per cell (ordered)') 
+```
+
+```{r create_seurat_object}
+
+daoySpher.seurat <- CreateSeuratObject(counts = daoySpher.data, 
+                                    min.cells = 3, 
+                                    min.genes = 200, 
+                                    project = "Daoy-spher")
+dim(daoySpher.seurat)
+```
+
+```{r add_percent_mitochondria_meta.data}
+# mitochondrial percentage
+daoySpher.seurat[["percent.mt"]] <- PercentageFeatureSet(daoySpher.seurat, pattern = "^MT-")
+head(daoySpher.seurat@meta.data)
+```
+
+```{r metadataDataframe761cells}
+# create metadata dataframe
+metadata <- daoySpher.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+# Rename columns to be more intuitive
+metadata <- metadata %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+dim(metadata)
+```
+
+```{r violinPlotGenesTranscriptsPercent.mt761cells, fig.height=10, fig.width=5}
+# there are some cells with excessive mitochondrial transcripts
+# the data looks bimodal
+
+p1 <- metadata %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p2 <- metadata %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p3 <- metadata %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p1 / p2 / p3    
+                       
+```
+
+```{r PlotUMIcountsPerCell761cells}
+
+# visualise number of UMIs (transcripts) per cell using all 761 cells - higher than ONS76-SPHER. 
+# In geom_density use (y = ..scaled..) value that stat_density provides.
+
+metadata %>% 
+        ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..)) +
+        scale_x_log10() +
+        theme_classic() +
+        ylab("cell density") +
+        geom_vline(xintercept = 500, color = "blue")
+```
+
+```{r MitochondrialThresholds}
+# number of cells with percent.mt > 10%: 101 cells
+# number of cells with percent.mt < 10%: 660 cells
+
+nrow(metadata[metadata$percent.mt > 10, ])
+
+nrow(metadata[metadata$percent.mt < 10, ])
+```
+
+```{r filteredSeuratObject-CellLevel}
+# CELL LEVEL FILTERING - leaves 19,596 genes and 660 cells
+#-------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------
+
+# remove cells with percent mitochondrial gene expression > 10 and where no.genes/cell < 200.
+# left with 660 cells
+
+filt.daoySpher.seurat <- subset(daoySpher.seurat, subset = nFeature_RNA > 200 & percent.mt < 10)
+dim(filt.daoySpher.seurat)
+```
+
+```{r violinPlotGenesTranscriptsPercent.mt-660cells, fig.height=10, fig.width=5}
+# create a metadata dataframe
+# new plots show remaining data looks unimodal
+
+metadata.2 <- filt.daoySpher.seurat@meta.data
+
+# Add cell IDs to metadata
+metadata.2$cells <- rownames(metadata.2)
+
+# Rename columns to be more intuitive
+metadata.2 <- metadata.2 %>%
+        dplyr::rename(sample = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+p4 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nUMI)) +
+        geom_violin(colour = "blue", fill = "blue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p5 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = nGene)) +
+        geom_violin(colour = "brown1", fill = "brown1", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p6 <- metadata.2 %>% 
+        ggplot(aes(x = sample, y = percent.mt)) +
+        ylim(0, 100) +
+        geom_violin(colour = "cadetblue", fill = "cadetblue", alpha = 0.1) +
+        theme_classic() +
+        geom_jitter(alpha = 0.1)
+
+p4 / p5 / p6
+```
+
+```{r ExtractCountsSlot660cells}
+# subset '@counts' slot (matrix) of filtered seurat object
+
+counts.660 <- GetAssayData(object = filt.daoySpher.seurat, slot = "counts")
+```
+
+```{r summarise_stats_660cells}
+# median genes per cell and expression sum, as above. Min. genes = 390
+
+at_least_one.660 <- apply(counts.660, 2, function(x) sum(x>0))
+
+summary(at_least_one.660)
+
+summary(colSums(counts.660))
+```
+
+```{r PlotsGenesPerCell1129cells, fig.height=10, fig.width=8}
+# 1 major peak now, but still a group of cells to the left with lower gene expression. 
+# There are a few cells in the tail to the right of each graph which look like outliers with 
+# very high gene expression.
+
+par(mfrow = c(2, 1))
+
+hist(at_least_one.660, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one transcript")
+
+hist(colSums(counts.660),                             # total counts (expression) per cell
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+```
+
+```{r PlotsUMIGeneExpression-660cells, fig.height=10, fig.width=5}
+
+# looks ok, most of the filtered ons76spher cells have UMI counts > 10,000 and express ~ 5,000 genes
+
+p7 <- metadata.2 %>% 
+       ggplot(aes(x = nUMI)) +
+        geom_density(aes(y = ..scaled..), colour = "blue", fill = "blue", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p8 <- metadata.2 %>% 
+        ggplot(aes(x = nGene)) +
+        geom_density(aes(y = ..scaled..), colour = "brown1", fill = "brown1", alpha = 0.2) +
+        theme_classic() +
+        scale_x_log10() +
+        ylab("Cell density")
+
+p7 / p8
+```
+
+```{r PlotUMIvsGenes-660cells}
+# plot of UMI count vs no. of genes
+
+p9 <- FeatureScatter(filt.daoySpher.seurat, 
+                      feature1 = "nCount_RNA",        # nCount_RNA is same as UMI count
+                      feature2 = "nFeature_RNA")
+
+p9
+```
+
+```{r filtered_seuratObject_GeneLevel}
+# GENE LEVEL FILTERING (applied on cell-filtered Seurat object)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#  we will have many genes with zero counts, which can dramatically reduce the average expression for a cell and so we will remove them from our data. Remove genes that have zero expression in all cells.
+
+# # Extract counts
+counts <- GetAssayData(object = filt.daoySpher.seurat, slot = "counts")
+
+# Output a logical vector for every gene on whether there are more than zero counts per cell
+nonzero <- counts > 0
+
+# If a gene is only expressed in a handful of cells, it is not particularly meaningful as it still brings down the averages for all other cells it is not expressed in. For our data we choose to keep only genes which are expressed in 10 or more cells.
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10    # sum the TRUE values in a row with 'gene' as rowname
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+
+# Reassign to filtered Seurat object
+filtCellsGenes.daoySpher.seurat <- CreateSeuratObject(filtered_counts, meta.data = filt.daoySpher.seurat@meta.data)
+
+dim(filtCellsGenes.daoySpher.seurat)           # number of genes further reduced to ~ 16,000 genes
+```
+
+```
+# saved the 'filtCellsGenes.daoySpher.seurat' object to outputs50K folder
+
+saveRDS(filtCellsGenes.daoySpher.seurat, file = "./outputs50K/DAOY_SPHER/filtCellsGenes.daoySpher.seurat.rds")
+```
+
+```{r}
+filtCellsGenes.daoySpher.seurat <- readRDS("outputs50K/DAOY_SPHER/filtCellsGenes.daoySpher.seurat.rds")
+```
+
+-------------------------------------------------------------------------------------
+***Remove mitochondrial and ribosomal genes***
+```{r remove_ribo_genes}
+# FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
+# THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
+#-------------------------------------------------------------------------------------
+
+# remove ribosomal genes first
+filtRibo.daoySpher <- filtCellsGenes.daoySpher.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.daoySpher.seurat)), ]
+```
+
+```{r check_ribo_removed}
+# this has worked - 95 ribosomal genes have been removed from the new Seurat object
+dim(filtCellsGenes.daoySpher.seurat)
+dim(filtRibo.daoySpher)
+```
+
+```{r remove_mitoch_genes}
+# remove mitochondrial genes 
+filt.RiboMito.daoySpher <- filtRibo.daoySpher[ ! grepl("^MT-", rownames(filtRibo.daoySpher)), ]
+```
+
+```{r check_filtering}
+# check if ribosome and mitochondrial gene filtering works - it does!
+dim(filtRibo.daoySpher)
+dim(filt.RiboMito.daoySpher)
+```
+
+```
+# SAVE the seurat object above (filt.RiboMito.daoySpher) which has been filtered for CELLS, GENES, RIBOSOMAL and MITOCHONDRIAL genes
+
+saveRDS(filt.RiboMito.daoySpher, file = "./outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
+```
+
+Load the above saved object
+```{r}
+# load the 'filt.RiboMitoCellsGenes.daoySpher' .RDS seurat object
+
+filt.RiboMito.daoySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
+```
+
+```{r}
+#--------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------
+# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
+```
+
+Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
+```{r}
+# normalise data
+phase.daoySpher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.daoySpher)
+
+# run cell cycle scoring
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+phase.daoySpher.filtRiboMito.sct <- CellCycleScoring(phase.daoySpher.filtRiboMito.sct,
+                                 g2m.features = g2m.genes,
+                                 s.features = s.genes)
+```
+
+First run SCTransfrom WITHOUT vars.to.regress argument
+```{r DimplotSCTRegressOutCCdifference}
+# there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
+phase.daoySpher.filtRiboMito.sct <- SCTransform(phase.daoySpher.filtRiboMito.sct,
+                                   
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.daoySpher.filtRiboMito.sct <- RunPCA(phase.daoySpher.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.daoySpher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+```
+
+Then run SCTransform with vars.to.regress argument = cell cycle difference
+```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
+# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+
+phase.daoySpher.filtRiboMito.sct$CC.difference <- phase.daoySpher.filtRiboMito.sct$S.Score - phase.daoySpher.filtRiboMito.sct$G2M.Score # get the cell cycle difference
+
+phase.daoySpher.filtRiboMito.sct <- SCTransform(phase.daoySpher.filtRiboMito.sct,
+                                   vars.to.regress = "CC.difference",
+                                   method = "glmGamPoi", 
+                                   verbose = FALSE)
+
+phase.daoySpher.filtRiboMito.sct <- RunPCA(phase.daoySpher.filtRiboMito.sct, features = c(s.genes, g2m.genes))
+
+DimPlot(phase.daoySpher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
+
+```
+
+```{r}
+# saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat 'phase' object 
+# with regression of the cell cycle
+
+saveRDS(phase.daoySpher.filtRiboMito.sct, file = "./outputs50K/DAOY_SPHER/phase.daoySpher.filtRiboMito.SCT.regressedCCdiff.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
