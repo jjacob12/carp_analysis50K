@@ -19,11 +19,13 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 ```{r libraries}
+suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
 library(Matrix)
 library(patchwork)
-library(tidyverse)
+library(tidyverse)  
+}) 
 ```
 
 ```{r SCtransform_CBO_ONS76-CBO}
