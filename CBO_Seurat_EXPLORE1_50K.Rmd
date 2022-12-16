@@ -13,7 +13,8 @@ options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in 
 knitr::opts_chunk$set(dev = "png",
                       dpi = 300,
                       echo = TRUE,   # prints the code (if FALSE then only code output is shown)
-                      cache = TRUE)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/CBO/figures/")
 ```
 
 ```{r libraries}
@@ -30,13 +31,21 @@ library(tidyverse)
 
 ```
 
-```{r load_filteredSeuratObject}
+
+```
+{r}
+load("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
+```
+
+
+```
 # load full filtered (genes and cells) seurat object
 
 Fullfilt.cbo.seurat <- readRDS("outputs50K/CBO/filtered.cbo.seurat.rds")
 ```
 
-```{r}
+```
+{r}
 # load the single CBO control sample (CCdifference regressed out!), already SCTransformed,
 # then run PCA, UMAP, etc on 'phase.filtRiboMito.ons76cbo.SCT.regressedCCdiff.rds'
 # which is saved in the outputs50K folder and can be accessed by readRDS above. 
@@ -51,7 +60,8 @@ phase.cbo.sct <- phase.cbo.sct %>%
   FindClusters(verbose=FALSE)
 ```
 
-```{r DimPlotPhaseCBOsctCCdiffRegressClustered}
+```
+{r DimPlotPhaseCBOsctCCdiffRegressClustered}
 DimPlot(phase.cbo.sct, label = TRUE)
 ```
 
@@ -67,13 +77,7 @@ phase.cbo.sct.clusters <-
   readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
 ```
 
-```{r DimPlotPhaseCBOsctClusters}
-# there are 12 clusters (0 - 11)
-DimPlot(phase.cbo.sct.clusters)
-```
-
-
-```{r ElbowPlotGeneCellFilt}
+```{r ElbowPlotGeneCellFiltCBO}
 # elbow plot shows that there is an elbow at PC 15, but the graph does not level off after
 # PC 15 showing there is some additional information to ~ PC 40.
 # The input object is the CLUSTERED saved seurat object
@@ -81,20 +85,23 @@ DimPlot(phase.cbo.sct.clusters)
 ElbowPlot(phase.cbo.sct.clusters, ndims = 50, reduction = "pca")
 ```
 
-```{r}
+```
+# DO NOT RUN THESE CODE CHUNKS
+
 # add percent.ribo to the metadata (not informative!)
 filt.cbo.sct.clusters[["percent.ribo"]] <- PercentageFeatureSet(filt.cbo.sct.clusters, pattern = "'^RP[SL]'")
 ```
 
-
-```{r ViolinPlot1CBOnoMitochNoRibo}
+```
 # plot metadata features - percent mitochondria (< 10%) and percent ribosome (= 0)
 VlnPlot(filt.cbo.sct.clusters, features = c("percent.mt", "percent.ribo"), ncol = 2)
 ```
 
 ----------------------------------------------------------------------------------------------
 ***Get the differentially expressed genes in the 12 ONS76-CBO clusters using a FOR loop***
-```{r}
+```
+# DO NOT RUN THESE CODE CHUNKS
+
 Idents(phase.cbo.sct.clusters) <- "seurat_clusters"
 markers.pos <- data.frame()
 for (i in levels(Idents(phase.cbo.sct.clusters))){
@@ -109,7 +116,6 @@ for (i in levels(Idents(phase.cbo.sct.clusters))){
 head(markers.pos)
 ```
 
-
 ```{r}
 # Cell counts per cluster.
 # there are 3070 cells in total, which is correct, and the cell numbers per cluster are shown below.
@@ -120,16 +126,12 @@ cell.num
 sum(cell.num)
 ```
 
-```{r}
+```
+# DO NOT RUN THESE CODE CHUNKS
 dim(markers.pos)
 ```
 
-Check out the first few DEGs by group (cluster_ID) of 'markers.pos'
-```{r}
-markers.pos %>% 
-  group_by(cluster_ID) %>% 
-  slice_head(n = 3)
-```
+
 
 ```
 # save the postive markers of CBO clusters generated from SCTransformed, CC difference,
@@ -142,6 +144,24 @@ saveRDS(markers.pos, file = "outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.C
 markers.pos <- readRDS("outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
 ```
 
+Check out the first few DEGs by group (cluster_ID) of 'markers.pos'
+```{r}
+markers.pos %>% 
+  group_by(cluster_ID) %>% 
+  slice_head(n = 40)
+```
+
+```{r}
+markers.pos %>% 
+  filter(genes %in% c("KIRREL3"))
+```
+
+```{r}
+markers.pos %>%
+  filter(cluster_ID == "4")
+```
+
+
 ```{r}
 top10 <- markers.pos %>% 
   group_by(cluster_ID) %>% 
@@ -152,8 +172,32 @@ top10 <- markers.pos %>%
 top10
 ```
 
+```{r}
+# replace the cluster numbers with the identity of each cluster
+levels(phase.cbo.sct.clusters)
+```
 
-```{r DotplotSeppTFmarkers_some}
+```{r DimplotCBOcellTypesLabelled, fig.height=6}
+# continue to replace the cluster numbers with the identity of each cluster
+new.cluster.ids <- c("RP-choroid plexus", "choroid plexus", "glia", "RL/DCN",
+                     "uncertain", "granule neuron", "glio-neuronal", "granule progenitor", "RL-derived",
+                     "oligodendrocyte", "purkinje neuron", "ependyma")
+names(new.cluster.ids) <- levels(phase.cbo.sct.clusters)
+phase.cbo.sct.clusters.2 <- RenameIdents(phase.cbo.sct.clusters, new.cluster.ids)
+DimPlot(phase.cbo.sct.clusters.2, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5)
+```
+
+```{r DimPlotPhaseCBOsctClusters, fig.height=6}
+# there are 12 clusters (0 - 11)
+DimPlot(phase.cbo.sct.clusters, label = TRUE, repel = TRUE)
+```
+
+```{r}
+table(phase.cbo.sct.clusters.2$seurat_clusters)
+```
+
+
+```{r DotplotSeppTFmarkers}
 # using the Sepp et al paper (Extended Fig 8g), test if markers from that paper are expressed 
 # in the seurat object filtered to remove all ribosomal and mitochondrial genes, and where cells which
 # have mitoch genes > 10% are excluded.
@@ -170,7 +214,7 @@ DotPlot(object = phase.cbo.sct.clusters, features = sepp.TF.markers) +
   coord_flip()
 ```
 
-```{r DotplotSeppMarkers+ciliaMany, fig.height=10}
+```{r DotplotSeppMarkersAndCiliaManyCBO, fig.height=10}
 # from the Sepp paper repeat Dotplot with TF and some key non-TF markers
 # added markers of ciliated cells from cluster10 above.
 # used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
@@ -199,19 +243,26 @@ DotPlot(object = phase.cbo.sct.clusters, features = seppAll.cilia.stem.markers, 
   coord_flip()
 ```
 
-```{r ViolinPlotGranuleLineageByCluster, fig.height=10}
+```{r ViolinPlotGranuleLineageByClusterCBO, fig.height=10}
 # plot of the clusters containing granule/RL lineage suggests RL-derived clusters are 6, 7, 8
 # CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
 # CD44 is not expressed or expressed very little.
 # ITGB1 is expressed at quite a high level across most cell types
 # In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
 
-VlnPlot(phase.cbo.sct.clusters, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1"))
+VlnPlot(phase.cbo.sct.clusters, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "ZIC1"))
 ```
 
-```{r fig.height=10}
-VlnPlot(phase.cbo.sct.clusters, features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3", "MIR124-2HG", 
-                                             "POU3F2", "MEIS1", "LHX9", "CHCHD2", "PRRX1"))
+
+```{r VlnPlotStemGenesPhaseCBOsct, fig.height=24, fig.width=12}
+VlnPlot(phase.cbo.sct.clusters, features = c("HOXB2", "IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3", 
+                                             "MIR124-2HG", "PTCH1", "GLI2",
+                                             "POU3F2", "MEIS1", "LHX9", "CHCHD2", "PRRX1", "DLL1", "DLL3",
+                                             "DLL4","HES5", "HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
+```
+
+```{r NrgErbb4PhaseCBOsct, fig.height=8, fig.width=12}
+VlnPlot(phase.cbo.sct.clusters, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
 ```
 
 
@@ -281,9 +332,16 @@ dim(neurod1.cbo)
 saveRDS(neurod1.cbo, file = "./outputs50K/CBO/neurod1Clust.phaseCCDiffRegress.SCT.cbo.rds")
 ```
 
+```
+save.image("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
+```
+
+
 --------------------------------------------------------------------------------------------
 ***Repeat clustering of CBO dataset using conventional normalization***
-```{r}
+```
+# NO NEED TO RUN THESE CODE CHUNKS
+
 # load the dataset
 filt.RiboMito.cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
 
@@ -311,7 +369,7 @@ filt.RiboMito.cbo <- RunUMAP(filt.RiboMito.cbo, dims = 1:10)
 DimPlot(filt.RiboMito.cbo, reduction = "umap")
 ```
 
-```{r fig.height=6}
+```
 VlnPlot(filt.RiboMito.cbo, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
 
