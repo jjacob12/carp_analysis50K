@@ -13,42 +13,52 @@ options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in 
 knitr::opts_chunk$set(dev = "png",
                       dpi = 300,
                       echo = TRUE,   # prints the code (if FALSE then only code output is shown)
-                      cache = TRUE)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/DAOY-CBO/figures/")
 ```
 
 ```{r libraries}
 suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
+library(RColorBrewer)
 library(Matrix)
 library(patchwork)
 library(tidyverse)
+library(reshape2)
+library(plyr)
 })
 ```
 
-```{r loadFilteredSeuratObject}
+# No need to run these code chunks
+```
+{r}
+load("RDataFiles/DAOY-CBO_Seurat_EXPLORE1_50K.RData")
+```
+
+```
 # load full filtered (genes and cells) seurat object
 
 filt.cboDaoy.seurat <- readRDS("outputs50K/DAOY-CBO/filtCellsGenes.daoyCbo.seurat.rds")
 ```
 
-```{r calcRibosomalpercent}
+```
 # calculate ribosomal percentage
 
 filt.cboDaoy.seurat[["percent.ribo"]] <- PercentageFeatureSet(filt.cboDaoy.seurat, pattern = "^RP[SL]")
 ```
 
-```{r}
+```
 summary(filt.cboDaoy.seurat@meta.data$percent.ribo)
 ```
 
-```{r}
+```
 VlnPlot(filt.cboDaoy.seurat, features = c("percent.mt", "percent.ribo"), ncol = 3)
 ```
 
 
 Remove ribosomal and mitochondrial genes as the clustering works better without these, and is then free of top 'markers' which are ribosome or mitochondrial genes.
-```{r remove_ribo_genes}
+```
 # FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH ARE REMAINING
 # THAT HAVE PERCENT.MITO < 10%) BEFORE DOING THE CLUSTERING, AND DON'T REMOVE ANY MORE ACTUAL CELLS
 #-------------------------------------------------------------------------------------
@@ -57,19 +67,20 @@ Remove ribosomal and mitochondrial genes as the clustering works better without 
 filt.noRibo.cboDaoy <- filt.cboDaoy.seurat[ ! grepl('^RP[SL]', rownames(filt.cboDaoy.seurat)), ]
 ```
 
-```{r check_ribo_removed}
+```
+# check ribosomal genes removed
 # this has worked - 97 ribosomal genes have been removed from the new Seurat object
 # there are 3056 cells
 dim(filt.cboDaoy.seurat)
 dim(filt.noRibo.cboDaoy)
 ```
 
-```{r remove_mitoch_genes}
+```
 # remove mitochondrial genes 
 filt.noRiboMito.cboDaoy <- filt.noRibo.cboDaoy[ ! grepl("^MT-", rownames(filt.noRibo.cboDaoy)), ]
 ```
 
-```{r check_filtering}
+```
 # check if ribosome and mitochondrial gene filtering works - it does!
 dim(filt.noRibo.cboDaoy)
 dim(filt.noRiboMito.cboDaoy)
@@ -80,66 +91,603 @@ dim(filt.noRiboMito.cboDaoy)
 saveRDS(filt.noRiboMito.cboDaoy, file = "./outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.rds")
 ```
 
-```{r DimPlotSCTransformUMAPclusteringNoCCdiffRegressn}
-# Perform SCTransform, but THIS OBJECT HAS NOT UNDERGONE CELL CYCLE REGRESSION 
-# Perform dimensionality reduction by PCA and UMAP embedding
-# FindClusters is run with only the default resolution parameter (= 0.8)
-# 13 clusters identified
+---------------------------------------------------------------------------------------------------------
+***Cluster the 'phase' seurat object in which the cell cycle difference has been regressed out***
+```
+# load the object
+phase.daoyCbo.sct <- readRDS("outputs50K/DAOY-CBO/phase.filtRiboMito.daoyCbo.SCT.regressedCCdiff.rds")
+```
 
-daoyCbo.filt <- SCTransform(filt.noRiboMito.cboDaoy, method = "glmGamPoi", verbose = FALSE)
+```
+# there are now 15 clusters!
+phase.daoyCbo.sct <- phase.daoyCbo.sct %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(phase.daoyCbo.sct)
+```
 
-daoyCbo.filt <- RunPCA(daoyCbo.filt, verbose = FALSE)
+```
+# save the clustered phase object 'phase.daoyCbo.sct'
+saveRDS(phase.daoyCbo.sct, 
+        file = "./outputs50K/DAOY-CBO/phase.filtRiboMito.daoyCbo.SCT.Clustered.regressedCCdiff.rds")
+```
+**THIS IS WHERE TO START FROM**
+```{r}
+# load the clustered object above - phase seurat object, SCT transformed, CC difference regressed and
+# clustered, already filtered ribosomal and mitochondrial genes
+phase.daoyCbo.sct.clust <- 
+  readRDS("outputs50K/DAOY-CBO/phase.filtRiboMito.daoyCbo.SCT.Clustered.regressedCCdiff.rds")
+```
 
-daoyCbo.filt <- RunUMAP(daoyCbo.filt, dims = 1:30, verbose = FALSE)
+```{r DimplotSCTphaseCCdiffRegressedDaoyCboClusters, fig.height=6}
+DimPlot(phase.daoyCbo.sct.clust, label = TRUE)
+```
 
-daoyCbo.filt <- FindNeighbors(daoyCbo.filt, dims = 1:30, verbose = FALSE)
+```
+# find markers of each cluster
+daoyCbo.sct.POSdegs <- FindAllMarkers(object = phase.daoyCbo.sct,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
 
-daoyCbo.filt.clusters <- FindClusters(daoyCbo.filt, verbose = FALSE)
-
-DimPlot(daoyCbo.filt.clusters, label = TRUE) # '+ NoLegend()' is an option to insert here
+```
+# save the POSITIVE DEGs of 'daoyCbo.sct.POSdegs'
+saveRDS(daoyCbo.sct.POSdegs, file = "outputs50K/DAOY-CBO/POS.DEGs.Daoy.Cbo.phase.sct.rds")
 ```
 
 ```{r}
-# SAVE THE 'filt.noRiboMito.cboDaoy.clusters' seurat object
-
-saveRDS(daoyCbo.filt.clusters, file = "./outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.clusters.rds")
-```
-
-```{r load_filt.NoRiboNoMito.cboDaoy.clusters.rds}
-filt.noRiboMito.cboDaoy.clusters <- readRDS("outputs50K/DAOY-CBO/filt.NoRiboNoMito.cboDaoy.clusters.rds")
-```
-
-```{r differential_genes_by_cluster_filt.noRiboMito.cbo.clusters}
-# Find positive markers for each of the 11 clusters of 'filt.noRiboMito.cbo.clusters'
-
-cboDaoy.cluster.markers.noRiboMito <- FindAllMarkers(filt.noRiboMito.cboDaoy.clusters, 
-                                                     min.pct = 0.25, 
-                                                     only.pos = TRUE)
-```
-
-```{r cellCountsPerCluster}
-# there are 3056 cells in total, which is correct, and the cell numbers per cluster are shown below.
-
-cell.num.riboFilt <- table(filt.noRiboMito.cboDaoy.clusters@active.ident)
-cell.num.riboFilt
-sum(cell.num.riboFilt)
-```
-
-```
-# save 'cboDaoy.cluster.markers.noRiboMito' as a csv file. This object has NO mitochondrial or ribosomal genes.
-# The object has already been filtered to keep cells with mitoch gene expression < 10%.
-
-write.csv(cboDaoy.cluster.markers.noRiboMito, "./outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", quote = F)
-```
-
-```{r loadCboDaoyClusterMarkersNoRiboMitoCSV}
-cboDaoy.cluster.markers.noRiboMito <- read.csv("outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", 
-                                       header = TRUE, 
-                                       stringsAsFactors = FALSE)
+# load the POSITIVE DEGs object
+daoyCbo.sct.POSdegs <- readRDS("outputs50K/DAOY-CBO/POS.DEGs.Daoy.Cbo.phase.sct.rds")
 ```
 
 
-```{r Dotplot_all_seppMarkers+cilia, fig.height=12}
+```{r}
+# get the number of cells per cluster
+table(Idents(phase.daoyCbo.sct.clust))
+```
+
+```{r}
+head(daoyCbo.sct.POSdegs)
+```
+
+
+```{r}
+daoyCbo.sct.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 3)
+```
+
+Looking at the above table, there are 15 clusters:
+cluster 0 = roof plate/CP
+cluster 1 = GABA-ergic cluster
+cluster 2 = could be glia
+cluster 3 = VZ-derived neurons, PN, 4th ventricle derivatives
+cluster 4 = granule lineage
+cluster 5 = could be glia
+cluster 6 = radial glia and glial markers, uncertain
+cluster 7 = DAOY cells
+cluster 8 = uncertain, but SOX2-OT is expressed in OPCs and astrocytes
+cluster 9 = proliferative cell,may be GCP lineage
+cluster 10 = ciliated cells
+cluster 11 = glia/radial glia
+cluster 12 = uncertain (pct.1 and pct.2 are more similar)
+cluster 13 = DAOY cells
+cluster 14 = DAOY cells 
+
+
+***Which clusters are the malignant clusters?***
+Comparing the expression of marker genees of each cluster in DAOY-CBO and CBO control there are striking differences which indicate: 1. there are comparatively immature clusters (n=2) of granule cells expressing CNTN2 whereas these cells are not present in CBO control. 2. The number of CNTN1 clusters and NEUROD1 clusters is the same as in CBO control. 3. Cluster 7 expresses IRX3/5, PAX3, MIR124-2HG, POU3F2, MEIS1. None of these factors are expressed to the same level in CBO control. 4. Cluster 13 expresses MIR124-2HG, GRIA4, POU3F2, MEIS1 and LHX9. It also expresses markers of differentiation, e.g. GAP43, DCX, NCAM1 so THIS CLUSTER HAS MIXED CELLS AND SHOULD BE SUB-CLUSTERED/RECLUSTERED (unlike cluster 7 and 14) 5. Cluster 14 expresses TWIST1, PAX3, MEIS1, CHCHD2, and PRRX1 5. Overall, the DAOY-CBO sample has three more clusters than CBO control, and gene expression indicates these are DAOY cell clusters.
+```{r VlnPlotGranuleNeuronGenesDaoyCbo, fig.height=10, fig.width=12}
+# cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
+# malignant clusters are cluster 7 (n=137 cells), cluster 13 (n=77 cells), and cluster 14 (n=55 cells)
+VlnPlot(phase.daoyCbo.sct.clust, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX"))
+```
+
+```{r VlnPlotDaoyCellsMarkersDaoyCbo, fig.height=20, fig.width=12}
+# visualise gene expression indicating DAOY cell clusters
+VlnPlot(phase.daoyCbo.sct.clust, features = c("IRX5", "SOX2", "POU3F2","FABP7", "TTYH1", "ERBB4", "NRG3", "NNAT",
+                                        "MIR124-2HG", "MEIS1", "TWIST1", "DCX", "CTNNA2", "IRX3", 
+                                        "PTCH1", "GLI2", "MYC", "MYCN", "ZIC1", "ZIC2", "OTX2"))
+```
+
+Extract the DAOY cells and save as a separate object
+
+```
+# no need to re-run this code
+daoyOnly.daoyCbo <- subset(phase.daoyCbo.sct.clust, idents = c("7", "13", "14"))
+```
+
+```
+saveRDS(daoyOnly.daoyCbo, file = "outputs50K/DAOY-CBO/DaoyOnlyCells.phaseDaoyCbo.SCT.CCdiffRegressed.rds")
+```
+
+Get the cell IDs of the 'daoyOnly.daoyCbo' object
+```
+# no need to re-run this code
+daoyCellID <- WhichCells(phase.daoyCbo.sct, idents = c("7", "13", "14"))
+length(daoyCellID)
+```
+
+```
+# no need to rerun this code
+# subset the 'filt.noRiboMito.cboDaoy' seurat object for just daoyCellID vector of cancer cells
+daoy <- subset(filt.noRiboMito.cboDaoy, cells = daoyCellID)
+```
+
+```
+# no need to rerun this code
+dim(daoy)
+```
+
+```
+# save the 'daoy' object
+saveRDS(daoy, file = "./outputs50K/DAOY-CBO/dooyOnlyCells.subset.filt.noRiboMito.cboDaoy.rds")
+```
+
+Find the average expression of SOX2 in the DAOY clusters 7, 13, 14
+```{r}
+# subset the daoy clusters first
+clust7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
+clust13 <- subset(phase.daoyCbo.sct.clust, idents = c("13"))
+clust14 <- subset(phase.daoyCbo.sct.clust, idents = c("14"))
+
+cl7.norm <- NormalizeData(clust7, assay = "RNA")
+cl13.norm <- NormalizeData(clust13, assay = "RNA")
+cl14.norm <- NormalizeData(clust14, assay = "RNA")
+```
+
+```{r}
+# get the average expression of each cluster
+av.cl7 <- AverageExpression(cl7.norm)$RNA
+av.cl13 <- AverageExpression(cl13.norm)$RNA
+av.cl14 <- AverageExpression(cl14.norm)$RNA
+```
+
+```{r}
+# convert the matrices of Average Expression to dataframes
+# df = dataframe
+av.cl7.df <- as.data.frame(av.cl7) %>% 
+  rownames_to_column("genes")
+av.cl13.df <- as.data.frame(av.cl13) %>% 
+  rownames_to_column("genes")
+av.cl14.df <- as.data.frame(av.cl14) %>% 
+  rownames_to_column("genes")
+```
+
+```{r}
+head(av.cl7.df)
+```
+
+
+```{r}
+# change the column names from "all" to cluster no.
+names(av.cl7.df)[2] <- "cluster_7"
+names(av.cl13.df)[2] <- "cluster_13"
+names(av.cl14.df)[2] <- "cluster_14"
+```
+
+```{r}
+head(av.cl7.df)
+head(av.cl13.df)
+head(av.cl14.df)
+
+```
+
+
+
+```{r}
+# left join all three dataframes in one go
+av.dy.clust <- join_all(list(av.cl7.df, av.cl13.df, av.cl14.df), 
+                       by = "genes", type = "left")
+```
+
+```{r}
+head(av.dy.clust)
+```
+
+```{r}
+# get SOX2 average expression
+av.dy.clust[av.dy.clust$genes == "SOX2", ]
+```
+
+
+--------------------------------------------------------------------------------------------------
+***Get a correlation matrix of DAOY-only clusters in DAOY-CBO 7,13,14 and DAOY-CBO NEUROD1 cluster 4 with the control CBO NEUROD1+ cluster 5***
+```{r}
+# load the SCTransformed, fully filtered seurat object, CBO control from which cluster 5 is needed
+phase.cbo.sct.clusters <- 
+  readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
+```
+
+```{r}
+# subset cluster 5 of phase.cbo.sct.clusters
+cl5.cbo <- subset(phase.cbo.sct.clusters, idents = c("5"))
+dim(cl5.cbo)
+```
+
+```{r}
+# subset the daoy clusters again 7, 13, 14
+cl4 <- subset(phase.daoyCbo.sct.clust, idents = c("4"))
+cl7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
+cl13 <- subset(phase.daoyCbo.sct.clust, idents = c("13"))
+cl14 <- subset(phase.daoyCbo.sct.clust, idents = c("14"))
+```
+
+```{r}
+# compute AverageExpression of each of the ONS76-CBO NEUROD1+ clusters and AverageExpression of 
+# av.exp.cl5.cbo (the control NEUROD1 cluster from CBO sample)
+av.cl5.cbo <- AverageExpression(cl5.cbo)$RNA
+av.cl4 <- AverageExpression(cl4)$RNA
+av.cl7 <- AverageExpression(cl7)$RNA
+av.cl13 <- AverageExpression(cl13)$RNA
+av.cl14 <- AverageExpression(cl14)$RNA
+```
+
+Check lengths of the objects. They are different. Cluster 5 from the CBO control has the lowest number of genes 
+```{r}
+length(av.cl5.cbo)
+length(av.cl4)
+length(av.cl7)
+length(av.cl13)
+length(av.cl14)
+```
+
+```{r}
+# convert the matrices of Average Expression to dataframes
+# df = dataframe
+av.cl5.cbo.df <- as.data.frame(av.cl5.cbo) %>% 
+  rownames_to_column("genes")
+av.cl4.df <- as.data.frame(av.cl4) %>% 
+  rownames_to_column("genes")
+av.cl7.df <- as.data.frame(av.cl7) %>% 
+  rownames_to_column("genes")
+av.cl13.df <- as.data.frame(av.cl13) %>% 
+  rownames_to_column("genes")
+av.cl14.df <- as.data.frame(av.cl14) %>% 
+  rownames_to_column("genes")
+```
+
+
+```{r}
+# change colnames of objects (clusters)
+names(av.cl5.cbo.df)[2] <- "cl5_cbo"
+names(av.cl4.df)[2] <- "cl4_daoyCbo"
+names(av.cl7.df)[2] <- "cl7_daoyCbo"
+names(av.cl13.df)[2] <- "cl13_daoyCbo"
+names(av.cl14.df)[2] <- "cl14_daoyCbo"
+```
+
+```{r}
+head(av.cl14.df)
+```
+
+```{r}
+# left join all three dataframes in one go
+av.dy.cbo.clust <- join_all(list(av.cl5.cbo.df, av.cl4.df, av.cl7.df, av.cl13.df, av.cl14.df), 
+                       by = "genes", type = "left")
+head(av.dy.cbo.clust)
+```
+
+Find all NA values in the av.dy.cbo.clust dataframe. Looks like most clusters (columns) in this df have 666 NAs
+```{r}
+colSums(is.na(av.dy.cbo.clust))
+```
+
+```{r}
+# Replace all the NA values with zeros
+av.dy.cbo.clust[is.na(av.dy.cbo.clust)] <- 0
+```
+
+```{r}
+colSums(is.na(av.dy.cbo.clust))
+```
+
+
+```{r}
+RNAcounts <- av.dy.cbo.clust %>% 
+  select(-genes)
+```
+
+```{r}
+corr.dy.cbo <- cor(RNAcounts)
+corr.dy.cbo
+```
+
+Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
+```{r}
+upper.corr.dy.cbo <- corr.dy.cbo
+
+# Make upper triangular matrix by setting NA to lower triangular part:
+upper.corr.dy.cbo[lower.tri(upper.corr.dy.cbo)] <- NA
+upper.corr.dy.cbo
+```
+
+```{r}
+# Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
+up.m.dy.cbo <- melt(upper.corr.dy.cbo, na.rm = TRUE)
+up.m.dy.cbo
+nrow(up.m.dy.cbo)
+```
+
+This is a much nicer looking plot - the CORRELATION HEATMAP FOR ALL GENES. As expected cluster 4 of DAOY-CBO is most similar to cluster 5 of CBO. Cluster 14 of DAOY-CBO looks very different, and has the least correlation with the healthy granule cluster. So, cluster 7 of DAOY-CBO with the highest SOX2 expression does not have the lowest expression of granule differentiation genes!
+```{r CorrAllGenesNeuroD1clustCBOandDAOYclustersInDAOYcbo}
+# ggplot upper triangular correlation matrix:
+ggplot(data = up.m.dy.cbo, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  theme_classic() +
+  labs(x = "", y = "", fill = "Correlation \n Measure \n") +
+  scale_x_discrete(labels = c("Clust 5_CBO", 
+                              "Clust 4_DAOY-CBO",
+                              "Clust 7_DAOY-CBO",
+                              "Clust 13_DAOY-CBO",
+                              "Clust 14_DAOY-CBO")) +
+  scale_y_discrete(labels = c("Clust 5_CBO", 
+                              "Clust 4_DAOY-CBO",
+                              "Clust 7_DAOY-CBO",
+                              "Clust 13_DAOY-CBO",
+                              "Clust 14_DAOY-CBO")) +
+  theme(axis.text.x = element_text(face = "bold", angle = 90, hjust = 1),
+        axis.text.y = element_text(face = "bold", vjust = 1),
+        axis.ticks = element_blank(),
+        axis.line = element_line(linetype = "blank"),
+        panel.background = element_rect(fill = "gray87"),
+        panel.grid.major = element_line(colour = "gray47", linetype = "dotted", size = 0.2)
+        ) +
+  geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 3) +
+  coord_fixed()
+```
+
+--------------------------------------------------------------------------------------------------
+***Looking at each DAOY cluster for expression of SOX2 regulatory network***
+ 
+Merge the above DAOY clusters 7, 13, 14 and compare gene expression for stemness genes
+```{r}
+# subset the daoy clusters first
+clust7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
+clust13 <- subset(phase.daoyCbo.sct.clust, idents = c("13"))
+clust14 <- subset(phase.daoyCbo.sct.clust, idents = c("14"))
+```
+
+
+```{r}
+dy.3clusters <- merge(clust7, 
+                  y = c(clust13, clust14), 
+                  add.cell.ids = c("dy_clus7", "dy_clus13", "dy_clus14"), 
+                  project = "dy3clustersMerge")
+dy.3clusters
+```
+
+```{r}
+table(dy.3clusters$orig.ident)
+```
+
+```{r}
+# Create metadata dataframe
+metadata <- dy.3clusters@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dy_clus7_"))] <- "cluster_7"
+metadata$sample[which(str_detect(metadata$cells, "^dy_clus13_"))] <- "cluster_13"
+metadata$sample[which(str_detect(metadata$cells, "^dy_clus14_"))] <- "cluster_14"
+```
+
+```{r}
+dy.3clusters@meta.data <- metadata
+```
+
+```{r}
+table(dy.3clusters$sample)
+```
+
+```{r}
+dy.3clusters <- ScaleData(dy.3clusters)
+```
+
+```{r}
+Idents(dy.3clusters) <- "sample"
+```
+
+```{r VlnPlotDAOYMergedDAOYclustersInCocultureSOX2Network, fig.height=8, fig.width=12}
+VlnPlot(dy.3clusters, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"))
+```
+
+--------------------------------------------------------------------------------------------------------------------
+***Identify the cell type in the healthy CBO cell clusters that cluster 7 (SOX2-high expressing) has most resemblance to***
+Use Average Expression and correlation as the way to do this.
+```{r}
+cl.0 <- subset(phase.daoyCbo.sct.clust, idents = c("0"))
+cl.1 <- subset(phase.daoyCbo.sct.clust, idents = c("1"))
+cl.2 <- subset(phase.daoyCbo.sct.clust, idents = c("2"))
+cl.3 <- subset(phase.daoyCbo.sct.clust, idents = c("3"))
+cl.4 <- subset(phase.daoyCbo.sct.clust, idents = c("4"))
+cl.5 <- subset(phase.daoyCbo.sct.clust, idents = c("5"))
+cl.6 <- subset(phase.daoyCbo.sct.clust, idents = c("6"))
+cl.7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
+cl.8 <- subset(phase.daoyCbo.sct.clust, idents = c("8"))
+cl.9 <- subset(phase.daoyCbo.sct.clust, idents = c("9"))
+cl.10 <- subset(phase.daoyCbo.sct.clust, idents = c("10"))
+cl.11 <- subset(phase.daoyCbo.sct.clust, idents = c("11"))
+cl.12 <- subset(phase.daoyCbo.sct.clust, idents = c("12"))
+```
+
+```{r}
+av.cl.0 <- AverageExpression(cl.0)$RNA
+av.cl.1 <- AverageExpression(cl.1)$RNA
+av.cl.2 <- AverageExpression(cl.2)$RNA
+av.cl.3 <- AverageExpression(cl.3)$RNA
+av.cl.4 <- AverageExpression(cl.4)$RNA
+av.cl.5 <- AverageExpression(cl.5)$RNA
+av.cl.6 <- AverageExpression(cl.6)$RNA
+av.cl.7 <- AverageExpression(cl.7)$RNA
+av.cl.8 <- AverageExpression(cl.8)$RNA
+av.cl.9 <- AverageExpression(cl.9)$RNA
+av.cl.10 <- AverageExpression(cl.10)$RNA
+av.cl.11 <- AverageExpression(cl.11)$RNA
+av.cl.12 <- AverageExpression(cl.12)$RNA
+```
+
+Check lengths of the objects. They are different. Cluster 5 from the CBO control has the lowest number of genes 
+```{r}
+length(av.cl.0)
+length(av.cl.1)
+length(av.cl.2)
+length(av.cl.3)
+length(av.cl.4)
+length(av.cl.5)
+length(av.cl.6)
+length(av.cl.7)
+length(av.cl.8)
+length(av.cl.9)
+length(av.cl.10)
+length(av.cl.11)
+length(av.cl.12)
+```
+
+```{r}
+# convert the matrices of Average Expression to dataframes
+# df = dataframe
+av.cl.0.df <- as.data.frame(av.cl.0) %>% 
+  rownames_to_column("genes")
+av.cl.1.df <- as.data.frame(av.cl.1) %>% 
+  rownames_to_column("genes")
+av.cl.2.df <- as.data.frame(av.cl.2) %>% 
+  rownames_to_column("genes")
+av.cl.3.df <- as.data.frame(av.cl.3) %>% 
+  rownames_to_column("genes")
+av.cl.4.df <- as.data.frame(av.cl.4) %>% 
+  rownames_to_column("genes")
+av.cl.5.df <- as.data.frame(av.cl.5) %>% 
+  rownames_to_column("genes")
+av.cl.6.df <- as.data.frame(av.cl.6) %>% 
+  rownames_to_column("genes")
+av.cl.7.df <- as.data.frame(av.cl.7) %>% 
+  rownames_to_column("genes")
+av.cl.8.df <- as.data.frame(av.cl.8) %>% 
+  rownames_to_column("genes")
+av.cl.9.df <- as.data.frame(av.cl.9) %>% 
+  rownames_to_column("genes")
+av.cl.10.df <- as.data.frame(av.cl.10) %>% 
+  rownames_to_column("genes")
+av.cl.11.df <- as.data.frame(av.cl.11) %>% 
+  rownames_to_column("genes")
+av.cl.12.df <- as.data.frame(av.cl.12) %>% 
+  rownames_to_column("genes")
+
+```
+
+
+```{r}
+# change colnames of objects (clusters)
+names(av.cl.0.df)[2] <- "cl0"
+names(av.cl.1.df)[2] <- "cl1"
+names(av.cl.2.df)[2] <- "cl2"
+names(av.cl.3.df)[2] <- "cl3"
+names(av.cl.4.df)[2] <- "cl4"
+names(av.cl.5.df)[2] <- "cl5"
+names(av.cl.6.df)[2] <- "cl6"
+names(av.cl.7.df)[2] <- "cl7"
+names(av.cl.8.df)[2] <- "cl8"
+names(av.cl.9.df)[2] <- "cl9"
+names(av.cl.10.df)[2] <- "cl10"
+names(av.cl.11.df)[2] <- "cl11"
+```
+
+```{r}
+head(av.cl.0.df)
+```
+
+```{r}
+# left join all three dataframes in one go
+av.dy.cbo.clust2 <- join_all(list(av.cl.0.df, av.cl.1.df, av.cl.2.df, av.cl.3.df, av.cl.4.df, av.cl.5.df,
+                                 av.cl.6.df, av.cl.7.df, av.cl.8.df, av.cl.9.df, av.cl.10.df, av.cl.11.df), 
+                       by = "genes", type = "left")
+head(av.dy.cbo.clust2)
+```
+
+```{r}
+# there are no NA values
+colSums(is.na(av.dy.cbo.clust2))
+```
+
+```{r}
+RNAcounts2 <- av.dy.cbo.clust2 %>% 
+  select(-genes)
+```
+
+```{r}
+corr.dy.cbo2 <- cor(RNAcounts2)
+corr.dy.cbo2
+```
+
+```{r}
+upper.corr.dy.cbo2 <- corr.dy.cbo2
+
+# Make upper triangular matrix by setting NA to lower triangular part:
+upper.corr.dy.cbo2[lower.tri(upper.corr.dy.cbo2)] <- NA
+upper.corr.dy.cbo2
+```
+
+```{r}
+# Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
+up.m.dy.cbo2 <- melt(upper.corr.dy.cbo2, na.rm = TRUE)
+up.m.dy.cbo2
+nrow(up.m.dy.cbo2)
+```
+
+```{r CorrAllGenesClust7daoyAndOtherDAOYcboClusters, fig.height=10}
+# ggplot upper triangular correlation matrix:
+# cluster 7_DAOY has greatest similarity to healthy cluster 9 (proliferative/GCP). Value = 0.986
+ggplot(data = up.m.dy.cbo2, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  theme_classic() +
+  labs(x = "", y = "", fill = "Correlation \n Measure \n") +
+  scale_x_discrete(labels = c("Clust_0", 
+                              "Clust_1",
+                              "Clust_2",
+                              "Clust_3",
+                              "Clust_4",
+                              "Clust_5",
+                              "Clust_6",
+                              "Clust_7_DAOY",
+                              "Clust_8",
+                              "Clust_9",
+                              "Clust_10",
+                              "Clust_11")) +
+  scale_y_discrete(labels = c("Clust_0", 
+                              "Clust_1",
+                              "Clust_2",
+                              "Clust_3",
+                              "Clust_4",
+                              "Clust_5",
+                              "Clust_6",
+                              "Clust_7_DAOY",
+                              "Clust_8",
+                              "Clust_9",
+                              "Clust_10",
+                              "Clust_11")) +
+  theme(axis.text.x = element_text(face = "bold", angle = 90, hjust = 1),
+        axis.text.y = element_text(face = "bold", vjust = 1),
+        axis.ticks = element_blank(),
+        axis.line = element_line(linetype = "blank"),
+        panel.background = element_rect(fill = "gray87"),
+        panel.grid.major = element_line(colour = "gray47", linetype = "dotted", size = 0.2)
+        ) +
+  geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 2) +
+  coord_fixed()
+```
+
+The highest correlation in the matrix above is clust_7_DAOY-CBO with cluster 9_DAOY-CBO. Cluster  9 expresses markers of proliferative granule cells including RRM2, TOP2A, MKI67, PCNA
+```{r}
+daoyCbo.sct.POSdegs %>% 
+  filter(cluster == "9" & gene %in% c("TOP2A", "RRM2", "TOP2A", "MKI67", "PCNA", "TK1"))
+```
+
+
+```{r DotplotAllSeppMarkersAndCiliaDaoyCbo, fig.height=12}
 # from the Sepp paper repeat Dotplot with TF and some key non-TF markers
 # added markers of ciliated cells from cluster10 above.
 # used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
@@ -165,118 +713,9 @@ seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "
                                 "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
 
 
-DotPlot(object = filt.noRiboMito.cboDaoy.clusters, features = seppAll.cilia.stem.markers, col.min = 0) +
+DotPlot(object = phase.daoyCbo.sct.clust, features = seppAll.cilia.stem.markers, col.min = 0) +
   coord_flip()
 ```
-
-
----------------------------------------------------------------------------------------------------------
-***Cluster the 'phase' seurat object in which the cell cycle difference has been regressed out***
-```{r}
-# load the object
-phase.daoyCbo.sct <- readRDS("outputs50K/DAOY-CBO/phase.filtRiboMito.daoyCbo.SCT.regressedCCdiff.rds")
-```
-
-```{r}
-# there are now 15 clusters!
-phase.daoyCbo.sct <- phase.daoyCbo.sct %>% 
-  RunPCA(verbose = FALSE) %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE)
-DimPlot(phase.daoyCbo.sct)
-```
-
-```{r}
-# find markers of each cluster
-daoyCbo.sct.POSdegs <- FindAllMarkers(object = phase.daoyCbo.sct,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
-
-```
-# save the POSITIVE DEGs of 'daoyCbo.sct.POSdegs'
-saveRDS(daoyCbo.sct.POSdegs, file = "outputs50K/DAOY-CBO/POS.DEGs.Daoy.Cbo.phase.sct.rds")
-```
-
-```{r}
-# get the number of cells per cluster
-table(Idents(phase.daoyCbo.sct))
-```
-
-```{r}
-head(daoyCbo.sct.POSdegs)
-```
-
-
-```{r}
-daoyCbo.sct.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 30)
-```
-
-Looking at the above table, there are 15 clusters:
-cluster 0 = roof plate/CP
-cluster 1 = GABA-ergic cluster
-cluster 2 = could be glia
-cluster 3 = VZ-derived neurons, PN, 4th ventricle derivatives
-cluster 4 = granule lineage
-cluster 5 = could be glia
-cluster 6 = radial glia and glial markers, uncertain
-cluster 7 = DAOY cells
-cluster 8 = uncertain, but SOX2-OT is expressed in OPCs and astrocytes
-cluster 9 = proliferative cell,may be GCP lineage
-cluster 10 = ciliated cells
-cluster 11 = glia/radial glia
-cluster 12 = uncertain (pct.1 and pct.2 are more similar)
-cluster 13 = DAOY cells
-cluster 14 = DAOY cells 
-
-***Which clusters are the malignant clusters?***
-Comparing the expression of marker genees of each cluster in DAOY-CBO and CBO control there are striking differences which indicate: 1. there are comparatively immature clusters (n=2) of granule cells expressing CNTN2 whereas these cells are not present in CBO control. 2. The number of CNTN1 clusters and NEUROD1 clusters is the same as in CBO control. 3. Cluster 7 expresses IRX3/5, PAX3, MIR124-2HG, POU3F2, MEIS1. None of these factors are expressed to the same level in CBO control. 4. Cluster 13 expresses MIR124-2HG, GRIA4, POU3F2, MEIS1 and LHX9. It also expresses markers of differentiation, e.g. GAP43, DCX, NCAM1 so THIS CLUSTER HAS MIXED CELLS AND SHOULD BE SUB-CLUSTERED/RECLUSTERED (unlike cluster 7 and 14) 5. Cluster 14 expresses TWIST1, PAX3, MEIS1, CHCHD2, and PRRX1 5. Overall, the DAOY-CBO sample has three more clusters than CBO control, and gene expression indicates these are DAOY cell clusters.
-```{r VlnPlotGranuleGenes, fig.height=10}
-# cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
-# malignant clusters are cluster 7 (n=137 cells), cluster 13 (n=77 cells), and cluster 14 (n=55 cells)
-VlnPlot(phase.daoyCbo.sct, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1"))
-```
-
-```{r VlnPlotDaoyCells, fig.height=10}
-# visualise gene expression indicating DAOY cell clusters
-VlnPlot(phase.daoyCbo.sct, features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3", "MIR124-2HG", 
-                                        "POU3F2", "MEIS1", "LHX9", "CHCHD2", "PRRX1"))
-```
-
-Extract the DAOY cells and save as a separate object
-
-```{r}
-daoyOnly.daoyCbo <- subset(phase.daoyCbo.sct, idents = c("7", "13", "14"))
-```
-
-
-```{r}
-saveRDS(daoyOnly.daoyCbo, file = "outputs50K/DAOY-CBO/DaoyOnlyCells.phaseDaoyCbo.SCT.CCdiffRegressed.rds")
-```
-
-Get the cell IDs of the 'daoyOnly.daoyCbo' object
-```{r}
-daoyCellID <- WhichCells(phase.daoyCbo.sct, idents = c("7", "13", "14"))
-length(daoyCellID)
-```
-
-```{r}
-# subset the 'filt.noRiboMito.cboDaoy' seurat object for just daoyCellID vector of cancer cells
-daoy <- subset(filt.noRiboMito.cboDaoy, cells = daoyCellID)
-```
-
-```{r}
-dim(daoy)
-```
-
-```
-# save the 'daoy' object
-saveRDS(daoy, file = "./outputs50K/DAOY-CBO/dooyOnlyCells.subset.filt.noRiboMito.cboDaoy.rds")
-```
-
 
 ---------------------------------------------------------------------------------------------
 ***Examine cell cycle and proliferating cells***
@@ -286,16 +725,106 @@ g2m.genes <- cc.genes$g2m.genes
 prolif.genes <- list(c(s.genes, g2m.genes))
 ```
 
-```{r FeaturePlotProlifernDaoyCbo}
-phase.daoyCbo.sct <- AddModuleScore(phase.daoyCbo.sct,
+```{r FeaturePlotProlifernDaoyCbo, fig.height=6}
+phase.daoyCbo.sct.clust <- AddModuleScore(phase.daoyCbo.sct.clust,
                         features = prolif.genes,
                         name = "prolif.genes")
-FeaturePlot(phase.daoyCbo.sct, features = 'prolif.genes1', label = TRUE, repel = TRUE
+FeaturePlot(phase.daoyCbo.sct.clust, features = 'prolif.genes1', label = TRUE, repel = TRUE
             ) +
    scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
 
 ```
 
+
+----------------------------------------------------------------------------------------------------------
+***Subclustering of cluster 13 (DAOY cells)***
+This did not lead to many significant DEGs because the number of cells is small
+Cluster 13, I marked as a DAOY cluster, is an interesting cluster as there are markers of progenitor/stem-like cells and differentiated cells. Try to subcluster this cluster, and then do differential expression.
+
+```{r}
+# get the graph names for subclustering
+names(phase.daoyCbo.sct.clust@graphs)
+```
+
+
+Choose res = 0.6 for subclustering, no subclusters found at lower res, and 3 clusters found at higher res. Looking at the markers expressed in cluster 13, which suggest two cell types
+```{r}
+phase.daoyCbo.sct.subcls <- FindSubCluster(phase.daoyCbo.sct.clust, 
+                            cluster = "13",
+                            graph.name = "SCT_snn",
+                            resolution = 0.6,
+                            subcluster.name = "subclust",
+                            algorithm = 1)
+```
+
+```{r}
+head(phase.daoyCbo.sct.subcls@meta.data)
+```
+
+
+```{r}
+phase.daoyCbo.sct.subcls@meta.data %>% 
+  filter(seurat_clusters == "13")
+```
+
+```{r}
+# there are 77 cells altogether
+phase.daoyCbo.sct.subcls@meta.data %>% 
+  filter(seurat_clusters == "13") %>% 
+  nrow()
+```
+
+```{r}
+# cluster 13_0 = 58 cells
+# cluster 13_1 = 19 cells
+table(phase.daoyCbo.sct.subcls$subclust)
+```
+
+
+```{r DimplotSubclustersDaoyCbo, fig.height=6}
+DimPlot(phase.daoyCbo.sct.subcls, group.by = "subclust", label = TRUE)
+```
+
+Find DEGs that distinguish cluster 13_0 and 13_1
+```{r}
+deg.subclus0.cl13 <- FindMarkers(phase.daoyCbo.sct.subcls, 
+                        ident.1 = "13_0", 
+                        ident.2 = "13_1", 
+                        group.by = "subclust",
+                        only.pos = TRUE)
+```
+
+```{r}
+# 1885 genes upregulated in cluster13_0 vs cluster13_1. But there will be many genes which
+# have high p-values
+nrow(deg.subclus0.cl13)
+```
+
+The cluster13 subcluster 13_0 consists of differentiation markers, e.g. DCX, TAGLN3, TUBB2B and CD24. 
+CD24 - In human medulloblastoma, CD24 was found to be highly expressed on Group 3, Group 4 and SHH subgroups (doi: 10.1371/journal.pone.0210665). p-values are not as low as in other clusters as the number of cells is more limited.
+STMN1 - High expression of stathmin protein predicts a fulminant course in medulloblastoma (DOI link: https://doi.org/10.3171/2009.2.PEDS08287)
+```{r}
+head(deg.subclus0.cl13, 20)
+```
+
+```{r}
+deg.subclus1.cl13 <- FindMarkers(phase.daoyCbo.sct.subcls, 
+                        ident.1 = "13_1", 
+                        ident.2 = "13_0", 
+                        group.by = "subclust",
+                        only.pos = TRUE)
+```
+
+The adjusted p-values are not significant as the number of cells is small in cluster13_1
+HDAC9 is a poor prognostic marker in MB (https://doi.org/10.1158/1078-0432.CCR-10-0395)
+```{r}
+head(deg.subclus1.cl13, 50)
+```
+
+```
+{r}
+save.image("./RDataFiles/DAOY-CBO_Seurat_EXPLORE1_50K.RData")
+```
 
 Unused code that is retained as it may prove useful
 ```
@@ -310,6 +839,12 @@ metadata <- filt.cboDaoy.seurat[[]]
 nrow(metadata[metadata$percent.ribo > 20, ])
 
 nrow(metadata[metadata$percent.ribo < 20, ])
+```
+Read a CSV file:
+```
+cboDaoy.cluster.markers.noRiboMito <- read.csv("outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", 
+                                       header = TRUE, 
+                                       stringsAsFactors = FALSE)
 ```
 
 Code which was not used, may prove useful later
