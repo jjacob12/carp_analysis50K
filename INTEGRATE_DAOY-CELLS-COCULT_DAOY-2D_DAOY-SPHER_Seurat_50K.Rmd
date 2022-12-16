@@ -5,6 +5,7 @@ date: "04/11/2022"
 output: html_document
 ---
 
+
 ```{r graphical_output}
 options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
 ```
@@ -13,7 +14,8 @@ options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in 
 knitr::opts_chunk$set(dev = "png",
                       dpi = 300,
                       echo = TRUE,   # prints the code (if FALSE then only code output is shown)
-                      cache = TRUE)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/INTEGRATE/figures_DAOY/")
 ```
 
 ```{r load_libraries}
@@ -28,6 +30,11 @@ library(tidyverse)
 library(reshape2)
 library(plyr)
 })
+```
+
+```
+{r}
+load("RDataFiles/INTEGRATE_DAOY-CBO_DAOY-SPHER_DAOY-2D_50K.Rmd.RData")
 ```
 
 -------------------------------------------------------------------------------------------------------------
@@ -86,13 +93,12 @@ tail(metadata)
 daoy.big@meta.data <- metadata
 ```
 
-```{r BarPlotMergedCellCountsDaoyAll}
+```{r}
 dyAll.df <- metadata 
-dyAll.df$sample <- factor(dyAll.df$sample, levels = c("monolayer_orig", "spheroid",  "monolayer_rep",
-                                                      "coculture", "organoid"))
+dyAll.df$sample <- factor(dyAll.df$sample, levels = c("monolayer_orig", "spheroid",      "monolayer_rep", "coculture", "organoid"))
 ```
 
-```{r}
+```{r BarChartCellCountsDaoyMonoSpherCocultOrgMerged, fig.height=6, fig.width=5}
 ggplot(dyAll.df, aes(x=sample, fill=sample)) + 
   	geom_bar() +
   	theme_classic() +
@@ -118,11 +124,12 @@ DimPlot(daoy.big, reduction = "pca") +
 daoy.big <- RunUMAP(daoy.big, dims = 1:5, reduction = "pca")
 ```
 
-```{r DimPlotMergedDyCboSpherCboCNTRL, fig.height=6}
+```{r DimPlotMergedDyCboMonoOrigMonoRepSpherCboCNTRL, fig.height=6}
 DimPlot(daoy.big, reduction = "umap", group.by = "sample")
 ```
 
-```{r FeaturePlotMergedGenesDyCboSpherCboCNTRL, fig.height=12}
+```
+{r VlnPlotGenesDyCboSpherCboCNTRLmerged, fig.height=10, fig.width=12}
 # look at some stemness markers
 VlnPlot(daoy.big, features = c("POU3F2", "GRIA4", "MEIS1", "PRRX1", "IRX3", "CHCHD2"))
 ```
@@ -181,7 +188,7 @@ dy4samples.df$sample <- factor(dy4samples.df$sample,
                                levels = c("spheroid", "monolayer", "coculture", "organoid"))
 ```
 
-```{r}
+```{r BarChartDaoyCellCounts4conditions, fig.height=6, fig.width=5}
 ggplot(dy4samples.df, aes(x=sample, fill=sample)) + 
   	geom_bar() +
   	theme_classic() +
@@ -202,16 +209,30 @@ This result makes sense. Spheroid is more closely related to coculture and organ
 DimPlot(dy.4samples, reduction = "umap", group.by = "sample")
 ```
 
-```{r FeaturePlotMergedGenesDyCboSpherCboCNTRL, fig.height=12}
-# look at some stemness markers
+```{r}
+# Set Idents to 'sample'
 Idents(dy.4samples) <- "sample"
-VlnPlot(dy.4samples, features = c("POU3F2", "GRIA4", "MEIS1", "PRRX1", "IRX3", "CHCHD2"))
 ```
 
+The DAOY-CBO and control CBO have the most NRG2, NRG3 and NRG4 ligand
+```{r VlnPlotNRGLigandsMergedDaoy2DVs3dVsDaoyCBOvsCbo4samples, fig.height=8}
+VlnPlot(dy.4samples, features = c("NRG1", "NRG2", "NRG3", "NRG4", "CD4"),
+        slot = "data",
+        assay = "RNA")
+```
+
+Here I am plotting the expression of notch ligands in DAOY-2D, DAOY-spher, DAOY-CBO and CBO samples. The increased expression of notch ligands in the DAOY-CBO and CBO samples is consistent with the upregulated expression of Notch readouts, HES5 and HES6 in the extracted DAOY-only coculture cells. This supports the view that increased ligand stimulation of notch signaling in the co-culture condition is what drives notch signalling in the DAOY cells in coculture
+
+```{r VlnPlotNotchLigandsMergedDoyy2dVs3dVsDaoyCboVsCbo, fig.height=8, fig.width=12}
+VlnPlot(dy.4samples, features = c("DLL1", "DLL3", "DLL4", "JAG1", "JAG2"),
+        slot = "data",
+        assay = "RNA")
+```
 ----------------------------------------------------------------------------------------------------
-***Integrated analysis of DAOY only cells from DAOY-CBO, DAOY-SPHER cells and DAOY-2D cells using SCTransform***
+***INTEGRATED analysis of DAOY only cells from DAOY-CBO, DAOY-SPHER cells and DAOY-2D cells using SCTransform***
 
 The problem with the above merge is I cannot tell which are the DAOY cells in the DAOY-CBO sample. So, integrate the extracted DAOY cells from the co-culture with DAOY-SPHER cells - go back to phase object, find the cells that are cancerous, and use those cell IDs to subset the earlier seurat object.
+IMPORTANT NOTE - if the objects being integrated are already SCTransformed, DO NOT run SCTransform again on the integrated objects. Best NOT to use already SCTransformed objects when using SCTransform integration workflow
 ```{r}
 dy2d <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
@@ -220,10 +241,14 @@ dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/dooyOnlyCells.subset.filt.noRiboMit
 
 ```{r}
 dim(dy2d)
+dim(dySpher)
+dim(dyOnly.dyCbo)
 ```
 
 
-```{r}
+```
+# No need to re-run this code as the resulting integrated object has been saved
+
 # run SCTransform and then prep integration
 dy.3samples.list <- list(dy2d, dySpher, dyOnly.dyCbo)
 dy.3samples.list.sct <- suppressWarnings(lapply(X = dy.3samples.list, FUN = SCTransform))
@@ -231,7 +256,7 @@ features <- SelectIntegrationFeatures(object.list = dy.3samples.list.sct, nfeatu
 dy.3samples.list.sct <- PrepSCTIntegration(object.list = dy.3samples.list.sct, anchor.features = features)
 ```
 
-```{r}
+```
 # make the integrated object
 dy.3samples.sct.anchors <- FindIntegrationAnchors(object.list = dy.3samples.list.sct, 
                                             normalization.method = "SCT",
@@ -239,7 +264,7 @@ dy.3samples.sct.anchors <- FindIntegrationAnchors(object.list = dy.3samples.list
 dy.3samples.combined.sct <- IntegrateData(anchorset = dy.3samples.sct.anchors, normalization.method = "SCT")
 ```
 
-```{r}
+```
 # cluster the integrated object
 dy.3samples.combined.sct <- RunPCA(dy.3samples.combined.sct, verbose = FALSE)
 dy.3samples.combined.sct <- RunUMAP(dy.3samples.combined.sct, reduction = "pca", dims = 1:30)
@@ -249,33 +274,24 @@ dy.3samples.combined.sct <- FindNeighbors(dy.3samples.combined.sct,
 dy.3samples.combined.sct <- FindClusters(dy.3samples.combined.sct, resolution = 0.2)
 ```
 
-```{r}
+```
+# DAOY_2Drep = 1935; DAOY-CBO = 269; DAOY-spher = 660 cells
 table(dy.3samples.combined.sct$orig.ident)
 ```
 
-```{r}
+```
 # change the orig.ident notation for future ggplots
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "DAOY_2Drep"] <- "DAOY_monolayer"
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "Daoy-spher"] <- "DAOY_spheroid"
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "DAOY-CBO"] <- "DAOY_coculture"
 ```
 
-Nice overlap of DAOY cells grown in different conditions
-```{r DimPlotIntegratedDaoyOnlyCocultVsDoaySpherVsDaoy2d}
-DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "orig.ident")
-```
-
-The clustering of the different samples shows not very good separation between cells originating from different samples, which is fine, and what is expected after integration
-```{r}
-DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "seurat_clusters")
-```
 
 ```
 # save the SCT integrated object, 'dy.3samples.combined.sct'
 saveRDS(dy.3samples.combined.sct, 
         file = "outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.clustered.integrated.SCT.rds")
 ```
-
 
 ```{r}
 # load the above object
@@ -284,16 +300,27 @@ dy.3samples.combined.clust.sct <-
 ```
 
 ```{r}
-# change the orig.ident notation for future plots
-dy.3samples.combined.clust.sct@meta.data[dy.3samples.combined.clust.sct@meta.data == "DAOY-CBO"] <- "DAOY_coculture"
-dy.3samples.combined.clust.sct@meta.data[dy.3samples.combined.clust.sct@meta.data == "Daoy-spher"] <- "DAOY_spheroid"
-dy.3samples.combined.clust.sct@meta.data[dy.3samples.combined.clust.sct@meta.data == "DAOY_2Drep"] <- "DAOY_monolayer"
-
-# switch from cluster idents to 'orig.ident'
-Idents(dy.3samples.combined.clust.sct) <- "orig.ident"
+head(dy.3samples.combined.clust.sct@meta.data)
 ```
 
 ```{r}
+table(dy.3samples.combined.clust.sct$orig.ident)
+```
+
+
+Nice overlap of DAOY cells grown in different conditions
+```{r DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dRep}
+DimPlot(dy.3samples.combined.clust.sct, reduction = "umap", group.by = "orig.ident")
+```
+
+The clustering of the different samples shows not very good separation between cells originating from different samples, which is fine, and what is expected after integration
+```
+{r DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dCLUSTERS}
+DimPlot(dy.3samples.combined.clust.sct, reduction = "umap", group.by = "seurat_clusters")
+```
+
+```{r}
+Idents(dy.3samples.combined.clust.sct) <- "orig.ident"
 levels(dy.3samples.combined.clust.sct)
 ```
 
@@ -302,7 +329,9 @@ DefaultAssay(dy.3samples.combined.clust.sct) <- "RNA"
 ```
 
 Here, use a subset of cells (maximum n=500 for any 1 sample) when running FindAllMarkers() otherwise this function is very slow for the DAOY_monolayer sample. On testing with the full number of cells, vs. downsampled cells there is no difference to the results
-```{r}
+```
+# no need to rerun this code
+
 daoy.cells.UPmarkers <- FindAllMarkers(object = dy.3samples.combined.clust.sct,
                                      min.pct = 0.25,
                                      logfc.threshold = log(2),
@@ -340,7 +369,8 @@ top20
 ```
 
 
-```{r}
+```
+{r}
 # apply ScaleData() before runnning DoHeatmap
 dy.3samples.combined.clust.sct <- ScaleData(dy.3samples.combined.clust.sct,
                                          features = as.character(unique(top20$gene)), 
@@ -372,7 +402,8 @@ MFAP4 -extracellular matrix protein
 CNMD - transmembrane glycoprotein, undergoes cleavage, and that product is secreted into ECM
 CFH - interacts with ECM proteins
 GAS2 - GAS2 effects are dependent on the ECM (doi: 10.1242/jcs.140558)
-```{r HeatmapMarkersONS76cocultSpherMono, fig.height=10}
+```
+{r HeatmapMarkersDaoyCocultSpherMono, fig.height=10}
 # this heatmap looks odd, the upregulated genes for a single sample are not all grouped together
 DoHeatmap(object = dy.3samples.combined.clust.sct, 
           features = as.character(unique(top20$gene)),
@@ -381,6 +412,64 @@ DoHeatmap(object = dy.3samples.combined.clust.sct,
   theme(axis.text.y = element_text(size = 12))
 ```
 
+--------------------------------------------------------------------------------------------------
+***Genes which show greater expression in DAOY-only coculture compared to monolayer and spheroid conditions***
+Check the expression of various genes including stemness genes in ALL cells in each sample. Below are shown genes which are all increased in coculture condition. ERBB4 was identified in the Volcano Plot as the most significant upregulated gene in DAOY-only cocultured cells VS Daoy-spheroids.
+
+See the Github issue (https://github.com/satijalab/seurat/issues/3334) for guidance on RNA assay and the importance of normalization of the data before VlnPlot, FeaturePlot (but not DoHeatMap())
+
+THE VIOLIN PLOTS BELOW (NOT SHOWN) ARE THE SAME AS THE VIOLIN PLOTS IN THE LATER SECTION OF THIS FILE, SO THERE IS NO NEED TO PLOT THE SAME GENES SHOWING SIMILAR RESULTS TWICE!
+```
+{r VlnPlotStemnessGenesIntegratedDaoy2dVs3dVsdyCocultAllCells, fig.height=20, fig.width=12}
+# check the RNA slot is used when plotting integrated data!!! In this case I made the default assay = RNA
+
+VlnPlot(dy.3samples.combined.clust.sct, 
+        features = c("ERBB4", "SOX2", "POU3F2","FABP7", "IRX5", "TTYH1", "NRG3",                                                "NNAT","MIR124-2HG", "DCX", "CTNNA2", "MEIS1", "CD4"),
+       slot = 'data',
+       assay = 'RNA')
+```
+
+
+------------------------------------------------------------------------------------------------------
+***Neuregulin signalling differs in the cells grown under monolayer, spheroid and co-culture conditions***
+NRG1, 2, 4 expression are not elevated in the DAOY cells that have been cocultured relative to 2D and spheroid cultures. NRG 3 is higher in cocultured DAOY cells
+```
+{r VlnPlotNeuregulinsIntegratedDaoyOnlyCocultVs3dVs2dAllCells, fig.height=10, fig.width=12}
+VlnPlot(dy.3samples.combined.clust.sct, features = c("NRG1", "NRG2", "NRG3", "NRG4"))
+```
+
+
+
+
+Below are other interesting genes, but these do not show increased expressed in the DAOY-only coculture. There is not much evidence of increased SHH signalling. SMAD signalling is overall less than in ONS76 cells, with the possible exception of SMAD3 in DAOY-monolayer cells. Hypothesis is that the different level of SMAD signalling in ONS76 cells vs DAOY cells is responsible for the higher expression of SOX2 in ONS76 monolayer and spheroid cells. The targets of SMAD signalling, SERPINE1 and ID1 are expressed overall at lower level in DAOY cells vs ONS76 cells. Note however the expression of these targets is context-dependent (https://doi.org/10.1038/onc.2012.191)
+```{r VlnPlotStemShhSMADGenesIntegratedDy2dVs3dVsDycocultAllCells, fig.height=25, fig.width=12}
+# check the RNA slot is used when plotting integrated data!!! In this case I made the default assay = RNA
+dy.3samples.combined.clust.sct <- ScaleData(dy.3samples.combined.clust.sct)
+Idents(dy.3samples.combined.clust.sct) <- "orig.ident"
+VlnPlot(dy.3samples.combined.clust.sct, features = c("HOXB2","IRX3", "TWIST1",
+                                        "PTCH1", "GLI1", "GLI2", "GLI3", "HHIP",
+                                        "MYC", "MYCN", "ZIC1", "OTX2", "MAPK3","PROX1", "SMAD1", "SMAD2",
+                                        "SMAD3", "SMAD4", "SMAD5", "SMAD6", "SMAD7", "SERPINE1", "ID1", "NES"),
+        slot = "data",
+        assay = "RNA")
+```
+
+
+------------------------------------------------------------------------------------------------------
+***Notch-delta signalling in DAOY-2D, DAOY-spheroid, DAOY-only coculture, DAOY-CBO (all cells) and CBO***
+Check whether SOX2 upregulation in DAOY-only coculture is also due to increased notch signalling. It looks like there is greater HES5 and HES6 expression in coculture, suggesting increased notch signalling in this condition. Notch ligands are also shown but these genes are more relevant in the healthy CBO cells with which the DAOY cells are co-cultured. The take home message of notch ligand expression from 'dy.3samples.combined.clust.sct'  is that apart from DLL1, notch ligands are expressed at lower level in the DAOY cells grown in coculture
+```{r VlnPlotIntegratedNotchDeltaDaoyOnlyCocultVsSpherVs2dAllCells, fig.height=15, fig.width=12}
+# notch signalling readout genes and notch ligands
+VlnPlot(dy.3samples.combined.clust.sct, features = c("HES5", "HES6",
+                                        "DEC1", "DLL1", "DLL3", "DLL4", "JAG1", "JAG2"),
+        slot = "data",
+        assay = "RNA")
+```
+
+
+
+--------------------------------------------------------------------------------------------------------
+***Downsampling of DAOY-2D and DAOY-spher cells to generate Heatmap of DEGs in integrated DAOY-2D, spheroid and DAOY-only coculture samples***
 The above heatmap has used all the cells in each sample. To get around the odd appearance of the heatmap, downsample the cells from each of the 'Idents' in the integrated seurat object so that DoHeatmap only shows n = 269 cells for each sample. 269 cells is the number of DAOY cells in the co-culture.
 ```{r}
 # get the cell IDs of all 269 daoyOnly.daoycbo cells
@@ -409,7 +498,7 @@ length(dyIDs269.mono)
 Only use the below cell IDs as input cells for FindAllMarkers()
 ```{r}
 # make a vector of cell identities to use
-cellIDs.3samples <- c(dyIDs.cocult, dyIDs269.spher, dyIDs269.mono)
+cellIDs.3samples <- c(dyIDs269.mono, dyIDs269.spher, dyIDs.cocult)
 length(cellIDs.3samples)
 ```
 
@@ -417,25 +506,29 @@ length(cellIDs.3samples)
 # subset 'dy.3samples.combined.clust.sct' to get only the 807 (269 x 3 = 807) cells
 dy.3samples.small <- subset(dy.3samples.combined.clust.sct, cells = cellIDs.3samples)
 dim(dy.3samples.small)
+class(dy.3samples.small)
 ```
 
-```{r}
+```
+# No need to rerun this code
+
 # run FindAllMarkers on the smaller object - much quicker to run!
 daoy.3samplesSmall.UPmarkers <- FindAllMarkers(object = dy.3samples.small,
                                      min.pct = 0.25,
                                      logfc.threshold = log(2),
                                      only.pos = TRUE
                                      )
-```
-
-```{r}
 # 12,385 UP-regulated markers
-nrow(daoy.3samplesSmall.UPmarkers)
 ```
 
 ```
 # save these positive markers
 saveRDS(daoy.3samplesSmall.UPmarkers, file = "outputs50K/INTEGRATE/Pos.DEGs.DaoyCocult.2d.Spher.downsampled269cells.integrated.rds")
+```
+
+```{r}
+daoy.3samplesSmall.UPmarkers <- 
+  readRDS("outputs50K/INTEGRATE/Pos.DEGs.DaoyCocult.2d.Spher.downsampled269cells.integrated.rds")
 ```
 
 
@@ -447,30 +540,259 @@ top20.small <- daoy.3samplesSmall.UPmarkers %>%
 ```
 
 ```{r}
-top20.small
+top20.small %>% 
+  head(10)
 ```
 
 ```{r}
-dy.3samples.small <- ScaleData(dy.3samples.small,
-                              features = as.character(unique(top20.small$gene)), 
-                              assay = "RNA")
+dy.3samples.small <- ScaleData(dy.3samples.small)
 ```
 
-```{r HeatmapMarkersONS76cocultSpherMono, fig.height=15}
+Plot a heatmap of genes of interest that are differentially expressed between DAOY monolayer, spheroid and DAOY-only coculture
+```{r HeatmapMarkersDaoyCocultSpherMonoDownSampled, fig.height=10, fig.width=12}
 DoHeatmap(object = dy.3samples.small, 
           features = as.character(unique(top20.small$gene)),
           group.by = "ident",
           assay = "RNA") +
-   theme(text = element_text(size = 20))
+   theme(axis.text = element_text(size = 10))
+ 
 ```
 
-Note SOX2 positively regulates POU3F2 and FABP7 expression, SOX2 represses NEUROD1 transcription. The plots below are interesting! All the below genes, incl. stemness genes are only upregulated in the coculture condition!
-```{r fig.height=15}
+-------------------------------------------------------------------------------------------------------
+***Violin plots of stemness markers, ERBB4, neuregulins, notch-delta and other genes expressed in the DAOY cells in coculture, DAOY-SPHER and DAOY-2D condition in DOWNSAMPLED cells***
+These Violin plots are consistent with the violin plots using ALL cells above.
+Here we are taking a few genes expressed in the DAOY-CBO sample and comparing their expression in DAOY cells grown under different conditions (mono, spher, coculture)
+Note SOX2 positively regulates POU3F2 and FABP7 expression, SOX2 represses NEUROD1 transcription. The plots below are interesting! All the below genes, incl. stemness genes are only upregulated in the coculture condition! 
+UNITS ARE LOG-NORMED VERSION OF COUNTS.
+NNAT is one of the genes known to upregulated in MB.
+
+
+```{r VlnPlotStemnessMarkersOtherGenesIntegratedDaoyOnlyCocultVsSpherVsMonoDownSampled, fig.height=20, fig.width=12}
 # make violin plots of key genes in the cancer cells grown under three conditions. The 'dy.3samples.small'
 # seurat object should be normalised after loading, and then only generate the Violin plot!
 # The y-axis is in log values
-VlnPlot(dy.3samples.small, features = c("ERBB4", "MEIS1", "IRX3", "IRX5", "SOX2", "POU3F2","FABP7",
-                                        "MIR124-2HG", "PTCH1", "GLI2", "DCX", "CTNNA2", "ZIC1"))
+
+VlnPlot(dy.3samples.small, 
+        features = c("SOX2", "POU3F2","FABP7", "GRIA4", "MYT1L", "MEIS1","IRX3", "IRX5", "TTYH1",                                                   "NNAT","MIR124-2HG", "DCX", "ZIC1", "CTNNA2"),
+        slot = "data",
+        assay = "RNA")
+```
+
+NEUREGULINS:
+High level of ERBB4 suggests neuregulin signalling is active in the cocultures - checking for NRG family member expression in the CBO shows NRG3 is strongly expressed in the DAOY only cells in coculture, consistent with the ViolinPlot above. NRG1 and NRG2 are expressed most in the DAOY-2D cells. NRG2 activates SOX2 expression in rodent adult neurogenesis (doi: 10.1073/pnas.0510410103). These violin plots are consistent with the violin plots using ALL cells.
+```{r VlnPlotNeuregulinsDaoyOnlyCocultVsSpherVsMono, fig.height=8}
+VlnPlot(dy.3samples.small, features = c("ERBB4", "NRG1", "NRG2", "NRG3", "NRG4"),
+        slot = "data",
+        assay = "RNA")
+```
+
+Plotting other interesting genes which are not only expressed in the DAOY-only coculture cells
+```{r VlnPlotShhGenesIntegratedDy2dVs3dVsDycocultDownSampled, fig.height=5, fig.width=12}
+# check the RNA slot is used when plotting integrated data!!! In this case I made the default assay = RNA
+
+VlnPlot(dy.3samples.small, 
+        features = c("PTCH1", "PTCH2", "GLI2"),
+        slot = "data",
+        assay = "RNA")
+```
+
+SOX2 and notch-delta signalling:
+Sox2 is activated by Notch signalling and this relationship is well-recognised in multiple different cellular/tissue contexts (e.g.  https://doi.org/10.18632/oncotarget.10954 , doi: 10.1016/j.cellsig.2020.109537 , DOI: https://doi.org/10.1523/JNEUROSCI.3150-12.2013 , https://doi.org/10.1073/pnas.100308910). Readouts of Notch signalling are shown and HES5/6 are strongly expressed in the DAOY-coculture cells, while the Notch ligand DLL1 is expressed in the DAOY-only cells in coculture and DLL3 and JAG1 are expressed in the CBO control (same as Violin plots above).
+```{r VlnPlotNotchDeltaIntegratedDaoyOnlyCocultVsSpherVsMonoDownsampled, fig.height=5}
+# notch signalling readout genes and notch ligands
+VlnPlot(dy.3samples.small, features = c("HES5", "HES6"), 
+        slot = "data",
+        assay = "RNA")
+```
+
+Examine "stemness" markers in the different conditions. Only FABP7 is expressed
+```{r, fig.height=10}
+VlnPlot(dy.3samples.small, features = c("GFAP", "OLIG1", "OLIG2", "FABP7", "PDGFRA"), 
+        slot = "data",
+        assay = "RNA")
+```
+
+
+------------------------------------------------------------------------------------------
+***Find genes differentially expressed between spheroid and monolayer condition***
+
+```{r}
+# find DEGs and plot in a volcano plot
+# just use the two datasets merged
+dy.3d2d.merge <- merge(dy2d.rep, 
+                  y = c(dy3d), 
+                  add.cell.ids = c("dy2drep", "dy3d"), 
+                  project = "dy2samples.merge")
+dy.3d2d.merge
+```
+
+```{r}
+# Create metadata dataframe
+metadata <- dy.3d2d.merge@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dy2drep_"))] <- "monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^dy3d_"))] <- "spheroid"
+```
+
+```{r}
+dy.3d2d.merge@meta.data <- metadata
+```
+
+```{r}
+dy.3d2d.merge <- NormalizeData(dy.3d2d.merge)
+dy.3d2d.merge <- FindVariableFeatures(dy.3d2d.merge)
+dy.3d2d.merge <- ScaleData(dy.3d2d.merge)
+dy.3d2d.merge <- RunPCA(dy.3d2d.merge, features = VariableFeatures(object = dy.3d2d.merge))
+dy.3d2d.merge <- RunUMAP(dy.3d2d.merge, dims = 1:5, reduction = "pca")
+```
+
+```{r}
+Idents(dy.3d2d.merge) <- "sample"
+dy.3d2d.merge.markers <- FindMarkers(dy.3d2d.merge, ident.1 = "spheroid", ident.2 = "monolayer",
+                               verbose = FALSE,
+                               min.pct = 0.5,
+                               logfc.threshold = 0.25)
+```
+
+```{r}
+dy.3d2d.merge.markers.gene <- dy.3d2d.merge.markers %>% 
+  rownames_to_column(var = "gene")
+```
+
+```{r}
+dy.3d2d.merge.markers.gene %>% 
+  arrange(desc(avg_log2FC)) %>% 
+  head(20)
+```
+
+```{r}
+dy.3d2d.merge.markers.gene %>% 
+  arrange(avg_log2FC) %>% 
+  head(30)
+```
+
+DOWNREGULATED
+SERPINE1 - Downregulation of PAI-1 significantly reduced cellular proliferation through an inability to progress from the G(0-G1) phase of the cell cycle. Accordingly, overexpression of PAI-1 augmented proliferation by encouraging S-phase entry (DOI: 10.1158/1541-7786.MCR-13-0543)
+MT2A - expression of the proliferation marker Ki67 was inversely correlated with MT3 at relapse
+PRKCA - PRKCA kinase domain induces phosphorylation of RAF-1, which in turn activates the extracellular signal-regulated kinase/mitogen-activated protein kinase (ERK/MAPK) cascade, a key signaling pathway in melanocyte growth and survival.13 Furthermore, PRKCA fusions have been identified as putative pathogenic events in other tumors, such as papillary glioneuronal tumor and lung squamous cell carcinoma.  
+EDIL3 -identification of 17 genes associated with enhanced medulloblastoma formation. We show that these genes are enriched for neuronal transcription factors defining a novel gene network which, when mutagenised by SB, is associated with increased cell proliferation and reduced neuronal differentiation (doi: 10.1186/2051-5960-1-35)
+TENM3 - Evidence of its deregulation in different types of cancer has suggested that TENM3 may have a possible functional role in tumorigenesis. The in silico analysis of RNA sequencing data from the TCGA and GTEx projects demonstrates that TENM3 is significantly more highly expressed, as compared to normal tissues, in head and neck squamous cell carcinoma, in pancreatic adenocarcinoma, in thymoma (Figure 4), and in neuroblastoma. High TENM3 expression is observed in the human neuroblastoma cell line SH-SY5Y, in which TENM3 is one of the most abundant membrane proteins (doi: 10.3390/ijms22052321)
+
+UPREGULATED in Volcano Plot - many ECM proteins
+For example:
+MDK - has been linked to EMT (https://doi.org/10.1038/s41388-019-1124-8)
+COL14A1 -  is a collagen gene
+COL1A2 -  is a collagen gene
+CRIP1 - its upregulation is associated with REDUCED proliferation in breast cancer (doi: 10.1186/1476-4598-12-28)
+SFRP2 - ECM remodelling (doi: 10.1152/ajpcell.00137.2016)
+GPC3 - glypican
+PCOLCE - This gene encodes a glycoprotein which binds and drives the enzymatic cleavage of type I procollagen and heightens C-proteinase activity
+IFI6 - associated with ECM remodelling in oesophageal Cancer (https://doi.org/10.1007/s00262-022-03288-0)
+VCAN - is an ECM proteoglycan (https://doi.org/10.3389/fimmu.2020.00512)
+PTN - pleiotrophin is a secreted cell signaling cytokine that acts as growth factor associated with the extracellular matrix, which has recently started to come to the fore as a significant neuromodulator with multiple neuronal functions (https://doi.org/10.3389/fncel.2014.00443)
+
+```{r VolcanoPlotDAOYSpherVSMono, fig.height=10, fig.width=10}
+genes.to.label.daoySpherVsMono <- c("MDK", "COL14A1", "SFRP2", "IFI6", "VCAN", "PTN", "COL1A2",
+                                    "CRIP1", "GPC3", "PCOLCE", "SERPINE1", "MT2A", "PKRCA",
+                                    "EDIL3", "NEGR1", "TENM3")
+
+EnhancedVolcano(dy.3d2d.merge.markers.gene,
+                lab = dy.3d2d.merge.markers.gene$gene,
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                selectLab = genes.to.label.daoySpherVsMono,
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+```
+
+-------------------------------------------------------------------------------------------------------
+***Find Genes differentially upregulated in DAOY-only cocultures vs DAOY-spher***
+Some of these genes are plotted in the violin plots above and can be found by inspecting genes recovered from the FindAllMarkers() function.
+A volcano plot is shown here:
+```{r}
+# find DEGs and plot in a volcano plot
+# use the two datasets merged
+dy.cocult.3d.merge <- merge(dy3d, 
+                  y = c(dyOnly.dyCbo), 
+                  add.cell.ids = c("dy3d", "dyOnlyCbo"), 
+                  project = "dy3dcocult.merge")
+dy.cocult.3d.merge
+```
+
+```{r}
+# Create metadata dataframe
+metadata <- dy.cocult.3d.merge@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dy3d_"))] <- "spheroid"
+metadata$sample[which(str_detect(metadata$cells, "^dyOnlyCbo_"))] <- "coculture"
+```
+
+```{r}
+dy.cocult.3d.merge@meta.data <- metadata
+```
+
+```{r}
+dy.cocult.3d.merge <- NormalizeData(dy.cocult.3d.merge)
+dy.cocult.3d.merge <- FindVariableFeatures(dy.cocult.3d.merge)
+dy.cocult.3d.merge <- ScaleData(dy.cocult.3d.merge)
+dy.cocult.3d.merge <- RunPCA(dy.cocult.3d.merge, features = VariableFeatures(object = dy.cocult.3d.merge))
+dy.cocult.3d.merge <- RunUMAP(dy.cocult.3d.merge, dims = 1:5, reduction = "pca")
+```
+
+This shows the DAOY cells upregulate SOX2 expression (shown in 4th PC) when grown in the coculture condition versus spheroid condition
+```{r VizDimLoadingsDAOYonlyCocultVsSpher}
+VizDimLoadings(dy.cocult.3d.merge, dims = 4, reduction = "pca", balanced = TRUE, nfeatures = 10)
+```
+
+```{r}
+Idents(dy.cocult.3d.merge) <- "sample"
+dy.cocult.3d.merge.markers <- FindMarkers(dy.cocult.3d.merge, ident.1 = "coculture", 
+                                          ident.2 = "spheroid",
+                                          verbose = FALSE,
+                                          min.pct = 0.5,
+                                          logfc.threshold = 0.25)
+```
+
+```{r}
+dy.cocult.3d.merge.markers.gene <- dy.cocult.3d.merge.markers %>% 
+  rownames_to_column(var = "gene")
+```
+
+```{r}
+dy.cocult.3d.merge.markers.gene %>% 
+  arrange(desc(avg_log2FC)) %>% 
+  head(30)
+```
+
+UPREGULATED in Volcano Plot:
+ERBB4 - top gene, stands out as strongly upregulated
+NNAT - NNAT promotes MB growth (DOI:10.1215/15228517-2008-038
+CRABP1 - high CRABP1 expression levels are associated with poor patient prognosis, high tumor grade in breast cancer, MB modelling in cerebellar organoids (doi: 10.1038/s41467-019-13989-3 - Ballabio et al, Nat Comm). Overexpressed in Gp 3 and 4 MB (DOI: 10.1371/journal.pone.0112909)
+NPAS3 - We found that the internodular MBEN (exclusively SHH-MB) compartment comprised proliferating early cerebellar granular neuronal precursors (CGNP)-like tumor cells as well as stromal, vascular, and immune cells. In contrast, the nodular compartment consisted of postmitotic, neuronally differentiated MBEN cells..... Astrocyte marker genes, such as NPAS3, CD44 and LAMA2, were also expressed in a fraction of early CGNP-like cells, which were identified as potential precursors of tumor astrocytes in our snRNA-seq trajectory analysis (https://doi.org/10.1101/2022.09.02.506321).
+NR2F1 - enriched in Gp 3 MB (doi: https://doi.org/10.1101/2022.08.17.504304)
+TUBB3 - neuronal differentiation marker
+GPHN - upregulated in infant SHH-MB (DOI 10.1007/s00401-011-0846-7)
+MEIS1 - upregulated in infant SHH-MB (DOI 10.1007/s00401-011-0846-7)
+FEZ1 - upregulated in infant SHH-MB (DOI 10.1007/s00401-011-0846-7)
+PRDM1 - upregulated in infant SHH-MB (DOI 10.1007/s00401-011-0846-7)
+
+```{r VolcanoPlotDaoyOnlyCocultVsSpher, fig.height=10, fig.width=8}
+
+genes.to.label.daoyCocultVsSpher <- c("ERBB4", "NNAT", "CRABP1", "NPAS3", "TUBB3", "NR2F1", "GPHN")
+
+EnhancedVolcano(dy.cocult.3d.merge.markers.gene,
+                lab = dy.cocult.3d.merge.markers.gene$gene,
+                selectLab = genes.to.label.daoyCocultVsSpher,
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
 ```
 
 ----------------------------------------------------------------------------------------------------
@@ -491,12 +813,19 @@ dy.3samples.small <- readRDS("outputs50K/INTEGRATE/daoyOnlyCocult.daoy2D.daoySph
 dy.3samples.small <- NormalizeData(dy.3samples.small) 
 ```
 
+```
+{r}
+class(dy.3samples.small)
+```
+
+
 ```{r}
 table(dy.3samples.small$orig.ident)
 ```
 
 
-```{r}
+```
+{r}
 # set the DefaultAssay to RNA and subset the integrated object
 DefaultAssay(dy.3samples.small) <- "RNA"
 dy2d <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_monolayer"))
@@ -504,20 +833,23 @@ dy3d <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_spheroid"))
 dyCocult <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_coculture"))
 ```
 
-```{r}
+```
+{r}
 av.dy2d <- AverageExpression(dy2d)$RNA
 av.dy3d <- AverageExpression(dy3d)$RNA
 av.dyCocult <- AverageExpression(dyCocult)$RNA
 ```
 
-```{r}
+```
+{r}
 # make the column names of the matrix objects meaningful
 colnames(av.dy2d) <- "DAOY_monolayer"
 colnames(av.dy3d) <- "DAOY_spheroid"
 colnames(av.dyCocult) <- "DAOY_coculture"
 ```
 
-```{r}
+```
+{r}
 # convert the matrices of Average Expression to dataframes
 # df = dataframe
 av.dy2d.df <- as.data.frame(av.dy2d) %>% 
@@ -528,22 +860,30 @@ av.dyCocult.df <- as.data.frame(av.dyCocult) %>%
   rownames_to_column("genes")
 ```
 
-```{r}
+```
+{r}
 # left join all three dataframes in one go
 dy.3dfs <- join_all(list(av.dyCocult.df, av.dy3d.df, av.dy2d.df), 
                        by = "genes", type = "left")
 ```
 
-```{r}
+```
+{r}
 # identify any NA values - there are none
 colSums(is.na(dy.3dfs))
 ```
 
 ```
 # save the combined dataframe of Average Expression in subsets of the 
-# integrated object (dy.3samples.small)
+# integrated object (dy.3dfs)
 saveRDS(dy.3dfs, file = "outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
 ```
+
+```{r}
+# load the above integrated seurat object
+dy.3dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
+```
+
 
 ```{r}
 dy.3dfs[dy.3dfs$genes %in% c("ERBB4", "MEIS1", "IRX3", "IRX5", "SOX2", "POU3F2","FABP7",
@@ -586,7 +926,7 @@ diff.stem.long.df$genes <- factor(diff.stem.long.df$genes,
 levels(diff.stem.long.df$genes)
 ```
 
-```{r LineplotGenesOfInterestAvgExpressnOns76cocultSpherMono, fig.height = 8}
+```{r LineplotGenesOfInterestAvgExpressnDaoyOnlyCocultVsSpherVsMono, fig.height = 8}
 # plot the genes as a line graph
 diff.stem.long.df %>% 
   ggplot(aes(x = sample, y = expression, group = genes, colour = genes)) +
@@ -622,12 +962,14 @@ small.genes %>%
         axis.text.x = element_text(angle = 45, hjust = 1)) 
 ```
 
-```{r}
+```
+{r}
 # load the above dataframe of combined Average Expression of the three samples
 av.dy.3dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
 ```
 
-```{r}
+```
+{r}
 # run correlation function
 # select the columns with numeric values only
 RNAcounts <- av.dy.3dfs %>% 
@@ -637,7 +979,8 @@ corr.dy.3samples
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```{r}
+```
+{r}
 # prepare data for an upper triangular plot
 upper.dy.3samples <- corr.dy.3samples
 
@@ -646,7 +989,8 @@ upper.dy.3samples[lower.tri(upper.dy.3samples)] <- NA
 upper.dy.3samples
 ```
 
-```{r}
+```
+{r}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.dy.3samples <- melt(upper.dy.3samples, na.rm = TRUE)
 head(up.m.dy.3samples)
@@ -662,7 +1006,7 @@ saveRDS(up.m.dy.3samples, file = "outputs50K/INTEGRATE/CorrTableAllgenesDAOYCocu
 up.m.dy.3samples <- readRDS("outputs50K/INTEGRATE/CorrTableAllgenesDAOYCocultSpherMono.downsampled.rds")
 ```
 
-```{r PlotCorrAllGenesONS76CocultSpherMono}
+```{r PlotCorrAllGenesDaoyOnlyCocultVsSpherVsMono}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.dy.3samples, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
@@ -687,8 +1031,11 @@ ggplot(data = up.m.dy.3samples, aes(x = Var1, y = Var2, fill = value)) +
 
 ---------------------------------------------------------------------------------------------------
 ***Get a correlation matrix of all 7 samples, for DAOY and ONS76 cells***
+Here each sample was used without extracting MB cells from the coculture condition
 
-```{r}
+```
+# NO NEED TO RE-RUN THIS CODE CHUNK
+
 # load datasets
 # repeat DAOY-2D dataset which was sequenced at much greater depth
 dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
@@ -702,13 +1049,25 @@ o76Cbo <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.ons76cbo.rds")
 cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
 ```
 
-```{r}
+```
 all.samples <- merge(dy2d.rep, 
                   y = c(dy3d, o76.2d, o76.3d, dyCbo, o76Cbo, cbo), 
                   add.cell.ids = c("dy2d", "dy3d", "ons2d", "ons3d", "dyCbo", "onsCbo", "Cbo"), 
                   project = "all.merge")
 all.samples
 ```
+
+```
+# save the 'all.samples' object
+saveRDS(all.samples, file = "./outputs50K/INTEGRATE/SevenSamplesMerged.rds")
+```
+
+```{r}
+# load the 'all.samples' object
+
+all.samples <- readRDS("outputs50K/INTEGRATE/SevenSamplesMerged.rds")
+```
+
 
 ```{r}
 unique(sapply(X = strsplit(colnames(all.samples), split = "_"), FUN = "[", 1))
@@ -738,7 +1097,7 @@ metadata$sample[which(str_detect(metadata$cells, "^Cbo_"))] <- "organoid"
 all.samples@meta.data <- metadata
 ```
 
-```{r BarPlotMergedCellCountsDaoyAll}
+```{r}
 all.samples.df <- metadata 
 all.samples.df$sample <- factor(all.samples.df$sample, 
                                 levels = c("ONS76_monolayer", "DAOY_spheroid",
@@ -746,7 +1105,7 @@ all.samples.df$sample <- factor(all.samples.df$sample,
                                            "ONS76_organoid", "DAOY_organoid", "organoid"))
 ```
 
-```{r}
+```{r BarChartCellCounts7samples, fig.height=6, fig.width=5}
 ggplot(all.samples.df, aes(x=sample, fill=sample)) + 
   	geom_bar() +
   	theme_classic() +
@@ -754,16 +1113,34 @@ ggplot(all.samples.df, aes(x=sample, fill=sample)) +
    NoLegend()
 ```
 
-```{r}
+```
+# NO NEED TO RE-RUN THIS CODE CHUNK
+
 all.samples <- NormalizeData(all.samples)
 all.samples <- FindVariableFeatures(all.samples)
 all.samples <- ScaleData(all.samples)
 all.samples <- RunPCA(all.samples, features = VariableFeatures(object = all.samples))
 all.samples <- RunUMAP(all.samples, dims = 1:5, reduction = "pca")
-DimPlot(all.samples, reduction = "umap", group.by = "sample")
+```
+
+```
+# save the CLUSTERED 'all.samples' merged object
+saveRDS(all.samples, file = "./outputs50K/INTEGRATE/SevenSamplesMergedClustered.rds")
 ```
 
 ```{r}
+all.samples <- readRDS("outputs50K/INTEGRATE/SevenSamplesMergedClustered.rds")
+```
+
+```{r DimPlot7samplesMerged, fig.height=6}
+DimPlot(all.samples, reduction = "umap", group.by = "sample")
+```
+
+
+Get the AverageExpression with a view to correlation plot in ggplot
+```
+# NO NEED TO RE-RUN BELOW CODE CHUNKS
+
 dy.2d <- subset(all.samples, subset = (sample == "DAOY_monolayer"))
 dy.3d <- subset(all.samples, subset = (sample == "DAOY_spheroid"))
 ons76.2d <- subset(all.samples, subset = (sample == "ONS76_monolayer"))
@@ -773,11 +1150,11 @@ ons76Cbo <- subset(all.samples, subset = (sample == "ONS76_organoid"))
 Cbo <- subset(all.samples, subset = (sample == "organoid"))
 ```
 
-```{r}
+```
 DefaultAssay(all.samples) <- "RNA"
 ```
 
-```{r}
+```
 av.dy.2d <- AverageExpression(dy.2d)$RNA
 av.dy.3d <- AverageExpression(dy.3d)$RNA
 av.ons76.2d <- AverageExpression(ons76.2d)$RNA
@@ -787,12 +1164,12 @@ av.ons76Cbo <- AverageExpression(ons76Cbo)$RNA
 av.Cbo <- AverageExpression(Cbo)$RNA
 ```
 
-```{r}
+```
 colnames(av.dy.2d)
 ```
 
 
-```{r}
+```
 # make the column names of the matrix objects meaningful
 colnames(av.dy.2d) <- "DAOY_monolayer"
 colnames(av.dy.3d) <- "DAOY_spheroid"
@@ -803,7 +1180,7 @@ colnames(av.ons76Cbo) <- "ONS76_organoid"
 colnames(av.Cbo) <- "organoid"
 ```
 
-```{r}
+```
 # convert the matrices of Average Expression to dataframes
 # df = dataframe
 av.dy.2d.df <- as.data.frame(av.dy.2d) %>% 
@@ -823,7 +1200,7 @@ av.Cbo.df <- as.data.frame(av.Cbo) %>%
 ```
 
 
-```{r}
+```
 # left join all 7 dataframes in one go
 av.7dfs <- join_all(list(av.dyCbo.df, av.ons76Cbo.df, av.Cbo.df, av.ons76.3d.df,
                          av.dy.3d.df, av.ons76.2d.df, av.dy.2d.df), 
@@ -831,22 +1208,25 @@ av.7dfs <- join_all(list(av.dyCbo.df, av.ons76Cbo.df, av.Cbo.df, av.ons76.3d.df,
 dim(av.7dfs)
 ```
 
-```{r}
+```
 head(av.7dfs)
 ```
 
-```{r}
+```
 # save the above correlation dataframe
 saveRDS(av.7dfs, 
         file = "outputs50K/INTEGRATE/AvgExpressn.All7Samples.rds")
 ```
 
-```{r}
+```
+{r}
 # load the above dataframe of combined Average Expression of all 7 samples
 av.7dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.All7Samples.rds")
 ```
 
-```{r}
+
+```
+{r}
 # run correlation function
 # select the columns with numeric values only
 RNAcounts <- av.7dfs %>% 
@@ -856,7 +1236,8 @@ corr.7samples
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```{r}
+```
+{r}
 # prepare data for an upper triangular plot
 upper.7samples <- corr.7samples
 
@@ -865,7 +1246,8 @@ upper.7samples[lower.tri(upper.7samples)] <- NA
 upper.7samples
 ```
 
-```{r}
+```
+{r}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.7samples <- melt(upper.7samples, na.rm = TRUE)
 head(up.m.7samples)
@@ -881,7 +1263,7 @@ saveRDS(up.m.7samples, file = "outputs50K/INTEGRATE/CorrTableAllgenes.7samples.r
 up.m.7samples <- readRDS("outputs50K/INTEGRATE/CorrTableAllgenes.7samples.rds")
 ```
 
-```{r PlotCorrAllGenesONS76CocultSpherMono, fig.height=10}
+```{r PlotCorrAllGenes7samples, fig.height=6}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.7samples, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
@@ -897,22 +1279,24 @@ ggplot(data = up.m.7samples, aes(x = Var1, y = Var2, fill = value)) +
                               "ONS76_organoid", "DAOY_spheroid",
                               "ONS76_spheroid", "DAOY_monolayer",
                               "ONS76_monolayer")) +
-  theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 1),
-        axis.text.y = element_text(face = "bold", vjust = 1),
+  theme(axis.text.x = element_text(face = "bold", angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(face = "bold", vjust = 1, size = 10),
         axis.ticks = element_blank(),
         axis.line = element_line(linetype = "blank"),
         panel.background = element_rect(fill = "gray87"),
         panel.grid.major = element_line(colour = "gray47", linetype = "dotted", size = 0.2)
         ) +
-  geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 4) +
+  geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 2) +
   coord_fixed()
 ```
 
 
--------------------------------------------------------------------------------------------
-***Compare average expression of genes in DAOY-2D sample to DAOY-SPHER sample
 
 
+```
+{r}
+save.image("./RDataFiles/INTEGRATE_DAOY-CBO_DAOY-SPHER_DAOY-2D_50K.Rmd.RData")
+```
 
 
 
