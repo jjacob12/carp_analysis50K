@@ -323,7 +323,7 @@ filtCellsGenes.ons76spher.seurat <- CreateSeuratObject(filtered_counts, meta.dat
 dim(filtCellsGenes.ons76spher.seurat)
 ```
 
-```
+```{r}
 # saved the 'filtCellsGenes.ons76spher.seurat' object to outputs50K/ONS76_SPHER folder
 
 saveRDS(filtCellsGenes.ons76spher.seurat, file = "./outputs50K/ONS76_SPHER/filtCellsGenes.ons76spher.seurat.rds")
@@ -334,7 +334,7 @@ saveRDS(filtCellsGenes.ons76spher.seurat, file = "./outputs50K/ONS76_SPHER/filtC
 ```{r remove_ribo_genes}
 # FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
 # THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
-#-------------------------------------------------------------------------------------
+
 
 # remove ribosomal genes first
 filt.noRibo.ons76spher <- fullFilt.ons76spher.seurat[ ! grepl('^RP[SL]', rownames(fullFilt.ons76spher.seurat)), ]
@@ -357,7 +357,7 @@ dim(filt.noRibo.ons76spher)
 dim(filt.noRiboMito.ons76spher)
 ```
 
-```
+```{r}
 # SAVE the seurat object above (filt.noRiboMito.ons76spher) which has been filtered for CELLS, GENES, RIBOSOMAL and MITOCHODRIAL genes
 
 saveRDS(filt.noRiboMito.ons76spher, file = "./outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
@@ -369,15 +369,13 @@ saveRDS(filt.noRiboMito.ons76spher, file = "./outputs50K/ONS76_SPHER/filt.NoRibo
 filt.RiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ```
 
-```{r}
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
-# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
-```
 
+
+--------------------------------------------------------------------------------------------
+***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
 Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
 ```{r}
-# normalise data
+# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
 phase.ons76spher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.ons76spher)
 
 # run cell cycle scoring
@@ -392,7 +390,6 @@ First run SCTransfrom WITHOUT vars.to.regress argument
 ```{r DimplotSCTRegressOutCCdifference}
 # there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
 phase.ons76spher.filtRiboMito.sct <- SCTransform(phase.ons76spher.filtRiboMito.sct,
-                                   
                                    method = "glmGamPoi", 
                                    verbose = FALSE)
 
@@ -418,7 +415,7 @@ DimPlot(phase.ons76spher.filtRiboMito.sct, reduction = "pca", group.by = "Phase"
 
 ```
 
-```
+```{r}
 # saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
 
 saveRDS(phase.ons76spher.filtRiboMito.sct, file = "./outputs50K/ONS76_SPHER/phase.ons76spher.filtRiboMito.SCT.regressedCCdiff.rds")
