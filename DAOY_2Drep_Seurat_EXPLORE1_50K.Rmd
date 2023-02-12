@@ -1,0 +1,98 @@
+---
+title: "DAOY-2Drep_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "2023-01-26"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/ONS76_2D/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(presto)
+library(clustree)
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+})
+```
+
+```{r}
+# load the phase, cell cycle difference regressed object, SCTransformed
+
+phase.daoy2d.filtRiboMito.sct <- readRDS("outputs50K/DAOY_2D/phase.filtRiboMito.SCT.regressedCCdiff.daoy.2d.rds")
+```
+
+```{r}
+# generate a clustered  seurat object, res = 0.5
+phase.daoy2d.sct.clust <- phase.daoy2d.filtRiboMito.sct %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.5)
+```
+
+```{r}
+# using res = 0.5 there are 3 clusters
+DimPlot(phase.daoy2d.sct.clust)
+```
+
+***Clustree***
+```{r}
+# attempt to use Clustree package to find the right number of clusters
+# -----------------------------------------------------------------------------------------------
+
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+daoy2d.clusters <- FindClusters(object = phase.daoy2d.sct.clust, 
+                                      resolution = resolution.range,
+                                      verbose = FALSE)
+```
+
+```{r ClustreeCBO, fig.height=8}
+# the clustering tree finds 4 major clusters initially with res = 0.5 and 0.6.
+# with res = 0.8 there are 4 clusters; with res = 1 there are 5 clusters.
+# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
+
+clustree(daoy2d.clusters)
+```
+
+```{r}
+# get the number of cells per cluster
+table(Idents(phase.daoy2d.sct.clust))
+```
+
+***Find the DEGs of each cluster***
+Find the markers of each cluster for res = 0.5
+```{r}
+# find POSITIVE markers of each cluster
+phase.daoy2d.sct.POSdegs <- FindAllMarkers(object = phase.daoy2d.sct.clust,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+Although the clustering suggests there are 5 clusters, inspection of the differentially expressed genes show that the clustering is not biologically meaningful because pct.1 is similar to pct.2 for most genes. So treat the DAOY-2D rep as a single large cluster.
+```{r}
+phase.daoy2d.sct.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+
+
+
+
