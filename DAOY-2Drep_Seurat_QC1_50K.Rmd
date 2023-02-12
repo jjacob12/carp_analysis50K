@@ -107,7 +107,7 @@ plot(sort(genes_per_cell),
 ```
 
 ```{r create_seurat_object}
-# no. of genes has dropped to 28,396 when min.cells = 3, and set min.featres = 2000
+# no. of genes has dropped to 28,396 when min.cells = 3, and set min.features = 2000
 
 daoy.2d.seurat <- CreateSeuratObject(counts = daoy.2d.data, 
                                     min.cells = 3, 
@@ -248,7 +248,7 @@ summary(at_least_one.1935)
 summary(colSums(counts.1935))
 ```
 
-```{r Plots_GenesPerCell1935cells, fig.height=10, fig.width=8}
+```{r PlotsGenesPerCell1935cells, fig.height=10, fig.width=8}
 # 1 major peak now, but still quite a large group of cells to the left with lower gene expression,
 # and there is a tail on the right for cells expressing v. large number of genes.
 # In the bottom graph far fewer cells with low expression sum
@@ -369,14 +369,13 @@ dim(filt.CellsGenesRibo.daoy2d)
 dim(filt.CellsGenesRiboMito.daoy2d)
 ```
 
-```
+```{r}
 # save the cell, gene, ribosomal, mitochodrial gene filtered seurat object - no mitochondrial or 
 # ribosomal genes.
 saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 ```
 
 
---------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------
 ***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
 
@@ -432,7 +431,7 @@ seurat.phase <- ScaleData(seurat.phase, vars.to.regress = "CC.difference", featu
 seurat.phase <- RunPCA(seurat.phase, features = VariableFeatures(seurat.phase), nfeatures.print = 10)
 ```
 This worked! Compared to before regressing out the 'cell cycle difference', the DimPlot below recapitulates the final DimPlot on that webpage.
-```
+```{r}
 # when running a PCA on cell cycle genes, actively proliferating cells remain distinct from G1
 # cells however, within actively proliferating cells, G2M and S phase cells group together.
 # the two lines of code in this chunk are NECESSARY and should be run BEFORE the saveRDS() function!!!
@@ -441,7 +440,7 @@ seurat.phase <- RunPCA(seurat.phase, features = c(s.genes, g2m.genes))
 DimPlot(seurat.phase,reduction = "pca", group.by = "Phase")
 ```
 
-```
+```{r}
 # save the seurat.phase object as a .RDS file in outputs50K
 saveRDS(seurat.phase, file = "./outputs50K/DAOY_2D/seurat.phase.regressedCCdiff.daoy.2d.rds")
 ```
@@ -480,7 +479,7 @@ DimPlot(seurat.phase,
 -------------------------------------------------------------------------------------
 ***Using SCTransform with cell cycle regression***
 ```{r}
-# normalise data
+# normalise data - WHY NORMALIZE BEFORE SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
 seurat.phase.sct <- NormalizeData(fullFilt.daoy.2d.seurat)
 
 # run cell cycle scoring
@@ -506,7 +505,7 @@ seurat.phase.sct <- RunPCA(seurat.phase.sct, features = c(s.genes, g2m.genes))
 DimPlot(seurat.phase.sct, reduction = "pca", group.by = "Phase")
 ```
 
-```
+```{r}
 # save the seurat.phase.sct object - this object still has ribosomal and mitochondrial genes
 
 saveRDS(seurat.phase.sct, file = "./outputs50K/DAOY_2D/seurat.phase.SCT.regressedCCdiff.daoy.2d.rds")
@@ -517,7 +516,7 @@ Run the SCTransform analysis and check whether the 'seurat.phase' objects look t
 # load the seurat object
 filt.CellsGenesRiboMito.daoy2d <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2d.seurat.rds")
 
-# normalise data
+# normalise data - WHY THIS STEP BEFORE SCTRANSFORM??
 phase.daoy2d.filtRiboMito.sct <- NormalizeData(filt.CellsGenesRiboMito.daoy2d)
 
 # run cell cycle scoring
@@ -533,7 +532,6 @@ First run SCTransfrom WITHOUT vars.to.regress argument
 ```{r DimplotSCTRegressOutCCdifference}
 # there is clustering by cell cycle
 phase.daoy2d.filtRiboMito.sct <- SCTransform(phase.daoy2d.filtRiboMito.sct,
-                                   
                                    method = "glmGamPoi", 
                                    verbose = FALSE)
 
@@ -544,7 +542,8 @@ DimPlot(phase.daoy2d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
 
 Then run SCTransform with vars.to.regress argument = cell cycle difference
 ```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
-# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+# now G1 and G2/M are just one cluster each, i.e. G1 separate from G2/M, 
+# i.e. there are 2 clusters instead of 3.
 
 phase.daoy2d.filtRiboMito.sct$CC.difference <- phase.daoy2d.filtRiboMito.sct$S.Score - phase.daoy2d.filtRiboMito.sct$G2M.Score
 
@@ -558,7 +557,7 @@ phase.daoy2d.filtRiboMito.sct <- RunPCA(phase.daoy2d.filtRiboMito.sct, features 
 DimPlot(phase.daoy2d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
 ```
 
-```
+```{r}
 # save the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
 
 saveRDS(phase.daoy2d.filtRiboMito.sct, file = "./outputs50K/DAOY_2D/phase.filtRiboMito.SCT.regressedCCdiff.daoy.2d.rds")
