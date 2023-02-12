@@ -1,0 +1,143 @@
+---
+title: "ONS76-2D_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "18/01/2023"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/ONS76_2D/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(presto)
+library(clustree)
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+})
+```
+
+```{r}
+# load the phase, cell cycle difference regressed object, SCTransformed
+
+phase.ons762d.filtRiboMito.sct <- readRDS("outputs50K/ONS76_2D/phase.filtRiboMito.SCT.regressedCCdiff.ons762d.rds")
+```
+
+```{r}
+# generate a clustered  seurat object, res = 0.5
+phase.ons76.2d.sct.clust <- phase.ons762d.filtRiboMito.sct %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.5)
+```
+
+```{r}
+# using res = 0.5 there are 3 clusters
+DimPlot(phase.ons76.2d.sct.clust)
+```
+
+***Clustree***
+```{r}
+# attempt to use Clustree package to find the right number of clusters
+# -----------------------------------------------------------------------------------------------
+
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+ons76.2d.clusters <- FindClusters(object = phase.ons76.2d.sct.clust, 
+                                      resolution = resolution.range,
+                                      verbose = FALSE)
+```
+
+```{r ClustreeCBO, fig.height=12}
+# the clustering tree finds 3 major clusters initially with res = 0.5 and 0.6.
+# with res = 0.8 there are 4 clusters; with res = 1 there are 5 clusters.
+# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
+
+clustree(ons76.2d.clusters)
+```
+
+```{r}
+# get the number of cells per cluster
+table(Idents(phase.ons76.2d.sct.clust))
+```
+
+***Find the DEGs of each cluster***
+Find the markers of each cluster for res = 0.5
+```{r}
+# find POSITIVE markers of each cluster
+phase.ons76.2d.sct.POSdegs <- FindAllMarkers(object = phase.ons76.2d.sct.clust,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+Inspection of the clusters reveals that actually they are quite homogeneous with pct.1 and pct.2 being quite similar. The major difference between clusters is quantitative - higher expression of the same gene in one cluster vs the others but most/all/significant minority of cells in both clusters express the same gene. So it doesn't make sense to split the clusters even more with higher 'res' values.
+```{r}
+phase.ons76.2d.sct.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+
+```{r}
+# generate a clustered  seurat object, res = 0.2
+phase.ons76.2d.sct.clust.res0.2 <- phase.ons762d.filtRiboMito.sct %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.2)
+```
+
+```{r}
+# using res = 0.2 there are 2 clusters
+DimPlot(phase.ons76.2d.sct.clust.res0.2)
+```
+
+```{r}
+# find POSITIVE markers of each cluster
+phase.ons76.2d.sct.res0.2.POSdegs <- FindAllMarkers(object = phase.ons76.2d.sct.clust.res0.2,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+As can be seen, with only 2 clusters of cells, pct.1 and pct.2 are closely similar, so even just having 2 clusters, we can see they are very similar and therefore the clustering is not reflecting meaningful biological differences
+```{r}
+phase.ons76.2d.sct.res0.2.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+In view of the similarity of the clusters it is not worth downstream analysis with presto or fgsea for each cluster separately. Treat this sample as a single cluster.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
