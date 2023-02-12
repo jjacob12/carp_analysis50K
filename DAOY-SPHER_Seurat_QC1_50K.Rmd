@@ -317,8 +317,8 @@ filtCellsGenes.daoySpher.seurat <- CreateSeuratObject(filtered_counts, meta.data
 dim(filtCellsGenes.daoySpher.seurat)           # number of genes further reduced to ~ 16,000 genes
 ```
 
-```
-# saved the 'filtCellsGenes.daoySpher.seurat' object to outputs50K folder
+```{r}
+# save the 'filtCellsGenes.daoySpher.seurat' object to outputs50K folder
 
 saveRDS(filtCellsGenes.daoySpher.seurat, file = "./outputs50K/DAOY_SPHER/filtCellsGenes.daoySpher.seurat.rds")
 ```
@@ -332,7 +332,6 @@ filtCellsGenes.daoySpher.seurat <- readRDS("outputs50K/DAOY_SPHER/filtCellsGenes
 ```{r remove_ribo_genes}
 # FILTER OUT ALL RIBOSOMAL GENES, THEN ALL MITOCHONDRIAL GENES (ON THE CELLS WHICH HAVE ALREADY BEEN REMOVED
 # THAT HAVE PERCENT.MITO < 10% BEFORE DOING THE CLUSTERING), DON'T REMOVE ANY MORE ACTUAL CELLS
-#-------------------------------------------------------------------------------------
 
 # remove ribosomal genes first
 filtRibo.daoySpher <- filtCellsGenes.daoySpher.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.daoySpher.seurat)), ]
@@ -355,7 +354,7 @@ dim(filtRibo.daoySpher)
 dim(filt.RiboMito.daoySpher)
 ```
 
-```
+```{r}
 # SAVE the seurat object above (filt.RiboMito.daoySpher) which has been filtered for CELLS, GENES, RIBOSOMAL and MITOCHONDRIAL genes
 
 saveRDS(filt.RiboMito.daoySpher, file = "./outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
@@ -368,15 +367,14 @@ Load the above saved object
 filt.RiboMito.daoySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
 ```
 
-```{r}
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
-# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
-```
+
+--------------------------------------------------------------------------------------------
+***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
+
 
 Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
 ```{r}
-# normalise data
+# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
 phase.daoySpher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.daoySpher)
 
 # run cell cycle scoring
@@ -391,7 +389,6 @@ First run SCTransfrom WITHOUT vars.to.regress argument
 ```{r DimplotSCTRegressOutCCdifference}
 # there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
 phase.daoySpher.filtRiboMito.sct <- SCTransform(phase.daoySpher.filtRiboMito.sct,
-                                   
                                    method = "glmGamPoi", 
                                    verbose = FALSE)
 
@@ -402,7 +399,8 @@ DimPlot(phase.daoySpher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
 
 Then run SCTransform with vars.to.regress argument = cell cycle difference
 ```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
-# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+# now G1 and G2/M are one cluster each, i.e. G2/M cluster is separate from G1 cluster, 
+# i.e. there are 2 clusters instead of 3.
 
 phase.daoySpher.filtRiboMito.sct$CC.difference <- phase.daoySpher.filtRiboMito.sct$S.Score - phase.daoySpher.filtRiboMito.sct$G2M.Score # get the cell cycle difference
 
