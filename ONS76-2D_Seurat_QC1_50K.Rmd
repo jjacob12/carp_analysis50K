@@ -17,10 +17,12 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 ```{r libraries}
+suppressPackageStartupMessages({
 library(Seurat)
 library(Matrix)
 library(patchwork)
 library(tidyverse)
+})
 ```
 
 ```{r path_to_data}
@@ -350,7 +352,7 @@ dim(filt.noRibo.ons76.2d)
 dim(filt.noRiboMito.ons76.2d)
 ```
 
-```
+```{r}
 # SAVE this seurat object from code line 344
 
 saveRDS(filt.noRiboMito.ons76.2d, file = "./outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
@@ -366,7 +368,7 @@ filt.ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ```
 
 ```{r}
-# normalise data
+# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
 filt.ons76mono <- NormalizeData(filt.ons76mono)
 
 # run cell cycle scoring
@@ -378,8 +380,8 @@ filt.ons76mono <- CellCycleScoring(filt.ons76mono,
 ```
 
 Run SCTransfrom WITHOUT vars.to.regress argument
-```{r DimplotSCTRegressOutCCdifference}
-# there is clustering by cell cycle
+```{r DimplotSCTCCdifferenceRetained}
+# there is clustering by cell cycle with 3 clusters G2/M cluster, S cluster, G1 cluster
 
 filt.ons76mono.sct <- SCTransform(filt.ons76mono,
                             method = "glmGamPoi", 
@@ -390,15 +392,18 @@ filt.ons76mono.sct <- RunPCA(filt.ons76mono.sct, features = c(s.genes, g2m.genes
 DimPlot(filt.ons76mono.sct, reduction = "pca", group.by = "Phase")
 ```
 
+--------------------------------------------------------------
+***Using SCTransform with cell cycle regression***
+
 Run SCTransfrom WITH vars.to.regress argument
 ```{r DimplotSCTRegressOutCCdifference}
-# regress the cell cycle difference - this worked
+# regress the cell cycle difference - this worked: G2/M and S become a single cluster distinct from G1
 filt.ons76mono.sct$CC.difference <- filt.ons76mono.sct$S.Score - filt.ons76mono.sct$G2M.Score
 
 filt.ons76mono.sct <- SCTransform(filt.ons76mono.sct,
                                   vars.to.regress = "CC.difference",
-                            method = "glmGamPoi", 
-                            verbose = FALSE)
+                                  method = "glmGamPoi", 
+                                  verbose = FALSE)
 
 filt.ons76mono.sct <- RunPCA(filt.ons76mono.sct, features = c(s.genes, g2m.genes))
 
@@ -447,15 +452,9 @@ seurat.phase.ons762d <- RunPCA(seurat.phase.ons762d, features = c(s.genes, g2m.g
 DimPlot(seurat.phase.ons762d, reduction = "pca", group.by = "Phase")
 ```
 
-```
-# save the seurat.phase object as a .RDS file in outputs50K
-saveRDS(seurat.phase.ons762d, file = "./outputs50K/ONS76_2D/seurat.phase.regressedCCdiff.ons76.2d.rds")
-```
---------------------------------------------------------------
-***Using SCTransform with cell cycle regression***
 
 ```{r}
-# normalise data
+# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
 seurat.phase.sct <- NormalizeData(fullFilt.ons76.2d.seurat)
 
 # run cell cycle scoring
@@ -468,28 +467,6 @@ seurat.phase.sct <- CellCycleScoring(seurat.phase.sct,
 
 Normalisation, followed by CellCycleScoring, then SCTransform, then PCA worked! Get a similar result to DimplotRegressOutCCdifference code chunk above. Much faster to run. This code separates G1 from other cell cycle phases.
 
-```{r DimplotCellCycleEffectSCT}
-seurat.phase.sct$CC.difference <- seurat.phase.sct$S.Score - seurat.phase.sct$G2M.Score
-
-seurat.phase.sct <- SCTransform(seurat.phase.sct,
-                                   method = "glmGamPoi", 
-                                   verbose = FALSE)
-
-seurat.phase.sct <- RunPCA(seurat.phase.sct, features = c(s.genes, g2m.genes))
-
-DimPlot(seurat.phase.sct, reduction = "pca", group.by = "Phase")
-```
-
-```{r DimplotRegressOutCCdifferenceSCT}
-seurat.phase.sct <- SCTransform(seurat.phase.sct,
-                                   vars.to.regress = "CC.difference",
-                                   method = "glmGamPoi", 
-                                   verbose = FALSE)
-
-seurat.phase.sct <- RunPCA(seurat.phase.sct, features = c(s.genes, g2m.genes))
-
-DimPlot(seurat.phase.sct, reduction = "pca", group.by = "Phase")
-```
 
 ```{r}
 # save the seurat.phase.sct object as a .RDS file in outputs50K
@@ -526,49 +503,9 @@ filt.noRiboMito.ons76.2d <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76
 ```
 
 ```{r}
-# normalise data
-phase.ons762d.filtRiboMito.sct <- NormalizeData(filt.noRiboMito.ons76.2d)
-
-# run cell cycle scoring
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-phase.ons762d.filtRiboMito.sct <- CellCycleScoring(phase.ons762d.filtRiboMito.sct,
-                                 g2m.features = g2m.genes,
-                                 s.features = s.genes)
-```
-
-First run SCTransfrom WITHOUT vars.to.regress argument
-```{r DimplotSCTRegressOutCCdifference}
-# there is clustering by cell cycle phase
-phase.ons762d.filtRiboMito.sct <- SCTransform(phase.ons762d.filtRiboMito.sct,
-                                   
-                                   method = "glmGamPoi", 
-                                   verbose = FALSE)
-
-phase.ons762d.filtRiboMito.sct <- RunPCA(phase.ons762d.filtRiboMito.sct, features = c(s.genes, g2m.genes))
-
-DimPlot(phase.ons762d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
-```
-
-Then run SCTransform with vars.to.regress argument = cell cycle difference
-```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
-# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
-
-phase.ons762d.filtRiboMito.sct$CC.difference <- phase.ons762d.filtRiboMito.sct$S.Score - phase.ons762d.filtRiboMito.sct$G2M.Score
-
-phase.ons762d.filtRiboMito.sct <- SCTransform(phase.ons762d.filtRiboMito.sct,
-                                   vars.to.regress = "CC.difference",
-                                   method = "glmGamPoi", 
-                                   verbose = FALSE)
-
-phase.ons762d.filtRiboMito.sct <- RunPCA(phase.ons762d.filtRiboMito.sct, features = c(s.genes, g2m.genes))
-
-DimPlot(phase.ons762d.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
-```
-
-```
+# THIS IS THE OBJECT TO LOAD FOR DOWNSTREAM ANALYSIS!!!
 # save the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
-
+# this object has been saved
 saveRDS(phase.ons762d.filtRiboMito.sct, file = "./outputs50K/ONS76_2D/phase.filtRiboMito.SCT.regressedCCdiff.ons762d.rds")
 ```
 
