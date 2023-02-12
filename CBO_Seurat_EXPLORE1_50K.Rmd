@@ -23,29 +23,26 @@ library(Seurat)
 library(glmGamPoi)
 library(RColorBrewer)
 library(Matrix)
+library(ClusterMap)
 library(clustree)
-library(ggVennDiagram)
 library(patchwork)
 library(tidyverse)  
 })
-
 ```
 
 
-```
-{r}
+```{r}
 load("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
 ```
 
 
-```
+```{r}
 # load full filtered (genes and cells) seurat object
 
 Fullfilt.cbo.seurat <- readRDS("outputs50K/CBO/filtered.cbo.seurat.rds")
 ```
 
-```
-{r}
+```{r}
 # load the single CBO control sample (CCdifference regressed out!), already SCTransformed,
 # then run PCA, UMAP, etc on 'phase.filtRiboMito.ons76cbo.SCT.regressedCCdiff.rds'
 # which is saved in the outputs50K folder and can be accessed by readRDS above. 
@@ -60,12 +57,11 @@ phase.cbo.sct <- phase.cbo.sct %>%
   FindClusters(verbose=FALSE)
 ```
 
-```
-{r DimPlotPhaseCBOsctCCdiffRegressClustered}
+```{r DimPlotPhaseCBOsctCCdiffRegressClustered}
 DimPlot(phase.cbo.sct, label = TRUE)
 ```
 
-```
+```{r}
 # save the SCTransformed clustered phase CBO object
 saveRDS(phase.cbo.sct, 
         file = "outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
@@ -85,22 +81,30 @@ phase.cbo.sct.clusters <-
 ElbowPlot(phase.cbo.sct.clusters, ndims = 50, reduction = "pca")
 ```
 
+```{r DimplotCboclustersUMAP, fig.height=6, fig.width=10}
+DimPlot(phase.cbo.sct.clusters, label = TRUE)
 ```
-# DO NOT RUN THESE CODE CHUNKS
+
+
+```{r}
+# FOR KNIT DO NOT RUN THESE CODE CHUNKS
 
 # add percent.ribo to the metadata (not informative!)
 filt.cbo.sct.clusters[["percent.ribo"]] <- PercentageFeatureSet(filt.cbo.sct.clusters, pattern = "'^RP[SL]'")
 ```
 
-```
+```{r}
+# FOR KNIT DO NOT RUN THESE CODE CHUNKS
 # plot metadata features - percent mitochondria (< 10%) and percent ribosome (= 0)
 VlnPlot(filt.cbo.sct.clusters, features = c("percent.mt", "percent.ribo"), ncol = 2)
 ```
 
 ----------------------------------------------------------------------------------------------
 ***Get the differentially expressed genes in the 12 ONS76-CBO clusters using a FOR loop***
-```
-# DO NOT RUN THESE CODE CHUNKS
+
+```{r}
+# FOR KNIT DO NOT RUN THESE CODE CHUNKS.
+# A simpler way to the marker identification would be to run seurat FindAllMarkers() function!
 
 Idents(phase.cbo.sct.clusters) <- "seurat_clusters"
 markers.pos <- data.frame()
@@ -126,70 +130,91 @@ cell.num
 sum(cell.num)
 ```
 
-```
-# DO NOT RUN THESE CODE CHUNKS
+```{r}
+# FOR KNIT DO NOT RUN THESE CODE CHUNKS.
 dim(markers.pos)
 ```
 
-
-
-```
-# save the postive markers of CBO clusters generated from SCTransformed, CC difference,
+```{r}
+# FOR KNIT DO NOT RUN THESE CODE CHUNKS.
+# save the positive markers of CBO clusters generated from SCTransformed, CC difference,
 # ribosomal and mitochondrial gene filtered object:
 # 'phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds'
 
 saveRDS(markers.pos, file = "outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
 ```
+
 ```{r}
-markers.pos <- readRDS("outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
+# load the positive markers of each cluster - these markers found using the FOR loop above!
+# using the FindAllMarkers() command to do this would have been easier!
+# there is another CBO marker analysis below using FindAllMarkers for input to ClusterMap
+markers.pos.cbo <- readRDS("outputs50K/CBO/pos.markers.phase.cbo.filtRiboMito.CCdiffRegress.SCT.rds")
 ```
 
 Check out the first few DEGs by group (cluster_ID) of 'markers.pos'
 ```{r}
-markers.pos %>% 
+markers.pos.cbo %>% 
   group_by(cluster_ID) %>% 
-  slice_head(n = 40)
+  slice_head(n = 10)
 ```
 
-```{r}
-markers.pos %>% 
-  filter(genes %in% c("KIRREL3"))
-```
-
-```{r}
-markers.pos %>%
-  filter(cluster_ID == "4")
-```
-
-
-```{r}
-top10 <- markers.pos %>% 
-  group_by(cluster_ID) %>% 
-  top_n(10, -p_val_adj)
-```
-
-```{r}
-top10
-```
 
 ```{r}
 # replace the cluster numbers with the identity of each cluster
 levels(phase.cbo.sct.clusters)
 ```
 
-```{r DimplotCBOcellTypesLabelled, fig.height=6}
-# continue to replace the cluster numbers with the identity of each cluster
+```{r}
+# continue to replace the cluster numbers with the identity of each cluster - granule precursors
+# are so-called because GSEA suggests these care cycling cells
 new.cluster.ids <- c("RP-choroid plexus", "choroid plexus", "glia", "RL/DCN",
-                     "uncertain", "granule neuron", "glio-neuronal", "granule progenitor", "RL-derived",
-                     "oligodendrocyte", "purkinje neuron", "ependyma")
+                     "uncertain", "granule precursors", "glio-neuronal", "progenitors", "RL-derived",
+                     "oligodendrocytes", "purkinje cells", "ciliated cells")
 names(new.cluster.ids) <- levels(phase.cbo.sct.clusters)
 phase.cbo.sct.clusters.2 <- RenameIdents(phase.cbo.sct.clusters, new.cluster.ids)
-DimPlot(phase.cbo.sct.clusters.2, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5)
 ```
 
-```{r DimPlotPhaseCBOsctClusters, fig.height=6}
-# there are 12 clusters (0 - 11)
-DimPlot(phase.cbo.sct.clusters, label = TRUE, repel = TRUE)
+
+```{r}
+# Create metadata dataframe
+metadata <- phase.cbo.sct.clusters.2@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$celltype <- NA
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "RP-choroid plexus"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "choroid plexus"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "glia"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "RL/DCN"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "uncertain"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "granule precursors"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "glio-neuronal"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "progenitors"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "RL-derived"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "purkinje cells"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "ciliated cells"
+
+```
+
+```{r}
+phase.cbo.sct.clusters.2@meta.data <- metadata
+```
+
+```{r}
+# save the phase.cbo.sct.clusters.2 object
+saveRDS(phase.cbo.sct.clusters.2, 
+        file = "./outputs50K/CBO/phase.filtRiboMito.cbo.CellAnnot.SCT.CCdiffRegressed.clustered.rds")
+```
+
+```{r}
+# load the 'phase.cbo.sct.clusters.2' object
+phase.cbo.sct.clusters.2 <- 
+  readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.CellAnnot.SCT.CCdiffRegressed.clustered.rds")
+```
+
+```{r DimplotCBOcellTypesAnnotated, fig.height=6, fig.width=10}
+DimPlot(phase.cbo.sct.clusters.2, label = TRUE, repel = TRUE)
 ```
 
 ```{r}
@@ -197,78 +222,49 @@ table(phase.cbo.sct.clusters.2$seurat_clusters)
 ```
 
 
-```{r DotplotSeppTFmarkers}
-# using the Sepp et al paper (Extended Fig 8g), test if markers from that paper are expressed 
-# in the seurat object filtered to remove all ribosomal and mitochondrial genes, and where cells which
-# have mitoch genes > 10% are excluded.
-# MUST use the already clustered seurat object.
-# I used just the transcription factor (TF) markers (sepp.TF.markers)
-
-sepp.TF.markers <- c("PAX3", "RFX4", "TCFL71", "GLIS3", "SOX6", "TCF7L2", "HOPX", "TSC22D4", "ID4",
-             "ESRRB", "FOXP2", "FOXP4", "MEF2C",
-             "PAX2", "TFAP2A", "TFAP2B", "BHLHE22", "PRDM8",
-             "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", "ZBTB18", "NEUROD1", "ETV1", "KLF9", "NR3C1")
-
-
-DotPlot(object = phase.cbo.sct.clusters, features = sepp.TF.markers) +
-  coord_flip()
-```
-
-```{r DotplotSeppMarkersAndCiliaManyCBO, fig.height=10}
-# from the Sepp paper repeat Dotplot with TF and some key non-TF markers
-# added markers of ciliated cells from cluster10 above.
-# used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
-
-sepp.all.markers <- c("TFAP2A", "PAX3", "RFX4", "TCFL71", "TCF7L2", "GLIS3", "SOX6", "HOPX", "TSC22D4",  
-                      "ID4", "NCKAP5", "SLIT2", "CLYBL", "SLC1A3", "SLC6A11", "AQP4",  #astroglial/progenitor
-                      
-                      "ESRRB", "FOXP1", "FOXP2", "FOXP4", "MEF2C", "RORB", "CDH9", "ETV1", "EBF1", "EBF2", 
-                      "SKOR2", "DAB1", "IPTR",   # Purkinje
-                      
-                      "NOTCH1",    # VZ neuroblast
-             
-                      "PAX2", "NFIA", "NFIB", "TFAP2B", "BHLHE22", "PRDM8",  # interneuron
-                      
-                      "ZFHX3", "ZFHX4",   # GABAergic deep nuclei neurons
-             
-                      "TOP2A", "ATOH1", "LMX1A", "OTX2","ETV6", "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", 
-                      "ZBTB18", "NEUROD1", "ZIC1", "ZIC4", "GABAR6", "CNTN1", "CNTN2", "KLF9", "NR3C1", "LMO3", 
-                      "SYNPR", "KCNIP4", "HCRTR2", 
-                      "EOMES", "TRPC3", "GRM1")
-                      # UBC/GCP/granule/glut deep cerebellar nuclei                                                                   
-seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "C11orf88", "ANKRD66", "C20orf85", 
-                                "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
-
-DotPlot(object = phase.cbo.sct.clusters, features = seppAll.cilia.stem.markers, col.min = 0) +
-  coord_flip()
-```
-
-```{r ViolinPlotGranuleLineageByClusterCBO, fig.height=10}
-# plot of the clusters containing granule/RL lineage suggests RL-derived clusters are 6, 7, 8
+Granule marker genes are from DOI: https://doi.org/10.7554/eLife.37551 (Heintz lab)
+```{r ViolinPlotGranuleLineageByClusterCBO, fig.width=14}
 # CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
 # CD44 is not expressed or expressed very little.
 # ITGB1 is expressed at quite a high level across most cell types
 # In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
+# CALB2, SLC17A7, RELN, GABRA6, AQP7 are all granule markers that are not expressed in cluster 5 (NEUROD1+)
 
-VlnPlot(phase.cbo.sct.clusters, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "ZIC1"))
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("NEUROD1", "CNTN1", "RBFOX3", "RTN1", "ZIC1", "CDH15"))
 ```
 
 
-```{r VlnPlotStemGenesPhaseCBOsct, fig.height=24, fig.width=12}
-VlnPlot(phase.cbo.sct.clusters, features = c("HOXB2", "IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3", 
-                                             "MIR124-2HG", "PTCH1", "GLI2",
-                                             "POU3F2", "MEIS1", "LHX9", "CHCHD2", "PRRX1", "DLL1", "DLL3",
-                                             "DLL4","HES5", "HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
+```{r VlnPlotGria4Twist1PhaseCBOsct, fig.width=14}
+# HOXB2 is not expressed
+
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3"))
 ```
 
-```{r NrgErbb4PhaseCBOsct, fig.height=8, fig.width=12}
+```{r VlnPlotGli2Ptch1Pou3F2PhaseCBOsct, fig.width=14}
+VlnPlot(phase.cbo.sct.clusters, features = c("MIR124-2HG", "PTCH1", "GLI2",
+                                             "POU3F2", "MEIS1", "LHX9"))
+```
+
+```{r VlnPlotDll3Hes5PhaseCBOsct, fig.width=14}
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("PRRX1", "DLL1", "DLL3", "DLL4","HES5"))
+```
+
+```{r VlnPlotNotchGenesPhaseCBOsct, fig.width=14}
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
+```
+
+```{r VlnPlotNrgErbb4PhaseCBOsct, fig.width=14}
 VlnPlot(phase.cbo.sct.clusters, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
 ```
 
 
 ***Clustree***
 ```{r}
-# attempt to use Clustree package to find the right number of clusters
+# attempt to use Clustree package to find the right number of clusters. Not hugely useful!
 # -----------------------------------------------------------------------------------------------
 
 # Select a range of resolutions
@@ -280,49 +276,823 @@ cbo.clusters <- FindClusters(object = phase.cbo.sct.clusters,
                                       verbose = FALSE)
 ```
 
-```{r ClustreeCBO, fig.height=12}
+```{r ClustreeCBO, fig.height=8,fig.width=8}
 # the clustering tree finds 9 clusters before some nodes have multiple incoming edges.
 # note that at res = 1 there are 14 clusters
 
 clustree(cbo.clusters)
 ```
 
+
+-----------------------------------------------------------------------------------------
+***ClusterMap to compare the clusters of CBO, DAOY-CBO and ONS76-CBO***
+
+Combine the CBO and DAOY-CBO samples as shown in the example of https://xgaoo.github.io/ClusterMap/pre_analysis/pre_analysis.html
+
+```{r}
+# load the CBO raw data (from "working_data" folder)
+data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r}
+# note these are .gz files which can be directly read. n = 3838 cells
+
+cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+```{r}
+# load the DAOY-CBO raw data
+data_dir <- "./working_data/DAOY-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r read_expression_matrix}
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+
+dyCbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+****ClusterMap input: preparation of the COMBINED CBO and DAOY-CBO object****
+```{r}
+colnames(cbo.data) = paste0('cbo-', colnames(cbo.data))
+colnames(dyCbo.data) = paste0('dyCbo.data-', colnames(dyCbo.data))
+```
+
+```{r}
+cbo.dyCbo.data = cbind(cbo.data, dyCbo.data)
+```
+
+
+```{r}
+cbo.dyCbo.combined <- CreateSeuratObject(counts = cbo.dyCbo.data,
+                                         min.cells = 3, min.genes=200,
+                                         project = "cbo.dyCbo.comb")
+
+dim(cbo.dyCbo.combined) #28,218 genes and 7492 cells
+
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo.dyCbo.combined), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo.dyCbo.combined[mito.genes, ])/Matrix::colSums(cbo.dyCbo.combined)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = cbo.dyCbo.combined), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(cbo.dyCbo.combined[ribo.genes, ])/Matrix::colSums(cbo.dyCbo.combined)
+
+```
+
+```{r}
+# add the ribosome and mitochondrial gene percent to the metadata
+cbo.dyCbo.combined <- 
+  AddMetaData(object = cbo.dyCbo.combined, metadata = percent.mito, col.name = "percent.mito")
+
+cbo.dyCbo.combined <- 
+  AddMetaData(object = cbo.dyCbo.combined, metadata = percent.ribo, col.name = "percent.ribo")
+```
+
+```{r}
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+cbo.dyCbo.combined <- cbo.dyCbo.combined[ ! grepl('^RP[SL]', rownames(cbo.dyCbo.combined)), ]
+
+# remove mitochondrial genes 
+cbo.dyCbo.combined <- cbo.dyCbo.combined[ ! grepl("^MT-", rownames(cbo.dyCbo.combined)), ]
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+cbo.dyCbo.combined <- subset(cbo.dyCbo.combined, subset = percent.mito < 0.1)
+```
+
+
+```{r}
+# Only keeping those genes expressed in more than 10 cells
+counts <- GetAssayData(object = cbo.dyCbo.combined, slot = "counts")
+nonzero <- counts > 0
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+filtered_counts <- counts[keep_genes, ]
+# Reassign to filtered Seurat object
+cbo.dyCbo.combined <- CreateSeuratObject(filtered_counts, meta.data = cbo.dyCbo.combined@meta.data)
+
+dim(cbo.dyCbo.combined) # 23,577 genes and 6086 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+savePlot("./outputs50K/CBO/cbo.dyCbo.combined.SeuratObj.clusterMap.png")
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo.dyCbo.combined <- CellCycleScoring(cbo.dyCbo.combined,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo.dyCbo.combined$CC.difference <- cbo.dyCbo.combined$S.Score - cbo.dyCbo.combined$G2M.Score
+```
+
+```{r}
+cbo.dyCbo.combined <- SCTransform(cbo.dyCbo.combined, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r DimPlotClusterMapCombinedObjectDaoyCboAndCbo, fig.height=6, fig.width=10}
+cbo.dyCbo.combined <- cbo.dyCbo.combined %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(cbo.dyCbo.combined, label = TRUE, repel = TRUE)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the above combined object
+saveRDS(cbo.dyCbo.combined, 
+        file = "./outputs50K/DAOY-CBO/clusterMap_files/ClusterMapInput.DaoyCbo.Cbo.combined.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+****ClusterMap: input preparation of the CBO object****
+```{r}
+cbo <- CreateSeuratObject(counts = cbo.data,
+                          min.cells = 3, min.genes=200,
+                          project = "cbo")
+
+dim(cbo) # 25,872 genes and 3838 cells
+
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo[mito.genes, ])/Matrix::colSums(cbo)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = cbo), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(cbo[ribo.genes, ])/Matrix::colSums(cbo)
+```
+
+```{r}
+# add the ribosome and mitochondrial gene percent to the metadata
+cbo <- 
+  AddMetaData(object = cbo, metadata = percent.mito, col.name = "percent.mito")
+
+cbo <- 
+  AddMetaData(object = cbo, metadata = percent.ribo, col.name = "percent.ribo")
+```
+
+```{r}
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+cbo <- cbo[ ! grepl('^RP[SL]', rownames(cbo)), ]
+
+# remove mitochondrial genes 
+cbo <- cbo[ ! grepl("^MT-", rownames(cbo)), ]
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+cbo <- subset(cbo, subset = percent.mito < 0.1)
+```
+
+```{r}
+# Only keeping those genes expressed in more than 10 cells
+counts <- GetAssayData(object = cbo, slot = "counts")
+nonzero <- counts > 0
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+filtered_counts <- counts[keep_genes, ]
+# Reassign to Seurat object
+cbo <- CreateSeuratObject(filtered_counts, meta.data = cbo@meta.data)
+
+dim(cbo) # 21,169 genes and 3049 cells
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo <- CellCycleScoring(cbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo$CC.difference <- cbo$S.Score - cbo$G2M.Score
+```
+
+```{r}
+cbo <- SCTransform(cbo, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r DimPlotClusterMapCbo, fig.height=6, fig.width=10}
+cbo <- cbo %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(cbo, label = TRUE, repel = TRUE)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+saveRDS(cbo, file = "./outputs50K/CBO/clusterMap_files/ClusterMapInput.Cbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+cbo.markers <- FindAllMarkers(object = cbo, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in CBO as csv file
+write.csv(cbo.markers, file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv")
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in CBO also as RDS file for downstream use
+saveRDS(cbo.markers, file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.rds")
+```
+
+```{r}
+# load the cbo markers
+cbo.markers <- read.csv("outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv",
+                        header = TRUE,
+                        stringsAsFactors = FALSE)
+```
+
+```{r}
+# look at the top markers of each CBO cluster
+cbo.markers %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+
+****ClusterMap input: preparation of the DAOY-CBO object****
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+dyCbo <- CreateSeuratObject(counts = dyCbo.data,
+                          min.cells = 3, min.genes=200,
+                          project = "dyCbo")
+
+dim(dyCbo) # 26,261 genes and 3654 cells
+
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dyCbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dyCbo[mito.genes, ])/Matrix::colSums(dyCbo)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = dyCbo), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(dyCbo[ribo.genes, ])/Matrix::colSums(dyCbo)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# add the ribosome and mitochondrial gene percent to the metadata
+dyCbo <- 
+  AddMetaData(object = dyCbo, metadata = percent.mito, col.name = "percent.mito")
+
+dyCbo <- 
+  AddMetaData(object = dyCbo, metadata = percent.ribo, col.name = "percent.ribo")
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+dyCbo <- dyCbo[ ! grepl('^RP[SL]', rownames(dyCbo)), ]
+
+# remove mitochondrial genes 
+dyCbo <- dyCbo[ ! grepl("^MT-", rownames(dyCbo)), ]
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# remove all cells with percent.mito > 10%
+dyCbo <- subset(dyCbo, subset = percent.mito < 0.1)
+dim(dyCbo) # 26,149 genes and 3037 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# Only keeping those genes expressed in more than 10 cells
+counts <- GetAssayData(object = dyCbo, slot = "counts")
+nonzero <- counts > 0
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+filtered_counts <- counts[keep_genes, ]
+# Reassign to Seurat object
+dyCbo <- CreateSeuratObject(filtered_counts, meta.data = dyCbo@meta.data)
+
+dim(dyCbo) # 21,403 genes and 3037 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyCbo <- CellCycleScoring(dyCbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyCbo$CC.difference <- dyCbo$S.Score - dyCbo$G2M.Score
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK  
+# regressing out nUMI, percent.mito, percent.ribo in addition to CC.difference made cluster assignment
+# harder so stick to only regressing CC.difference
+
+dyCbo <- SCTransform(dyCbo, 
+                   vars.to.regress = "CC.difference", 
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r DimPlotClusterMapDaoyCbo, fig.height=6, fig.width=10}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+
+dyCbo <- dyCbo %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(dyCbo, label = TRUE, repel = TRUE)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+
+saveRDS(dyCbo, file = "./outputs50K/DAOY-CBO/clusterMap_files/ClusterMapInput.DaoyCbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+
+dyCbo.markers <- FindAllMarkers(object = dyCbo, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use
+saveRDS(dyCbo.markers, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.rds")
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in DAOY-CBO folder as csv file
+write.csv(dyCbo.markers, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.csv")
+```
+
+```{r}
+# load the list of DAOY-CBO cluster markers
+dyCbo.markers <- read.csv("outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.csv",
+                          stringsAsFactors = FALSE,
+                          header = TRUE)
+```
+
+
+```{r}
+# look at the top markers of DAOY-CBO clusters
+dyCbo.markers %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+
+
+****Run ClusterMap - simple run and full run: DAOY-CBO and CBO****
+Simple run and full run are performed. ClusterMap seems able to identify the DAOY clusters as clusters 8, 12, 13! Looking at the gene expression for these clusters they appear to match the DAOY clusters I identified manually previously! THE OUTPUT IS AUTOMATICALLY SAVED - SEE OUTPUTS50K/DAOY-CBO/CLUSTERMAP_FILES/dyCboSimple.results.csv
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# clusterMap SIMPLE RUN
+marker_file_list.dyCbo.simple <- c(cbo = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv", 
+                      dyCbo = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.csv")
+
+res.dyCboSimple <- cluster_map(marker_file_list.dyCbo.simple, edge_cutoff = 0.1, output = "dyCboSimple")
+res.dyCboSimple
+```
+
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK - all figures are in outputs50K > CBO or DAOY-CBO > figures
+# prepare the data
+cbo.tsne <- RunTSNE(cbo)
+dyCbo.tsne <- RunTSNE(dyCbo)
+cbo.dyCbo.combined.tsne <- RunTSNE(cbo.dyCbo.combined)
+
+# save the above TSNE files as RDS files for downstream use
+saveRDS(cbo.tsne, file = "./outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds")
+saveRDS(dyCbo.tsne, file = "./outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.tsne.DAOY-CBOsample.ClusterMapInputFullRun.rds")
+saveRDS(cbo.dyCbo.combined.tsne, file = "./outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.Cbo.combined.tsne.daoyCboVScboSamples.ClusterMapInputFullRun.rds")
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# clusterMap FULL run - this code produces correct output even though it throws an error message!
+marker_file_list <- c(CBO = "outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv", 
+                      DAOY_CBO = "outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.csv")
+
+fList <- c(CBO = "outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds",
+           DAOY_CBO = "outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.tsne.DAOY-CBOsample.ClusterMapInputFullRun.rds",
+           combined = "outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.Cbo.combined.tsne.daoyCboVScboSamples.ClusterMapInputFullRun.rds")
+
+objList <- lapply(fList, readRDS)
+
+single_obj_list <- 
+  c(CBO = objList$CBO, DAOY_CBO = objList$DAOY_CBO)
+
+res.dyCbo.fullRun <- cluster_map(marker_file_list, 
+                   edge_cutoff = 0.1, 
+                   output = "combined", 
+                   single_obj_list = single_obj_list, 
+                   comb_obj = objList$combined)
+
+res.dyCbo.fullRun
+```
+
+
+----------------------------------------------------------------------------------------
+****ClusterMap input preparation of the COMBINED CBO and ONS76-CBO object****
+Repeat the above with the ONS76-CBO sample
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# load the ONS76-CBO raw data
+data_dir <- "./working_data/ONS76-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r read_expression_matrix}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+
+o76cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+colnames(cbo.data) = paste0('cbo-', colnames(cbo.data))
+colnames(o76cbo.data) = paste0('o76cbo.data-', colnames(o76cbo.data))
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+cbo.o76cbo.data = cbind(cbo.data, o76cbo.data)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+cbo.o76cbo.combined <- CreateSeuratObject(counts = cbo.o76cbo.data,
+                                         min.cells = 3, min.genes=200,
+                                         project = "cbo.o76cbo.comb")
+
+dim(cbo.o76cbo.combined) #27,763 genes and 7294 cells
+
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo.o76cbo.combined), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo.o76cbo.combined[mito.genes, ])/Matrix::colSums(cbo.o76cbo.combined)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = cbo.o76cbo.combined), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(cbo.o76cbo.combined[ribo.genes, ])/Matrix::colSums(cbo.o76cbo.combined)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# add the ribosome and mitochondrial gene percent to the metadata
+cbo.o76cbo.combined <- 
+  AddMetaData(object = cbo.o76cbo.combined, metadata = percent.mito, col.name = "percent.mito")
+
+cbo.o76cbo.combined <- 
+  AddMetaData(object = cbo.o76cbo.combined, metadata = percent.ribo, col.name = "percent.ribo")
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+cbo.o76cbo.combined <- cbo.o76cbo.combined[ ! grepl('^RP[SL]', rownames(cbo.o76cbo.combined)), ]
+
+# remove mitochondrial genes 
+cbo.o76cbo.combined <- cbo.o76cbo.combined[ ! grepl("^MT-", rownames(cbo.o76cbo.combined)), ]
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# remove all cells with percent.mito > 10%
+cbo.o76cbo.combined <- subset(cbo.o76cbo.combined, subset = percent.mito < 0.1)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# Only keeping those genes expressed in more than 10 cells
+counts <- GetAssayData(object = cbo.o76cbo.combined, slot = "counts")
+nonzero <- counts > 0
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+filtered_counts <- counts[keep_genes, ]
+# Reassign to filtered Seurat object
+cbo.o76cbo.combined <- CreateSeuratObject(filtered_counts, meta.data = cbo.o76cbo.combined@meta.data)
+
+dim(cbo.o76cbo.combined) # 23,141 genes and 5578 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo.o76cbo.combined <- CellCycleScoring(cbo.o76cbo.combined,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo.o76cbo.combined$CC.difference <- cbo.o76cbo.combined$S.Score - cbo.o76cbo.combined$G2M.Score
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+cbo.o76cbo.combined <- SCTransform(cbo.o76cbo.combined, 
+                   vars.to.regress = "CC.difference", 
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r DimPlotClusterMapCombinedObjectONS76CboAndCbo, fig.height=6, fig.width=10}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+
+cbo.o76cbo.combined <- cbo.o76cbo.combined %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(cbo.o76cbo.combined, label = TRUE, repel = TRUE)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+saveRDS(cbo.o76cbo.combined, file = "./outputs50K/ONS76-CBO/clusterMap_files/ClusterMapInput.Ons76Cbo.Cbo.combined.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+
+****ClusterMap input: preparation of the ONS76-CBO object****
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+o76cbo <- CreateSeuratObject(counts = o76cbo.data,
+                          min.cells = 3, min.genes=200,
+                          project = "ons76cbo")
+
+dim(o76cbo) # 25,464 genes and 3456 cells
+
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = o76cbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(o76cbo[mito.genes, ])/Matrix::colSums(o76cbo)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = o76cbo), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(o76cbo[ribo.genes, ])/Matrix::colSums(o76cbo)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# add the ribosome and mitochondrial gene percent to the metadata
+o76cbo <- 
+  AddMetaData(object = o76cbo, metadata = percent.mito, col.name = "percent.mito")
+
+o76cbo <- 
+  AddMetaData(object = o76cbo, metadata = percent.ribo, col.name = "percent.ribo")
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+o76cbo <- o76cbo[ ! grepl('^RP[SL]', rownames(o76cbo)), ]
+
+# remove mitochondrial genes 
+o76cbo <- o76cbo[ ! grepl("^MT-", rownames(o76cbo)), ]
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# remove all cells with percent.mito > 10%
+o76cbo <- subset(o76cbo, subset = percent.mito < 0.1)
+dim(o76cbo) # 25,354 genes and 2529 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# Only keeping those genes expressed in more than 10 cells
+counts <- GetAssayData(object = o76cbo, slot = "counts")
+nonzero <- counts > 0
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+filtered_counts <- counts[keep_genes, ]
+# Reassign to Seurat object
+o76cbo <- CreateSeuratObject(filtered_counts, meta.data = o76cbo@meta.data)
+
+dim(o76cbo) # 20,563 genes and 2529 cells
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+o76cbo <- CellCycleScoring(o76cbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+o76cbo$CC.difference <- o76cbo$S.Score - o76cbo$G2M.Score
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+o76cbo <- SCTransform(o76cbo, 
+                   vars.to.regress = "CC.difference", 
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r DimPlotClusterMapONS76cbo, fig.height=6, fig.width=10}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+o76cbo <- o76cbo %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(o76cbo, label = TRUE, repel = TRUE)
+```
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+saveRDS(o76cbo, file = "./outputs50K/ONS76-CBO/clusterMap_files/ClusterMapInput.ONS76cbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+
+```{r}
+# FOR KNIT DO NOT RUN THIS CODE CHUNK
+o76cbo.markers <- FindAllMarkers(object = o76cbo, 
+                                 only.pos = TRUE, 
+                                 min.pct = 0.25, 
+                                 logfc.threshold = 0.25)
+```
+
+```{r}
+# look at top markers of ONS76-CBO clusters
+o76cbo.markers %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r VlnplotNeuroD1Rbfox3Rtn1CBOsampleClusterMapInput, fig.height=2, fig.width=10}
+# check co-expression of granule cell markers
+VlnPlot(cbo, features = c("NEUROD1", "RBFOX3", "RTN1"))
+```
+
+```{r VlnplotNeuroD1Rbfox3Rtn1ONS76CBOsampleClusterMapInput, fig.height=2, fig.width=10}
+# this time there are 4 NEUROD1 clusters, and cluster 4 is the healthy cluster
+VlnPlot(o76cbo, features = c("NEUROD1", "RBFOX3", "RTN1"))
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in ONS76-CBO as csv file
+write.csv(o76cbo.markers, 
+          file = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.csv")
+```
+
+```{r}
+o76cbo.markers <- read.csv("outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.csv",
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# save the markers of each cluster in ONS76-CBO also as RDS file for downstream use
+saveRDS(o76cbo.markers, 
+        file = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.rds")
+```
+
+****Run ClusterMap - simple run and full run: ONS76-CBO and CBO****
+
+This SIMPLE run result shows that CBO cluster 6 (granule precursors) maps to ONS76-CBO cluster 4, 5 and 11 which are all NEUROD1+ clusters and this matches the ViolinPlot results above (but not NEUROD1+ cluster 9). CBO cluster 7 has no counterpart in ONS76-CBO.
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK - results already saved on server
+# clusterMap SIMPLE RUN
+marker_file_list.o76cbo.simple <- c(cbo = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv", 
+                      o76cbo = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.csv")
+
+res.o76cboSimple <- cluster_map(marker_file_list.o76cbo.simple, 
+                                edge_cutoff = 0.1, 
+                                output = "o76cboSimple")
+res.o76cboSimple
+```
+
+ClusterMap FULL RUN:
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# prepare the data
+cbo.tsne <- RunTSNE(cbo)
+o76cbo.tsne <- RunTSNE(o76cbo)
+cbo.o76cbo.combined.tsne <- RunTSNE(cbo.o76cbo.combined)
+
+# save the above TSNE files as RDS files for downstream use
+# saveRDS(cbo.tsne, file = "./outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds") (already saved)
+saveRDS(o76cbo.tsne, file = "./outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.tsne.ONS76cboSample.ClusterMapInputFullRun.rds")
+saveRDS(cbo.o76cbo.combined.tsne, file = "./outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.Cbo.combined.tsne.ONS76cboVScboSamples.ClusterMapInputFullRun.rds")
+```
+
+```{r}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK - results already saved, but figure labels are not ideal!
+# clusterMap FULL run - this code produces correct output even though it throws an error message!
+
+marker_file_list <- c(ORG = "outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv", 
+                       ONS76_ORG = "outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.csv")
+
+fList <- c(ORG = "outputs50K/CBO/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds",
+           ONS76_ORG = "outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.tsne.ONS76cboSample.ClusterMapInputFullRun.rds",
+           combined = "outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.Cbo.combined.tsne.ONS76cboVScboSamples.ClusterMapInputFullRun.rds")
+
+objList <- lapply(fList, readRDS)
+
+single_obj_list <- 
+  c(ORG = objList$ORG, ONS76_ORG = objList$ONS76_ORG)
+
+res.o76cbo.fullRun <- cluster_map(marker_file_list, 
+                   edge_cutoff = 0.1, 
+                   output = "combined", 
+                   single_obj_list = single_obj_list, 
+                   comb_obj = objList$combined)
+
+res.o76cbo.fullRun
+```
+
+
+CODE THAT IS RETAINED AS IT MIGHT BE USEFUL LATER BUT NOT NEEDED CURRENTLY
 -----------------------------------------------------------------------------------------
 ***Plot the distribution of proliferative cells in the DimPlot***
 Superimpose cycling cells onto the UMAP plot of cell clusters
 
-```{r}
+```
+{r}
 phase.cbo.sct <- 
   readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
 ```
 
 Get the list of genes expressed in cycling cells (Seurat list from Tirosh et al.). This shows that there are much smaller numbers of actively cycling cells than I first assumed.
-```{r}
+```
+{r}
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 prolif.genes <- list(c(s.genes, g2m.genes))
 ```
 
 
-```{r}
+```
+{r DimPlotProlifGenes}
 phase.cbo.sct <- AddModuleScore(phase.cbo.sct,
                         features = prolif.genes,
                         name = "prolif.genes")
 FeaturePlot(phase.cbo.sct, features = 'prolif.genes1', label = TRUE, repel = TRUE) +
-   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) +
+  labs()
 ```
 
 Be careful with the colnames of meta.data. Even though I named "prolif.genes" above, getting the colnames has shown that this becomes "prolif.genes1" !!!
-```{r}
+```
+{r}
 names(x = phase.cbo.sct[[]])
 ```
 
 Subset the object to extract cluster 5 cells, which are Neurod1+.
-```{r}
+```
+{r}
 neurod1.cbo <- subset(phase.cbo.sct, idents = c("5"))
 ```
 
-```{r}
+```
+{r}
 dim(neurod1.cbo)
 ```
 
@@ -340,7 +1110,7 @@ save.image("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
 --------------------------------------------------------------------------------------------
 ***Repeat clustering of CBO dataset using conventional normalization***
 ```
-# NO NEED TO RUN THESE CODE CHUNKS
+# NO NEED TO RUN THESE CODE CHUNKS - SCT transformation worked better
 
 # load the dataset
 filt.RiboMito.cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
@@ -389,7 +1159,54 @@ This code is retained just to show the usage of write.csv
 write.csv(cbo.cluster.markers.ribo20, "./outputs50K/CBO/cbo.cluster.markers.ribo20.csv", quote = F)
 ```
 
+The DotPlots are not that useful
+```
+{r DotplotSeppTFmarkers}
+# using the Sepp et al paper (Extended Fig 8g), test if markers from that paper are expressed 
+# in the seurat object filtered to remove all ribosomal and mitochondrial genes, and where cells which
+# have mitoch genes > 10% are excluded.
+# MUST use the already clustered seurat object.
+# I used just the transcription factor (TF) markers (sepp.TF.markers)
 
+sepp.TF.markers <- c("PAX3", "RFX4", "TCFL71", "GLIS3", "SOX6", "TCF7L2", "HOPX", "TSC22D4", "ID4",
+             "ESRRB", "FOXP2", "FOXP4", "MEF2C",
+             "PAX2", "TFAP2A", "TFAP2B", "BHLHE22", "PRDM8",
+             "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", "ZBTB18", "NEUROD1", "ETV1", "KLF9", "NR3C1")
+
+
+DotPlot(object = phase.cbo.sct.clusters, features = sepp.TF.markers) +
+  coord_flip()
+```
+
+```
+{r DotplotSeppMarkersAndCiliaManyCBO, fig.height=10}
+# from the Sepp paper repeat Dotplot with TF and some key non-TF markers
+# added markers of ciliated cells from cluster10 above.
+# used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
+
+sepp.all.markers <- c("TFAP2A", "PAX3", "RFX4", "TCFL71", "TCF7L2", "GLIS3", "SOX6", "HOPX", "TSC22D4",  
+                      "ID4", "NCKAP5", "SLIT2", "CLYBL", "SLC1A3", "SLC6A11", "AQP4",  #astroglial/progenitor
+                      
+                      "ESRRB", "FOXP1", "FOXP2", "FOXP4", "MEF2C", "RORB", "CDH9", "ETV1", "EBF1", "EBF2", 
+                      "SKOR2", "DAB1", "IPTR",   # Purkinje
+                      
+                      "NOTCH1",    # VZ neuroblast
+             
+                      "PAX2", "NFIA", "NFIB", "TFAP2B", "BHLHE22", "PRDM8",  # interneuron
+                      
+                      "ZFHX3", "ZFHX4",   # GABAergic deep nuclei neurons
+             
+                      "TOP2A", "ATOH1", "LMX1A", "OTX2","ETV6", "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", 
+                      "ZBTB18", "NEUROD1", "ZIC1", "ZIC4", "GABAR6", "CNTN1", "CNTN2", "KLF9", "NR3C1", "LMO3", 
+                      "SYNPR", "KCNIP4", "HCRTR2", 
+                      "EOMES", "TRPC3", "GRM1")
+                      # UBC/GCP/granule/glut deep cerebellar nuclei                                                                   
+seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "C11orf88", "ANKRD66", "C20orf85", 
+                                "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
+
+DotPlot(object = phase.cbo.sct.clusters, features = seppAll.cilia.stem.markers, col.min = 0) +
+  coord_flip()
+```
 
 
 
