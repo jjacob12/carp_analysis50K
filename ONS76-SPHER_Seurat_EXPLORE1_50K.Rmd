@@ -1,0 +1,149 @@
+---
+title: "ONS76-SPHER_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "19/01/2023"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/ONS76_SPHER/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(clustree)
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+})
+```
+
+```{r}
+# load the phase, cell cycle difference regressed, SCTransformed object
+
+phase.ons76spher.filtRiboMito.sct <- readRDS("outputs50K/ONS76_SPHER/phase.ons76spher.filtRiboMito.SCT.regressedCCdiff.rds")
+```
+
+```{r}
+# generate a clustered seurat object, res = 0.2
+# PCA was previously run on 'phase.ons762d.filtRiboMito.sct' in the QC file
+
+phase.ons76spher.sct.clust.res0.2 <- phase.ons76spher.filtRiboMito.sct %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.2)
+```
+
+
+```{r}
+# using res = 0.2 there are 2 clusters
+DimPlot(phase.ons76spher.sct.clust.res0.2)
+```
+
+```{r}
+# generate a clustered  seurat object, res = 0.5
+# PCA was previously run on 'phase.ons762d.filtRiboMito.sct' in the QC file
+
+phase.ons76spher.sct.clust.res0.5 <- phase.ons76spher.filtRiboMito.sct %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.5)
+```
+
+```{r}
+# using res = 0.5 there are 4 clusters
+DimPlot(phase.ons76spher.sct.clust.res0.5)
+```
+
+When res = 0.8 there are 7 clusters (not shown) which are not well demarcated.
+
+***Clustree***
+```{r}
+# attempt to use Clustree package to find the right number of clusters
+# -----------------------------------------------------------------------------------------------
+
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+ons76spher.clusters <- FindClusters(object = phase.ons76spher.sct.clust.res0.5, 
+                                      resolution = resolution.range,
+                                      verbose = FALSE)
+```
+
+```{r ClustreeCBO, fig.height=12}
+# the clustering tree finds 3 major clusters initially with res = 0.4.
+# when res > 0.4 the cluster assignment becomes unstable.
+# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
+clustree(ons76spher.clusters)
+```
+
+```{r}
+# generate a clustered  seurat object, res = 0.5
+# PCA was previously run on 'phase.ons762d.filtRiboMito.sct' in the QC file
+
+phase.ons76spher.sct.clust.res0.4 <- phase.ons76spher.filtRiboMito.sct %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.4)
+```
+
+```{r}
+# using res = 0.4 there are 3 clusters, which are quite well separated
+DimPlot(phase.ons76spher.sct.clust.res0.4)
+```
+
+```{r}
+# get the number of cells per cluster
+table(Idents(phase.ons76spher.sct.clust.res0.4))
+```
+
+```{r}
+# save the phase.ons76spher.sct.clust.res0.4 as a new Seurat object
+saveRDS(phase.ons76spher.sct.clust.res0.4,
+        file = "./outputs50K/ONS76_SPHER/phase.ons76spher.SCT.clustered.res0.4.rds")
+```
+
+
+***Find the DEGs of each cluster***
+Find the markers of each cluster for res = 0.4
+```{r}
+# find POSITIVE markers of each cluster
+phase.ons76spher.sct.POSdegs <- FindAllMarkers(object = phase.ons76spher.sct.clust.res0.4,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+```{r}
+phase.ons76spher.sct.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+There are 3 clusters, 0, 1, 2. Inspection of the gene list for each cluster shows that cluster 0 genes are widely shared by all clusters (pct.1 and pct.2 are comparable), cluster 1 is the most distinctive (pct.1 >> pct.2) and expresses proliferation genes e.g. MKI67, BIRC5, etc.. The last cluster, cluster 2 is less distinctive than cluster 1, with in general smaller difference between pct.1 and pct.2
+
+```{r}
+# save the UP-regulated genes
+saveRDS(phase.ons76spher.sct.POSdegs, 
+        file = "./outputs50K/ONS76_SPHER/POS.DEGs.AllClusts.phase.ons76spher.sct.rds")
+```
+
+```{r}
+# load the above DEGs file
+phase.ons76spher.sct.POSdegs <- 
+  readRDS("outputs50K/ONS76_SPHER/POS.DEGs.AllClusts.phase.ons76spher.sct.rds")
+```
+
+
+
+
