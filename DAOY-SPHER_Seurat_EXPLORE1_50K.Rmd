@@ -1,0 +1,149 @@
+---
+title: "DAOY-SPHER_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "2023-01-26"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/ONS76_SPHER/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(clustree)
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+})
+```
+
+```{r}
+# load the phase, cell cycle difference regressed, SCTransformed object
+
+phase.daoySpher.filtRiboMito.sct <- readRDS("outputs50K/DAOY_SPHER/phase.daoySpher.filtRiboMito.SCT.regressedCCdiff.rds")
+```
+
+```{r}
+# generate a clustered seurat object, res = 0.2
+# PCA was previously run on 'phase.ons762d.filtRiboMito.sct' in the QC file
+
+phase.daoySpher.sct.clust.res0.2 <- phase.daoySpher.filtRiboMito.sct %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.2)
+```
+
+
+```{r}
+# using res = 0.2 there are 2 clusters
+DimPlot(phase.daoySpher.sct.clust.res0.2)
+```
+
+***Clustree***
+```{r}
+# attempt to use Clustree package to find the right number of clusters
+# -----------------------------------------------------------------------------------------------
+
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+daoySpher.clusters <- FindClusters(object = phase.daoySpher.sct.clust.res0.2, 
+                                      resolution = resolution.range,
+                                      verbose = FALSE)
+```
+
+```{r ClustreeCBO, fig.height=6}
+# the clustering tree finds 3 major clusters with res = 0.4.
+# when res > 0.4 the cluster assignment becomes unstable.
+# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
+clustree(daoySpher.clusters)
+```
+
+Test how the clusters appear and check markers of each cluster
+```{r}
+# generate a clustered  seurat object, res = 0.4
+phase.daoySpher.sct.clust.res0.4 <- phase.daoySpher.filtRiboMito.sct %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, res = 0.4)
+```
+
+```{r}
+# using res = 0.4 there are 3 clusters, and only two of these are well separated
+DimPlot(phase.daoySpher.sct.clust.res0.4)
+```
+
+```{r}
+# get the number of cells per cluster
+table(Idents(phase.daoySpher.sct.clust.res0.4))
+```
+
+***Find the DEGs of each cluster***
+Find the markers of each cluster for res = 0.2
+```{r}
+# find POSITIVE markers of each cluster
+phase.daoySpher.sct.POSdegs <- FindAllMarkers(object = phase.daoySpher.sct.clust.res0.2,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+Cluster 0 gene expression is similar in terms of pct.1 and pct.2. However, cluster 1 gene expression shows marked differences from cluster 0
+```{r}
+phase.daoySpher.sct.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+Find the markers of each cluster for res = 0.4
+```{r}
+# find POSITIVE markers of each cluster
+phase.daoySpher.sct.res0.4.POSdegs <- FindAllMarkers(object = phase.daoySpher.sct.clust.res0.4,
+                                      min.pct = 0.25,
+                                      only.pos = TRUE)
+```
+
+As can be seen below the markers for cluster 0 and cluster 1 are expressed by similar proportions of cells in pct.1 and pct.2, so RESOLTION = 0.2 IS APPROPRIATE
+```{r}
+phase.daoySpher.sct.res0.4.POSdegs %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+```{r}
+# save the UP-regulated genes (res = 0.2)
+saveRDS(phase.daoySpher.sct.POSdegs, 
+        file = "./outputs50K/DAOY_SPHER/POS.DEGs.AllClusts.phase.daoySpher.res0.2.sct.rds")
+
+```
+
+```{r}
+# load the markers object above
+phase.daoySpher.sct.POSdegs <- 
+  readRDS("outputs50K/DAOY_SPHER/POS.DEGs.AllClusts.phase.daoySpher.res0.2.sct.rds")
+```
+
+```{r}
+# save the phase.daoySpher.sct.clust.res0.2 as a new Seurat object
+saveRDS(phase.daoySpher.sct.clust.res0.2,
+        file = "./outputs50K/DAOY_SPHER/phase.daoySpher.SCT.clustered.res0.2.rds")
+```
+
+
+
+
+
+
+
+
