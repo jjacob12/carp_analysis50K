@@ -24,6 +24,7 @@ library(tidyverse)
 ```
 
 ```{r path_to_data}
+# load the CBO raw data (from "working_data" folder)
 data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
 
 list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
@@ -38,6 +39,7 @@ cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
 
 dim(cbo.data)
 ```
+
 
 ```{r distrib_detect_genes_stats}
 # Check how many genes have at least one transcript in each cell.
@@ -318,7 +320,7 @@ filtered_counts <- counts[keep_genes, ]
 filteredCellsGenes.cbo.seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered.cbo.seurat@meta.data)
 ```
 
-```
+```{r}
 # saved the filteredCellsGenes.cbo.seurat object to outputs50K folder
 
 saveRDS(filteredCellsGenes.cbo.seurat, file = "./outputs50K/CBO/filtered.cbo.seurat.rds")
@@ -372,20 +374,14 @@ saveRDS(filt.RiboMito.cbo, file = "./outputs50K/CBO/filt.RiboMitoCellsGenes.seur
 
 -------------------------------------------------------------------------------------
 ***Using SCTransform with cell cycle regression***
-
-```{r}
-#--------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------
-# EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
-```
-
+EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle
 Read in the seurat object
 ```{r}
 filt.RiboMito.cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
 ```
 
 ```{r}
-# normalise data
+# normalise data - WHY NORNMALIZE BEFORE SCTRANSFORM!!! THE VIGNETTE ON SCTRANSFORM DOES NOT DO THIS!!!
 phase.cbo.sct <- NormalizeData(filt.RiboMito.cbo)
 
 # run cell cycle scoring
@@ -424,7 +420,7 @@ phase.cbo.sct <- RunPCA(phase.cbo.sct, features = c(s.genes, g2m.genes))
 DimPlot(phase.cbo.sct, reduction = "pca", group.by = "Phase")
 ```
 
-```
+```{r}
 # save the 'phase.cbo.sct' above (ie. where there has been regression of cell cycle difference)
 saveRDS(phase.cbo.sct, file = "./outputs50K/CBO/phase.cbo.filtRiboMito.SCT.CCdiffRegress.rds")
 ```
