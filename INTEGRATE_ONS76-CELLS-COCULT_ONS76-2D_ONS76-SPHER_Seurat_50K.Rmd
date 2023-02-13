@@ -18,9 +18,11 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 ```{r load_libraries}
+# library(presto)
 suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
+library(msigdbr)
 library(Matrix)
 library(patchwork)
 library(clustree)
@@ -31,8 +33,7 @@ library(plyr)
 })
 ```
 
-```
-{r}
+```{r}
 
 load("RDataFiles/INTEGRATE_ONS76-CBO_ONS76-2D_ONS76-SPHER_CBO_seurat_50K.RData")
 ```
@@ -78,10 +79,10 @@ head(metadata)
 ons76.merge@meta.data <- metadata
 ```
 
-```{r BarPlotCellCountsONS76SpherVs2D, fig.height=4, fig.width=3}
+```{r BarPlotCellCountsONS76SpherVs2D, fig.height=4, fig.width=4}
 metadata %>% 
   	ggplot(aes(x=sample, fill=sample)) + 
-  	geom_bar() +
+  	geom_bar(fill = "grey") +
   	theme_classic() + NoLegend()
 ```
 
@@ -95,9 +96,22 @@ print(ons76.merge[["pca"]], dims = 1:5, nfeatures = 10)
 ```
 
 
-```{r VizDimLoadingsONS76spherVsMono, fig.height=10, fig.width=10}
-VizDimLoadings(ons76.merge, dims = 1:4, reduction = "pca", balanced = TRUE, nfeatures = 30)
+```{r VizDimLoadingsONS76spherVsMono, fig.height=2, fig.width=2}
+VizDimLoadings(ons76.merge, dims = 1, reduction = "pca", balanced = TRUE, nfeatures = 20)
 ```
+
+```{r VizDimLoadingsONS76spherVsMono, fig.height=2, fig.width=2}
+VizDimLoadings(ons76.merge, dims = 2, reduction = "pca", balanced = TRUE, nfeatures = 20)
+```
+
+```{r VizDimLoadingsONS76spherVsMono, fig.height=2, fig.width=2}
+VizDimLoadings(ons76.merge, dims = 3, reduction = "pca", balanced = TRUE, nfeatures = 20)
+```
+
+```{r VizDimLoadingsONS76spherVsMono, fig.height=2, fig.width=2}
+VizDimLoadings(ons76.merge, dims = 4, reduction = "pca", balanced = TRUE, nfeatures = 20)
+```
+
 
 ```{r PCAPlotONS76spherVsMono}
 Idents(ons76.merge) <- "sample"
@@ -111,7 +125,7 @@ DimPlot(ons76.merge, reduction = "pca") +
 DimHeatmap(ons76.merge, dims = 1:3, balanced = TRUE)
 ```
 
-```
+```{r}
 Idents(ons76.merge) <- "sample"
 ons76.spher.markers <- FindMarkers(ons76.merge, ident.1 = "spheroid", ident.2 = "monolayer",
                                verbose = FALSE,
@@ -119,7 +133,7 @@ ons76.spher.markers <- FindMarkers(ons76.merge, ident.1 = "spheroid", ident.2 = 
                                logfc.threshold = 0.25)
 ```
 
-```
+```{r}
 # SAVE the list of up and down regulated genes in ONS76_SPHER vs ONS76_2D
 saveRDS(ons76.spher.markers, file = "outputs50K/INTEGRATE/ons76SpherVs2D.Up&DownDEGs.rds")
 ```
@@ -180,7 +194,7 @@ head(ons76.spher.markers.gene, 20)
 ```
 
 
-```{r VolcanoPlotONS76SpherVs2D, fig.height=10, fig.width=10}
+```{r VolcanoPlotONS76SpherVs2D, fig.height=10, fig.width=15}
 
 genes.to.label.o76SpherVS2d <- c("TINAGL1", "HMGA1", "NRG1", "FST", "DKK1", "KRT18", 
                                  "BIRC5", "CTNNAL1", "CD24", "TK1", "PCLAF", "FRMD5",
@@ -193,8 +207,20 @@ EnhancedVolcano(ons76.spher.markers,
                 x = "avg_log2FC",
                 y = "p_val_adj",
                 selectLab = genes.to.label.o76SpherVS2d,
+                title = NULL,
+                subtitle = NULL,
+                pointSize = 5.0,
+                labSize = 6.0,
+                cutoffLineWidth = 1.0,
+                axisLabSize = 30,
+                legendLabSize = 25,
+                legendIconSize = 10,
+                legendPosition = "right",
+                legendLabels = c("NS", "Log2FC", "p-value", "p-value and Log2FC"),
                 drawConnectors = TRUE,
-                widthConnectors = 0.5)
+                widthConnectors = 0.5,
+                gridlines.major = FALSE,
+                gridlines.minor = FALSE)
 ```
 
 -----------------------------------------------------------------------------------------------
@@ -253,11 +279,13 @@ o76.4samples.df$sample <- factor(o76.4samples.df$sample,
                                levels = c("monolayer", "spheroid", "coculture", "organoid"))
 ```
 
-```{r BarChartONS76CellCounts2d3dONS76CboAndCbo4conditions, fig.height=4, fig.width=4}
+```{r BarChartONS76CellCounts2d3dONS76CboAndCbo4conditions, fig.height=7, fig.width=5}
 ggplot(o76.4samples.df, aes(x=sample, fill=sample)) + 
-  	geom_bar() +
+  	geom_bar(fill = "grey") +
   	theme_classic() +
-   theme(axis.title = element_blank()) +
+   theme(axis.title = element_blank(), axis.title.y = element_text(size = 18),
+         axis.text.x = element_text(size = 14, angle = 45, hjust = 1), 
+         axis.text.y = element_text(size = 14)) +
    NoLegend()
 ```
 
@@ -269,13 +297,21 @@ o76.4samples <- RunPCA(o76.4samples, features = VariableFeatures(object = o76.4s
 o76.4samples <- RunUMAP(o76.4samples, dims = 1:5, reduction = "pca")
 ```
 
+```{r}
+saveRDS(o76.4samples, file = "./outputs50K/INTEGRATE/Ons76-4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
+```
+
+```{r}
+o76.4samples <- readRDS("outputs50K/INTEGRATE/Ons76-4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
+```
+
+
 This result makes sense - separation of the monolayer and spheroid samples but strong overlap of ONS76-CBO and CBO (organoid) samples
-```{r DimPlotMergedDyCboSpher2dCboCNTRL4samples, fig.height=6, fig.width=8}
+```{r DimPlotMergedDyCboSpher2dCboCNTRL4samples, fig.height=6, fig.width=10}
 DimPlot(o76.4samples, reduction = "umap", group.by = "sample")
 ```
 
-```
-{r VlnPlotONS76StemnessGenes4samplesMergedMonoSpherONS76CBOandCBO, fig.height=10, fig.width=12}
+```{r VlnPlotONS76StemnessGenes4samplesMergedMonoSpherONS76CBOandCBO, fig.height=10, fig.width=12}
 # NO NEED TO RUN THESE CODE CHUNKS
 
 # look at some stemness markers
@@ -284,8 +320,7 @@ VlnPlot(o76.4samples, features = c("SOX2", "POU3F2", "GRIA4", "MEIS1", "PRRX1", 
         slot = "data", assay = "RNA")
 ```
 
-```
-{r VlnPlotONS76OtherGenes4samplesMergedMonoSpherONS76CBOandCBO, fig.height=20, fig.width=12}
+```{r VlnPlotONS76OtherGenes4samplesMergedMonoSpherONS76CBOandCBO, fig.height=20, fig.width=12}
 VlnPlot(o76.4samples, features = c("IRX5","FABP7", "TTYH1", "ERBB4", "NRG3", "NNAT",
                                         "MIR124-2HG", "DCX", "CTNNA2", "IRX3", "MEIS1", "TWIST1",
                                         "PTCH1", "GLI2", "MYC", "MYCN", "ZIC1", "OTX2", "LHX9"),
@@ -299,16 +334,23 @@ As a first step, subset the ONS76-CBO clustered seurat object for the ONS76 cell
 # load the CLUSTERED 'phase.ons76cbo.sct' object
 phase.ons76cbo.sct.clust <- 
   readRDS("outputs50K/ONS76-CBO/phase.ons76cbo.sct.CCdiffRegressed.filtRiboMito.clustered.rds")
+
 ```
 
-```{r DimplotONS76cboSCT}
+```{r DimplotONS76cboSCT, fig.height=6, fig.width=10}
 DimPlot(phase.ons76cbo.sct.clust, label = TRUE) # '+ NoLegend()' is an option to insert here
 ```
 
 Clusters of interest (cancer clusters) are 3,8,9 on comparing ONS76-CBO with CBO. Note SOX2 is also expressed in cluster 9. GRIA4, MEIS1, HOXB2, ZIC1, POU3F2, LHX9 are all expressed in cluster 9
-```{r ViolinPlotONS76CboGenesOfInterest, fig.height=10, fig.width=12}
+```{r ViolinPlotONS76CboSox2network, fig.width=14}
 VlnPlot(phase.ons76cbo.sct.clust, 
-        features = c("HOXB2", "SOX2", "POU3F2", "FABP7", "GRIA4", "MEIS1", "LHX9", "NEUROD1", "ZIC1"),
+        features = c("HOXB2", "SOX2", "POU3F2", "FABP7"),
+        slot = "data", assay = "RNA")
+```
+
+```{r ViolinPlotONS76CboGranuleDiffGenes, fig.width=14}
+VlnPlot(phase.ons76cbo.sct.clust, 
+        features = c("GRIA4", "MEIS1", "LHX9", "NEUROD1", "ZIC1"),
         slot = "data", assay = "RNA")
 ```
 
@@ -320,10 +362,17 @@ phase.cbo.sct.clusters <-
 ```
 
 There is no equivalent to cluster 9 in the ONS76-CBO clustering above. Therefore, cluster 9 of ONS76-CBO must be a cluster of ONS76 cells
-```{r ViolinPlotCboGenesOfInterest, fig.height=10, fig.width=12}
+```{r ViolinPlotCboSox2network, fig.width=14}
 # HOXB2 not expressed
-VlnPlot(phase.cbo.sct.clusters, features = c("HOXB2", "SOX2", "POU3F2", "FABP7", "GRIA4", "MEIS1",
-                                             "LHX9", "NEUROD1", "ZIC1"), 
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("SOX2", "POU3F2", "FABP7", "GRIA4"), 
+        slot = "data", assay = "RNA")
+```
+
+```{r ViolinPlotCboGenesOfInterest, fig.width=14}
+# HOXB2 not expressed
+VlnPlot(phase.cbo.sct.clusters, 
+        features = c("MEIS1", "LHX9", "NEUROD1", "ZIC1"), 
         slot = "data", assay = "RNA")
 ```
 
@@ -360,15 +409,13 @@ class(ons76CellID)
 length(ons76CellID)
 ```
 
-```
-{r}
+```{r}
 # NO NEED TO RE-RUN THESE CODE CHUNKS
 # get the unclustered seurat object - this will include both ONS76 cells and CBO cells
 ons76cboAll <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.ons76cbo.rds")
 ```
 
-```
-{r}
+```{r}
 # Create a new separate metadata dataframe with a new column of Cell IDs
 metadata <- ons76cboAll@meta.data
 # Add cell IDs to metadata
@@ -379,15 +426,14 @@ ons76cboAll@meta.data <- metadata
 
 
 Sucessfully used the ONS76 cell IDs (from cluster 3,8,9) in ONS76-CBO seurat object, 'filtRiboMitoCellsGenes.ons76cbo.rds', to subset this seurat object so that it only contains the 472 ONS76 cells
-```
-{r}
+```{r}
 # No need to rerun this code
 # subset this Seurat object according to ons76CellID (IDs of only ONS76 cells in co-culture)
 ons76cbo.onsOnly <- subset(ons76cboAll, subset = cellIDs %in% ons76CellID)
 dim(ons76cbo.onsOnly)
 ```
 
-```
+```{r}
 # SAVE the 'ons76cbo.onsOnly' seurat object which contains the subset of ONS76-CBO cells that is
 # only cancer cells - there are 472 cells
 
@@ -475,13 +521,13 @@ ons76only.integrated <- FindNeighbors(ons76only.integrated, reduction = "pca", d
 ons76only.integrated <- FindClusters(ons76only.integrated, resolution = 0.5)
 ```
 
-```{r DimplotUMAPIntegrationOns76onlyCboVSspher, fig.height=6}
+These samples are not well integrated looking at the UMAP plot
+```{r DimplotUMAPIntegrationOns76onlyCboVSspher, fig.height=3}
 DimPlot(ons76only.integrated, reduction = "umap", group.by = "orig.ident")
 ```
 
 
-```
-{r DimPlotUMAPclustersOns76cocultSpher}
+```{r DimPlotUMAPclustersOns76cocultSpher}
 DimPlot(ons76only.integrated, reduction = "umap", group.by = "seurat_clusters")
 ```
 
@@ -490,7 +536,7 @@ DimPlot(ons76only.integrated, reduction = "umap", group.by = "seurat_clusters")
 TopFeatures(object = ons76only.integrated[["pca"]], dim = 1, nfeatures = 40, balanced = TRUE)
 ```
 
-```
+```{r}
 # No need to re-run this code chunk
 
 DefaultAssay(ons76only.integrated) <- "RNA"
@@ -505,11 +551,13 @@ ons76only.integrated.markers.gene <- ons76only.integrated.markers %>%
   rownames_to_column(var = "gene")
 ```
 
-```
+```{r}
 # SAVE the list of up and down regulated genes in ONS76 only cells in coculture (ONS76-CBO) vs 
 # ONS76_SPHER
 saveRDS(ons76only.integrated.markers.gene, file = "outputs50K/INTEGRATE/ons76onlyInCocultVsSpher.Up&DownDEGs.rds")
 ```
+
+
 ```{r}
 # load the above data
 ons76only.integrated.markers.gene <- 
@@ -517,18 +565,18 @@ ons76only.integrated.markers.gene <-
 ```
 
 
-```
+```{r}
 ons76only.integrated.markers.gene %>% 
 arrange(desc(avg_log2FC)) %>% 
   slice_head(n=10)
 ```
 
-```
+```{r}
 ons76only.integrated.markers.gene %>% 
   filter(gene %in% c("NEUROD1", "ZIC1"))
 ```
 
-```{r VolcanoPlotONS76cocultExtractVsSpher, fig.height=10, fig.width=10}
+```{r VolcanoPlotONS76cocultExtractVsSpher, fig.height=10, fig.width=15}
 # plot of ONS76 cells extracted from coculture vs. ONS76-Spheroid
 genes.to.label.o76SpherVS2d <- c("NNAT", "AFF3", "NR2F1", "EYA2", "NEUROD1", "KIAA1211", "TRHDE",
                                  "KCNB2", "TUBB2B", "THSD7B", "NKAIN3", "RUNX1T1", "GREB1L",
@@ -541,8 +589,20 @@ EnhancedVolcano(ons76only.integrated.markers.gene,
                 x = "avg_log2FC",
                 y = "p_val_adj",
                 selectLab = genes.to.label.o76SpherVS2d,
+                title = NULL,
+                subtitle = NULL,
+                pointSize = 5.0,
+                labSize = 6.0,
+                cutoffLineWidth = 1.0,
+                axisLabSize = 30,
+                legendLabSize = 25,
+                legendIconSize = 10,
+                legendPosition = "right",
+                legendLabels = c("NS", "Log2FC", "p-value", "p-value and Log2FC"),
                 drawConnectors = TRUE,
-                widthConnectors = 0.5)
+                widthConnectors = 0.5,
+                gridlines.major = FALSE,
+                gridlines.minor = FALSE)
 ```
 
 
@@ -555,8 +615,7 @@ print(ons76only.integrated[["pca"]], dims = 1:5, nfeatures = 10)
 VizDimLoadings(ons76only.integrated, dims = 1:4, reduction = "pca", balanced = TRUE, nfeatures = 30)
 ```
 
-```
-PCAHeatmapONS76SpherVs2D
+```{r PCAHeatmapONS76SpherVs2D}
 # this does not work - raised issue with Seurat team in Satija lab
 DimHeatmap(ons76only.integrated, dims = 1, balanced = TRUE, slot = "scale.data")
 ```
@@ -565,20 +624,20 @@ DimHeatmap(ons76only.integrated, dims = 1, balanced = TRUE, slot = "scale.data")
 ***Integrate ONS76-2D, ONS76-SPHER and ONS76 cells in ONS76-CBO as a step to generate a correlation matrix of gene expression***
 Get the correlation between ONS76-2D, ONS76-SPHER and ONS76 cells grown in ONS76-CBO. Show as a correlation matrix
 
-```
+```{r}
 # load the objects
 ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ons76only.ons76cbo <- readRDS("outputs50K/INTEGRATE/ons76only.ons76cbo.RiboMitoFiltered.rds")
 ```
 
-```
+```{r}
 dim(ons76mono)
 dim(ons76spher)
 dim(ons76only.ons76cbo)
 ```
 
-```
+```{r}
 # start the integration (use  standard PCA)
 ons76.3samples.list <- list(ons76mono, ons76spher, ons76only.ons76cbo)
 
@@ -589,7 +648,7 @@ ons76.3samples.list <- lapply(ons76.3samples.list, FUN = function(x) {
 })
 ```
 
-```
+```{r}
 # select features that are repeatedly variable across datasets for integration' run PCA on each
 # dataset using these features
 features <- SelectIntegrationFeatures(object.list = ons76.3samples.list)
@@ -600,21 +659,21 @@ ons76.3samples.list <- lapply(ons76.3samples.list, FUN = function(x){
 })
 ```
 
-```
+```{r}
 # continue integration of 3 samples, use PCA
 ons76.3samples.anchors <- FindIntegrationAnchors(object.list = ons76.3samples.list,
                                           anchor.features = features)
 ons76.3samples.integrated <- IntegrateData(anchorset = ons76.3samples.anchors)
 ```
 
-```
+```{r}
 # this step is necessary as ggplot will not work with 'hyphens'
 ons76.3samples.integrated@meta.data[ons76.3samples.integrated@meta.data == "ONS76-CBO"] <- "ONS76_coculture"
 ons76.3samples.integrated@meta.data[ons76.3samples.integrated@meta.data == "ONS76-2D"] <- "ONS76_monolayer"
 ons76.3samples.integrated@meta.data[ons76.3samples.integrated@meta.data == "ons76spher"] <- "ONS76_spheroid"
 ```
 
-```
+```{r}
 # cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
@@ -624,12 +683,12 @@ ons76.3samples.integrated <- CellCycleScoring(ons76.3samples.integrated,
                                  s.features = s.genes)
 ```
 
-```
+```{r}
 # get the cell cycle difference (CC difference)
 ons76.3samples.integrated$CC.difference <- ons76.3samples.integrated$S.Score - ons76.3samples.integrated$G2M.Score 
 ```
 
-```
+```{r}
 # specify that we will perform downstream analysis on the corrected data. Note that the
 # original unmodified data still resides in the 'RNA' assay. Regress the CC difference
 
@@ -643,7 +702,7 @@ ons76.3samples.integrated <- FindNeighbors(ons76.3samples.integrated, reduction 
 ons76.3samples.integrated <- FindClusters(ons76.3samples.integrated, resolution = 0.2)
 ```
 
-```
+```{r}
 saveRDS(ons76.3samples.integrated, 
         file = "./outputs50K/INTEGRATE/ons76.mono.spher.extractCocult.integrated.CCdiffRegressed.rds")
 ```
@@ -667,8 +726,7 @@ head(ons76.3samples.integrated@meta.data)
 table(ons76.3samples.integrated$orig.ident)
 ```
 
-```
-{r}
+```{r}
 # subset the integrated object to extract each sample on its own prior to calculating
 # Average Expression. This avoids problems with infinite values in results of AverageExpression
 # when an attempt is made to calculate pseudobulk values on each sample separately!!
@@ -678,8 +736,7 @@ ons76.3d <- subset(ons76.3samples.integrated, subset = (orig.ident == "ONS76_sph
 ons76cocult <- subset(ons76.3samples.integrated, subset = (orig.ident == "ONS76_coculture")) 
 ```
 
-```
-{r}
+```{r}
 # compute average expression according to sample identity, but first make the Default Assay = RNA
 # very important that NormaliseData(seur_obj) is run BEFORE computing AverageExpression!!
 
@@ -689,24 +746,21 @@ av.ons76.3d <- AverageExpression(ons76.3d)$RNA
 av.ons76cocult <- AverageExpression(ons76cocult)$RNA
 ```
 
-```
-{r}
+```{r}
 # compute lengths of objects
 length(av.ons76.2d)
 length(av.ons76.3d)
 length(av.ons76cocult)
 ```
 
-```
-{r}
+```{r}
 # make the column names of the matrix objects meaningful
 colnames(av.ons76.2d) <- "ONS76_monolayer"
 colnames(av.ons76.3d) <- "ONS76_spheroid"
 colnames(av.ons76cocult) <- "ONS76_coculture"
 ```
 
-```
-{r}
+```{r}
 # convert the matrices of Average Expression to dataframes
 # df = dataframe
 av.ons76.2d.df <- as.data.frame(av.ons76.2d) %>% 
@@ -717,25 +771,22 @@ av.ons76cocult.df <- as.data.frame(av.ons76cocult) %>%
   rownames_to_column("genes")
 ```
 
-```
-{r}
+```{r}
 # left join all three dataframes in one go
 av.ons76.3dfs <- join_all(list(av.ons76.2d.df, av.ons76.3d.df, av.ons76cocult.df), 
                        by = "genes", type = "left")
 ```
 
-```
-{r}
+```{r}
 # identify an NA values - there are none
 colSums(is.na(av.ons76.3dfs))
 ```
 
-```
-{r}
+```{r}
 head(av.ons76.3dfs)
 ```
 
-```
+```{r}
 # save the combined dataframe of Average Expression in subsets of the 
 # integrated object (av.ons76.3samples.integrated)
 saveRDS(av.ons76.3dfs, file = "outputs50K/INTEGRATE/AvgExpressn.ons76.2d.3d.Cocult.df.rds")
@@ -825,8 +876,7 @@ small.genes %>%
 ```
 
 
-```
-{r}
+```{r}
 # run correlation function
 # select the columns with numeric values only
 RNAcounts <- av.ons76.3dfs %>% 
@@ -836,8 +886,7 @@ corr.ons76.3samples
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```
-{r}
+```{r}
 # prepare data for an upper triangular plot
 upper.ons76.3samples <- corr.ons76.3samples
 
@@ -846,15 +895,14 @@ upper.ons76.3samples[lower.tri(upper.ons76.3samples)] <- NA
 upper.ons76.3samples
 ```
 
-```
-{r}
+```{r}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.ons76.3samples <- melt(upper.ons76.3samples, na.rm = TRUE)
 head(up.m.ons76.3samples)
 nrow(up.m.ons76.3samples)
 ```
 
-```
+```{r}
 # save the above correlation dataframe
 saveRDS(up.m.ons76.3samples, file = "outputs50K/INTEGRATE/CorrTableAllgenesONS76CocultSpherMono.rds")
 ```
@@ -891,14 +939,14 @@ ggplot(data = up.m.ons76.3samples, aes(x = Var1, y = Var2, fill = value)) +
 ***Compare the ONS76 coculture cells, ONS76-2D and ONS76-SPHER cells by conventional integration***
 This did not result in as much overlap of cells as with SCT based integration. Given we think the cell type (ONS76) in the 3 samples are all the same, the SCT integration clearly performs better
 
-```
+```{r}
 # load the objects
 ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ons76only.ons76cbo <- readRDS("outputs50K/INTEGRATE/ons76only.ons76cbo.RiboMitoFiltered.rds")
 ```
 
-```
+```{r}
 # start the integration (use RPCA)
 ons76.3samples.list <- list(ons76mono, ons76spher, ons76only.ons76cbo)
 
@@ -909,7 +957,7 @@ ons76.3samples.list <- lapply(ons76.3samples.list, FUN = function(x) {
 })
 ```
 
-```
+```{r}
 # select features that are repeatedly variable across datasets for integration' run PCA on each
 # dataset using these features
 features <- SelectIntegrationFeatures(object.list = ons76.3samples.list)
@@ -920,20 +968,20 @@ ons76.3samples.list <- lapply(ons76.3samples.list, FUN = function(x){
 })
 ```
 
-```
+```{r}
 # continue integration of 3 samples, using PCA
 ons76.3samples.anchors.2 <- FindIntegrationAnchors(object.list = ons76.3samples.list,
                                           anchor.features = features)
 ons76.3samples.combined <- IntegrateData(anchorset = ons76.3samples.anchors)
 ```
 
-```
+```{r}
 # this step is necessary as ggplot will not work with 'hyphens'
 ons76.3samples.combined@meta.data[ons76.3samples.combined@meta.data == "ONS76-CBO"] <- "ONS76_CBO"
 ons76.3samples.combined@meta.data[ons76.3samples.combined@meta.data == "ONS76-2D"] <- "ONS76_2D"
 ```
 
-```
+```{r}
 # cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
@@ -943,12 +991,12 @@ ons76.3samples.combined <- CellCycleScoring(ons76.3samples.combined,
                                  s.features = s.genes)
 ```
 
-```
+```{r}
 # get the cell cycle difference (CC difference)
 ons76.3samples.combined$CC.difference <- ons76.3samples.combined$S.Score - ons76.3samples.combined$G2M.Score 
 ```
 
-```
+```{r}
 # specify that we will perform downstream analysis on the corrected data. Note that the
 # original unmodified data still resides in the 'RNA' assay. Regress the CC difference
 
@@ -962,27 +1010,23 @@ ons76.3samples.combined <- FindNeighbors(ons76.3samples.combined, reduction = "p
 ons76.3samples.combined <- FindClusters(ons76.3samples.combined, resolution = 0.2)
 ```
 
-```
+```{r}
 # save the clustered 'ons76.3samples.combined' that underwent conventional integration by PCA,
 # and resolution = 0.2
 saveRDS(ons76.3samples.combined, 
         file = "outputs50K/INTEGRATE/ons76cocult.2d.spher.integrated.clustered.conventionalPCA.rds")
 ```
 
-```
-{r}
+```{r}
 ons76.3samples.combined <- 
   readRDS("outputs50K/INTEGRATE/ons76cocult.2d.spher.integrated.clustered.conventionalPCA.rds")
 ```
 
-
-
-```
-{r}
+```{r}
 DimPlot(ons76.3samples.combined, reduction = "umap", group.by = "orig.ident")
 ```
 
-```
+```{r}
 DimPlot(ons76.3samples.combined, reduction = "umap", group.by = "seurat_clusters")
 ```
 
@@ -990,7 +1034,7 @@ DimPlot(ons76.3samples.combined, reduction = "umap", group.by = "seurat_clusters
 ***Compare the ONS76 coculture cells, ONS76-2D and ONS76-SPHER cells by SCT integration***
 
 This results in greater overlap of the cells from the different conditions than with conventional integration.
-```
+```{r}
 # No need to re-run this code chunk
 
 # load the objects
@@ -999,8 +1043,7 @@ ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ons76only.ons76cbo <- readRDS("outputs50K/INTEGRATE/ons76only.ons76cbo.RiboMitoFiltered.rds")
 ```
 
-```
-
+```{r}
 # run SCTransform and then prep integration
 ons76.3samples.list <- list(ons76mono, ons76spher, ons76only.ons76cbo)
 ons76.3samples.list.sct <- suppressWarnings(lapply(X = ons76.3samples.list, FUN = SCTransform))
@@ -1008,7 +1051,7 @@ features <- SelectIntegrationFeatures(object.list = ons76.3samples.list.sct, nfe
 ons76.3samples.list.sct <- PrepSCTIntegration(object.list = ons76.3samples.list.sct, anchor.features = features)
 ```
 
-```
+```{r}
 # No need to re-run this code chunk
 
 ons76.3samples.sct.anchors <- FindIntegrationAnchors(object.list = ons76.3samples.list.sct, 
@@ -1017,7 +1060,7 @@ ons76.3samples.sct.anchors <- FindIntegrationAnchors(object.list = ons76.3sample
 ons76.3samples.combined.sct <- IntegrateData(anchorset = ons76.3samples.sct.anchors, normalization.method = "SCT")
 ```
 
-```
+```{r}
 # No need to re-run this code chunk
 
 ons76.3samples.combined.sct <- RunPCA(ons76.3samples.combined.sct, verbose = FALSE)
@@ -1028,19 +1071,19 @@ ons76.3samples.combined.sct <- FindNeighbors(ons76.3samples.combined.sct,
 ons76.3samples.combined.sct <- FindClusters(ons76.3samples.combined.sct, resolution = 0.2)
 ```
 
-```
+```{r}
 # ONS76_2D = 1935; ONS76-CBO = 269; ONS76-spher = 660 cells
 table(ons76.3samples.combined.sct$orig.ident)
 ```
 
-```
+```{r}
 # change the orig.ident notation for future ggplots
 ons76.3samples.combined.sct@meta.data[ons76.3samples.combined.sct@meta.data == "ONS76-2D"] <- "ONS76_monolayer"
 ons76.3samples.combined.sct@meta.data[ons76.3samples.combined.sct@meta.data == "ons76spher"] <- "ONS76_spheroid"
 ons76.3samples.combined.sct@meta.data[ons76.3samples.combined.sct@meta.data == "ONS76-CBO"] <- "ONS76_coculture"
 ```
 
-```
+```{r}
 # save the SCT integrated object, 'ons76.3samples.combined.sct'
 saveRDS(ons76.3samples.combined.sct, 
         file = "outputs50K/INTEGRATE/ons76cocult.2d.spher.clustered.integrated.SCT.pca.rds")
@@ -1052,7 +1095,7 @@ ons76.3samples.combined.sct <-
   readRDS("outputs50K/INTEGRATE/ons76cocult.2d.spher.clustered.integrated.SCT.pca.rds")
 ```
 
-```{r DimPlotONS76Integrated3samplesONS76monoSpherExtractCoculture, fig.height=6}
+```{r DimPlotONS76Integrated3samplesONS76monoSpherExtractCoculture, fig.height=6, fig.width=10}
 DimPlot(ons76.3samples.combined.sct, reduction = "umap", group.by = "orig.ident")
 ```
 
@@ -1060,7 +1103,7 @@ DimPlot(ons76.3samples.combined.sct, reduction = "umap", group.by = "orig.ident"
 ***Find upregulated DEGs in each condition and plot (Do-)Heatmap of top genes for each condition***
 
 For this procedure, use the SCT integrated samples
-```
+```{r}
 # No need to re-run this code chunk
 
 # this step is necessary as ggplot will not work with 'hyphens'
@@ -1069,12 +1112,12 @@ ons76.3samples.combined.sct@meta.data[ons76.3samples.combined.sct@meta.data == "
 ons76.3samples.combined.sct@meta.data[ons76.3samples.combined.sct@meta.data == "ons76spher"] <- "ONS76_spheroid"
 ```
 
-```
+```{r}
 DefaultAssay(ons76.3samples.combined.sct) <- "RNA"
 Idents(ons76.3samples.combined.sct) <- "orig.ident"
 ```
 
-```
+```{r}
 # No need to re-run this code chunk
 
 ons76.all.UPmarkers <- FindAllMarkers(object = ons76.3samples.combined.sct,
@@ -1082,7 +1125,7 @@ ons76.all.UPmarkers <- FindAllMarkers(object = ons76.3samples.combined.sct,
                                      only.pos = TRUE)
 ```
 
-```
+```{r}
 # save the positive markers of each of the three conditions (ONS76 cocult, 2D, spher)
 saveRDS(ons76.all.UPmarkers, 
         file = "outputs50K/INTEGRATE/Pos.DEGs.ons76cocult2dSpher.integrated.sct.pca.rds")
@@ -1124,17 +1167,17 @@ ons76.3samples.combined.sct <- ScaleData(ons76.3samples.combined.sct,
 ```
 
 
-```{r HeatmapMarkersONS76cocultSpherMono, fig.height=10}
+```{r HeatmapMarkersONS76cocultSpherMono, fig.height=10, fig.width=12}
 Idents(ons76.3samples.combined.sct) <- "orig.ident"
 DoHeatmap(object = ons76.3samples.combined.sct, 
           features = as.character(unique(top10$gene)),
           assay = "RNA") +
+  guides(color = "none") +
   theme(axis.text.y = element_text(size = 15))
 ```
 
 
-```
-{r VlnPlotStemAndOtherGenesONS76ExtractCboMonoSpher3samples, fig.height=15, fig.width=12}
+```{r VlnPlotStemAndOtherGenesONS76ExtractCboMonoSpher3samples, fig.height=15, fig.width=12}
 # this is the same set of genes as in the DAOY integration .Rmd file; genes are shown in the same 
 # order for comparison
 VlnPlot(ons76.3samples.combined.sct, 
@@ -1143,9 +1186,9 @@ VlnPlot(ons76.3samples.combined.sct,
         assay = 'RNA')
 ```
 
+
 This plot is mainly to show SHH readouts. Of these HHIP, GLI3 are strongly expressed in ONS76-2D cells that have high SOX2 expression
-```
-{r  VlnPlotHoxB2ShhGenesONS76ExtractCboMonoSpher3samples, fig.height=12, fig.width=12}
+```{r  VlnPlotHoxB2ShhGenesONS76ExtractCboMonoSpher3samples, fig.height=12, fig.width=12}
 
 VlnPlot(ons76.3samples.combined.sct, features = c("HOXB2","IRX3", "TWIST1",
                                         "PTCH1", "GLI1", "GLI2", "GLI3", "HHIP",
@@ -1155,22 +1198,20 @@ VlnPlot(ons76.3samples.combined.sct, features = c("HOXB2","IRX3", "TWIST1",
 
 ------------------------------------------------------------------------------------------------------------
 ***Integration of ONS76-2D, ONS76-SPHEROID and ONS76-only extracted from coculture, cluster 9 and clusters3+8***
-```
-{r}
+
+```{r}
 Idents(phase.ons76cbo.sct.clust) <- "seurat_clusters"
 cl9.ons76cboCells <- subset(phase.ons76cbo.sct.clust, subset = (seurat_clusters %in% c(9)))
 ```
 
 Find the cell IDs of the cluster 9 cells in "phase.ons76cbo.sct.clust" and extract those cells
-```
-{r}
+```{r}
 cl9cellID <- WhichCells(phase.ons76cbo.sct.clust, idents = "9")
 length(cl9cellID)
 ```
 
 For ONS76-only cocultures: use the vector of cell IDs to subset the object "filtRiboMitoCellsGenes.ons76cbo.rds" and pull out cluster 9, and also get clusters 3 and 8 as separate clusters
-```
-{r}
+```{r}
 # get ONS76 cells in cluster 9 of ONS76-CBO using cell IDs
 o76.cbo <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.ons76cbo.rds")
 cl9.ons76Cbo <- subset(o76.cbo, cells = cl9cellID)
@@ -1181,26 +1222,22 @@ cl3.8.ons76 <- subset(phase.ons76cbo.sct.clust, subset = (seurat_clusters %in% c
 dim(cl3.8.ons76)
 ```
 
-```
-{r}
+```{r}
 cl3.8.ons76$orig.ident <- "ONS76_clusts_3_8_coculture"
 ```
 
-```
-{r}
+```{r}
 head(cl3.8.ons76@meta.data)
 ```
 
 
-```
-{r}
+```{r}
 ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ```
 
 Downsample the ONS76-2D and ONS76-spheroid samples so that they are around 400 cells each
-```
-{r}
+```{r}
 # get the cell IDs of all cells in DAOY-2D sample
 o76.IDs.mono <- WhichCells(ons76mono)
 length(o76.IDs.mono)
@@ -1209,15 +1246,13 @@ set.seed(162)
 o76.mono.small <- sample(o76.IDs.mono, size = 400, replace = FALSE)
 ```
 
-```
-{r}
+```{r}
 o76mono.400cells <- subset(ons76mono, cells = o76.mono.small)
 dim(o76mono.400cells)
 ```
 
 Now subsample the ONS76-spheroid sample
-```
-{r}
+```{r}
 # get the cell IDs of all cells in DAOY-spher sample
 o76.IDs.spher <- WhichCells(ons76spher)
 length(o76.IDs.spher)
@@ -1226,22 +1261,19 @@ set.seed(173)
 o76.spher.small <- sample(o76.IDs.spher, size = 400, replace = FALSE)
 ```
 
-```
-{r}
+```{r}
 o76spher.400cells <- subset(ons76spher, cells = o76.spher.small)
 dim(o76spher.400cells)
 ```
 
-```
-{r}
+```{r}
 ons76.4samples.list2 <- list(o76mono.400cells, o76spher.400cells, cl9.ons76Cbo, cl3.8.ons76)
 ons76.4samples.list2.sct <- suppressWarnings(lapply(X = ons76.4samples.list2, FUN = SCTransform))
 features <- SelectIntegrationFeatures(object.list = ons76.4samples.list2.sct, nfeatures = 3000)
 ons76.4samples.list2.sct <- PrepSCTIntegration(object.list = ons76.4samples.list2.sct, anchor.features = features)
 ```
 
-```
-{r}
+```{r}
 # k.filter = NA and k.weight = 77 as if there are fewer than ~ 200 cells in a sample, the below functions
 # do not run and throw an error.
 ons76.4samples.sct.anchors2 <- FindIntegrationAnchors(object.list = ons76.4samples.list2.sct, 
@@ -1252,8 +1284,7 @@ ons76.4samples.combined.sct2 <- IntegrateData(anchorset = ons76.4samples.sct.anc
                                               k.weight = 77)
 ```
 
-```
-{r}
+```{r}
 ons76.4samples.combined.sct2 <- RunPCA(ons76.4samples.combined.sct2, verbose = FALSE)
 ons76.4samples.combined.sct2 <- RunUMAP(ons76.4samples.combined.sct2, reduction = "pca", dims = 1:30)
 ons76.4samples.combined.sct2 <- FindNeighbors(ons76.4samples.combined.sct2, 
@@ -1262,8 +1293,7 @@ ons76.4samples.combined.sct2 <- FindNeighbors(ons76.4samples.combined.sct2,
 ons76.4samples.combined.sct2 <- FindClusters(ons76.4samples.combined.sct2, resolution = 0.2)
 ```
 
-```
-{r}
+```{r}
 # change the orig.ident notation for future ggplots, seurat plots
 ons76.4samples.combined.sct2@meta.data[ons76.4samples.combined.sct2@meta.data == "ONS76-2D"] <- "ONS76_monolayer"
 ons76.4samples.combined.sct2@meta.data[ons76.4samples.combined.sct2@meta.data == "ons76spher"] <- "ONS76_spheroid"
@@ -1271,7 +1301,7 @@ ons76.4samples.combined.sct2@meta.data[ons76.4samples.combined.sct2@meta.data ==
 
 ```
 
-```
+```{r}
 saveRDS(ons76.4samples.combined.sct2,
         file = "outputs50K/INTEGRATE/ons76.clus9Cbo.clus3ANDclus8Cbo.Mono.Spher.4samples.DownsampledIntegrated.SCT.rds")
 ```
@@ -1285,29 +1315,197 @@ ons76.4samples.combined.sct2 <- readRDS("outputs50K/INTEGRATE/ons76.clus9Cbo.clu
 table(ons76.4samples.combined.sct2$orig.ident)
 ```
 
-```{r DimplotONS763samplesSCTintegrationMonoVsSperVsCluster9fromONS76CboSample}
+```{r DimplotONS763samplesSCTintegrationMonoVsSperVsCluster9fromONS76CboSample, fig.height=3}
 DimPlot(ons76.4samples.combined.sct2, reduction = "umap", group.by = "orig.ident")
 ```
 
 SOX2 is marginally increased in the coculture condition, but overall is more evenly expressed at high level in the different ONS76 cell samples compared to expression in DAOY cells. POU3F2 is markedly increased in co-cultured ONS76 cells.
-```{r VlnPlotStemnessGenesONS76CboClust9VsMonoVsSpher3samples, fig.height=15, fig.width=15}
+```{r VlnPlotSOX2networkErbb4ONS76CboClust9VsMonoVsSpher3samples, fig.height=10, fig.width=14}
 Idents(ons76.4samples.combined.sct2) <- "orig.ident"
 VlnPlot(ons76.4samples.combined.sct2, 
-        features = c("SOX2", "POU3F2","FABP7", "TTYH1", "ERBB4", "NRG3",                                                       "NNAT","MIR124-2HG", "DCX", "CTNNA2", "MEIS1", "HES6"),
+        features = c("SOX2", "POU3F2","FABP7", "TTYH1", "ERBB4", "NRG3"),
+        slot = "data",
+        assay = "RNA"
+        )
+```
+
+```{r VlnPlotDcxMeis1Hes6ONS76CboClust9VsMonoVsSpher3samples, fig.height=9, fig.width=14}
+Idents(ons76.4samples.combined.sct2) <- "orig.ident"
+VlnPlot(ons76.4samples.combined.sct2, 
+        features = c("NNAT","MIR124-2HG", "DCX", "CTNNA2", "MEIS1", "HES6"),
         slot = "data",
         assay = "RNA"
         )
 ```
 
 MAPK3, PROX1 can regulate SOX2 expression. However, could be SMAD2/3/4/5 maintain higher levels of SOX2 in ONS76 cells vs DAOY cells. In addition, the inhibitory SMADs, SMAD6/7 are expressed at lower level than in DAOY cells. The targets of SMAD signaling SERPINE1 and ID1 are expressed at higher level than in DAOY cells, although it should be noted the regulation of these targets by SMADs is context-dependent (https://doi.org/10.1038/onc.2012.191)
-```
-{r  VlnPlotHoxB2ShhSMADGenesONS76CboClust9VsMonoVsSpher3samples, fig.height=25, fig.width=12}
+```{r  VlnPlotHoxB2ShhSMADGenesONS76CboClust9VsMonoVsSpher3samples, fig.height=25, fig.width=12}
 
 VlnPlot(ons76.3samples.combined.sct2, features = c("HOXB2","IRX3", "TWIST1",
                                         "PTCH1", "GLI1", "GLI2", "GLI3", "HHIP",
                                         "MYC", "MYCN", "ZIC1", "OTX2", "MAPK3","PROX1", "SMAD1", "SMAD2",
                                         "SMAD3", "SMAD4", "SMAD5", "SMAD6", "SMAD7", "SERPINE1", "ID1"))
 ```
+
+-------------------------------------------------------------------------------------------------------
+***Explore geneset enrichment of ONS76-2D and ONS76-spher using presto and gProfiler (web app)***
+fgsea did not work with this dataset (multifgsea command crashed, not sure why, but gProfiler worked!)
+from: https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_05_dge.html#Gene_Set_Enrichment_Analysis_(GSEA) and https://crazyhottommy.github.io/scRNA-seq-workshop-Fall-2019/scRNAseq_workshop_3.html
+Merge the following: 
+1) ONS76-2D single cluster 
+2) ONS76-spher cluster 0 
+3) ONS76-spher cluster 1 
+4) ONS76-spher cluster 2
+The files used are:
+"phase.ons76spher.SCT.clustered.res0.4.rds" and "phase.filtRiboMito.SCT.regressedCCdiff.ons762d.rds"
+Find the cell IDs of the cluster 0,1,2,3 cells in "phase.ons76spher.SCT.clustered.res0.4.rds" and extract those cells
+```{r}
+phase.ons76spher.sct.clust.res0.4 <- 
+readRDS("outputs50K/ONS76_SPHER/phase.ons76spher.SCT.clustered.res0.4.rds")
+```
+
+```{r}
+# make Idents the 'seurat_clusters
+Idents(phase.ons76spher.sct.clust.res0.4) <- "seurat_clusters"
+```
+
+```{r}
+# extract the cell clusters
+cl0cellID.ons76spher <- WhichCells(phase.ons76spher.sct.clust.res0.4, idents = "0")
+cl1cellID.ons76spher <- WhichCells(phase.ons76spher.sct.clust.res0.4, idents = "1")
+cl2cellID.ons76spher <- WhichCells(phase.ons76spher.sct.clust.res0.4, idents = "2")
+
+length(cl0cellID.ons76spher)
+length(cl1cellID.ons76spher)
+length(cl2cellID.ons76spher)
+```
+
+For ONS76-spher: use the vector of cell IDs to subset the object "phase.ons76spher.sct.clust.res0.4" and pull out clusters 0 - 2 as separate clusters
+```{r}
+# get ONS76 cells in cluster 0 of ONS76-spher using cell IDs
+clus0.ons76spher <- subset(phase.ons76spher.sct.clust.res0.4, cells = cl0cellID.ons76spher)
+clus1.ons76spher <- subset(phase.ons76spher.sct.clust.res0.4, cells = cl1cellID.ons76spher)
+clus2.ons76spher <- subset(phase.ons76spher.sct.clust.res0.4, cells = cl2cellID.ons76spher)
+```
+
+```{r}
+# load the ONS76-2D sample (this is one big cluster of cells)
+ons76mono.sct <- readRDS("outputs50K/ONS76_2D/phase.filtRiboMito.SCT.regressedCCdiff.ons762d.rds")
+```
+
+```{r}
+# merge the above datasets
+ons76.mono.spher.merged <- merge(ons76mono.sct,
+                                 y = c(clus0.ons76spher, clus1.ons76spher, clus2.ons76spher),
+                                 add.cell.ids = c("o76mono", "clus0.o76spher", 
+                                                  "clus1.o76spher", "clus2.o76spher"),
+                                 project = "ons76.mono.spher.merge")
+```
+
+```{r}
+head(ons76.mono.spher.merged@meta.data)
+```
+
+```{r}
+# assign cells to "seurat_clusters"
+metadata <- ons76.mono.spher.merged@meta.data
+metadata$cells <- rownames(metadata)
+metadata$seurat_clusters[which(str_detect(metadata$cells, "^o76mono_"))] <- "mono"
+metadata$seurat_clusters[which(str_detect(metadata$cells, "^clus0.o76spher_"))] <- "0"
+metadata$seurat_clusters[which(str_detect(metadata$cells, "^clus1.o76spher_"))] <- "1"
+metadata$seurat_clusters[which(str_detect(metadata$cells, "^clus2.o76spher_"))] <- "2"
+head(metadata)
+```
+
+```{r}
+ons76.mono.spher.merged@meta.data <- metadata
+```
+
+```{r}
+ons76.mono.spher.genes <- wilcoxauc(ons76.mono.spher.merged, "seurat_clusters")
+```
+
+```{r}
+head(ons76.mono.spher.genes)
+```
+
+```{r}
+# we have all the genes for each cluster
+dplyr::count(ons76.mono.spher.genes, group)
+```
+
+```{r}
+# order the genes for input to gProfiler (web app!)
+ons76.mono.UPgenes <- ons76.mono.spher.genes %>% 
+  dplyr::filter(group == "mono" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(ons76.mono.spher.UPgenes) # I used 1385 genes in g:Profiler
+```
+
+```{r}
+# this will be used as input for UPregulated genes in g:Profiler. Transfer file via Filezilla to
+# Excel on Mac
+write.csv(ons76.mono.UPgenes, 
+          "./outputs50K/INTEGRATE/ONS76.monoSpher.merged.monoUPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
+```{r}
+# order the genes for input to gProfiler (web app!)
+ons76.spher.clus0.UPgenes <- ons76.mono.spher.genes %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(ons76.spher.clus0.UPgenes) # I used 422 genes in g:Profiler
+```
+
+```{r}
+# this will be used as input for UPregulated genes in g:Profiler web app. Transfer file via Filezilla to
+# Excel on Mac
+write.csv(ons76.spher.clus0.UPgenes, 
+          "./outputs50K/INTEGRATE/ONS76.monoSpher.merged.cluster0spherUPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
+```{r}
+# order the genes for input to gProfiler (web app!)
+ons76.spher.clus1.UPgenes <- ons76.mono.spher.genes %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(ons76.spher.clus1.UPgenes) # I used 321 genes in g:Profiler
+```
+
+```{r}
+# this will be used as input for UPregulated genes in g:Profiler web app. Transfer file via Filezilla to
+# Excel on Mac
+write.csv(ons76.spher.clus1.UPgenes, 
+          "./outputs50K/INTEGRATE/ONS76.monoSpher.merged.cluster1spherUPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
+```{r}
+# order the genes for input to gProfiler (web app!)
+ons76.spher.clus2.UPgenes <- ons76.mono.spher.genes %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(ons76.spher.clus2.UPgenes) # I used 206 genes in g:Profiler
+```
+
+```{r}
+# this will be used as input for UPregulated genes in g:Profiler web app. Transfer file via Filezilla to
+# Excel on Mac
+write.csv(ons76.spher.clus2.UPgenes, 
+          "./outputs50K/INTEGRATE/ONS76.monoSpher.merged.cluster2spherUPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
 
 ------------------------------------------------------------------------------------------------------------
 ***Merge of downsampled 1. ONS76-2D, 2. ONS76-SPHEROID, 3. ONS76-only extracted from coculture, cluster 9 only and 4. clusters 3 and 8 combined, 5. DAOY-2D (rep), 6. DAOY-spheroid cells, 7. DAOY-only extracted from coculture***
@@ -1327,8 +1525,7 @@ Total in cluster 3 AND 8 = 395 cells
 # samples to merge for DAOY: 
 ```
 
-```
-{r}
+```{r}
 # create objects for the DAOY samples
 dy2d <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
@@ -1340,34 +1537,29 @@ Cancerous NEUROD1 expressing clusters in ONS76-CBO
 Cluster 3 = 282 cells
 Cluster 8 = 113 cells.
 Total in cluster 3 AND 8 = 395 cells
-```
-{r}
+```{r}
 Idents(phase.ons76cbo.sct.clust) <- "seurat_clusters"
 cl3.8.ons76cboCells <- subset(phase.ons76cbo.sct.clust, subset = (seurat_clusters %in% c(3, 8)))
 ```
 
 Find the cell IDs of the cluster 3 and 8 cells in "phase.ons76cbo.sct.clust" and extract those cells
-```
-{r}
+```{r}
 cl3.8.cellID <- WhichCells(phase.ons76cbo.sct.clust, idents = c("3", "8"))
 length(cl3.8.cellID)
 ```
 
 Now use this vector of cell IDs to subset the object "filtRiboMitoCellsGenes.ons76cbo.rds"
-```
-{r}
+```{r}
 o76.cbo <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.ons76cbo.rds")
 cl3.8.ons76Cbo <- subset(o76.cbo, cells = cl3.8.cellID)
 ```
 
-```
-{r}
+```{r}
 ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.ons76spher.rds")
 ```
 
-```
-{r}
+```{r}
 # get the cell IDs of all cells in DAOY-2D sample
 dy2d.IDs <- WhichCells(dy2d)
 length(dy2d.IDs)
@@ -1393,8 +1585,7 @@ dim(dySpher.400cells)
 dim(dyOnly.dyCbo)
 ```
 
-```
-{r}
+```{r}
 # get a sample of the ONS76 cells in each condition incl. cluster 9 from the ONS76-CBO condition
 
 # get the cell IDs of all cells in ONS76-2D sample
@@ -1423,8 +1614,7 @@ dim(cl3.8.ons76Cbo)
 
 ```
 
-```
-{r}
+```{r}
 # create the merged object of ONS76 cells and DAOY cells 
 # (monolayer = 400 cells; spheroid = 400 cells, ONS76clus9 = 77 cells; ONS76clus3+8 = 395 cells)
 daoy.o76.cells <- merge(o76mono.400cells, 
@@ -1435,20 +1625,17 @@ daoy.o76.cells <- merge(o76mono.400cells,
                   project = "dy.ons.merge")
 ```
 
-```
-{r}
+```{r}
 head(daoy.o76.cells@meta.data)
 ```
 
 
-```
-{r}
+```{r}
 # this object is the correct size
 dim(daoy.o76.cells)
 ```
 
-```
-{r}
+```{r}
 # Create metadata dataframe
 metadata <- daoy.o76.cells@meta.data
 # Add cell IDs to metadata
@@ -1465,26 +1652,22 @@ metadata$sample[which(str_detect(metadata$cells, "^dyCocult_"))] <- "DAOY_cocult
 head(metadata)
 ```
 
-```
-{r}
+```{r}
 daoy.o76.cells@meta.data <- metadata
 ```
 
-```
-{r}
+```{r}
 daoy.o76.cells@meta.data %>% 
   filter(sample == "ONS76_clusters_3_8") %>% 
   head()
 ```
 
 
-```
-{r}
+```{r}
 daoy.o76.cells <- ScaleData(daoy.o76.cells)
 ```
 
-```
-{r}
+```{r}
 # change Idents from the default (which is cell IDs) to the sample
 Idents(daoy.o76.cells) <- "sample"
 
@@ -1495,7 +1678,7 @@ levels(daoy.o76.cells) <- my.levels
 levels(daoy.o76.cells)
 ```
 
-```
+```{r}
 saveRDS(daoy.o76.cells, 
 file = "./outputs50K/INTEGRATE/daoy.ons76.Merged.7samples.o76Mono.o76Spher.o76clus9.o76clus3AND8.dyMono.dySpher.dyOnlyCocult.rds")
 ```
@@ -1507,17 +1690,24 @@ daoy.o76.cells <-
 
 
 The results of VlnPlot are very similar in this merged object compared to the integrated object, with just ONS76 samples.
-```{r VlnPlot7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SoxPou3F, fig.height=15, fig.width=12}
+```{r VlnPlotSox2NesPou3F27samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SoxPou3F, fig.width=14}
 VlnPlot(daoy.o76.cells,
-        features = c("SOX2", "NES", "POU3F2", "MKI67", "TOP2A", "IRX5","MIR124-2HG", "NEUROD1", "DCX", "CTNNA2"),
+        features = c("SOX2", "NES", "POU3F2", "MKI67", "TOP2A"),
+        slot = "data",
+        assay = "RNA")
+```
+
+```{r VlnPlotNeurod1Dcx7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SoxPou3F, fig.width=14}
+VlnPlot(daoy.o76.cells,
+        features = c("IRX5","MIR124-2HG", "NEUROD1", "DCX", "CTNNA2"),
         slot = "data",
         assay = "RNA")
 ```
 
 
-```{r VlnPlot7samplesMergedDy2d3dcocultONS2d3dCocultClust3AND8AND9SOX2Network, fig.height=15, fig.width=12}
+```{r VlnPlotSHHgenesOtx2Zic27samplesMergedDy2d3dcocultONS2d3dCocultClust3AND8AND9SOX2Network, fig.width=14}
 VlnPlot(daoy.o76.cells,
-        features = c("SOX2", "NES", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"),
+        features = c("PTCH1", "OTX2", "ZIC2", "GLI1", "GLI2", "GLI3"),
         slot = "data",
         assay = "RNA")
 ```
@@ -1552,8 +1742,7 @@ levels(dy.o76.small) <- my.levels2
 levels(dy.o76.small)
 ```
 
-
-```{r VlnPlot6samplesMergedDy2d3dONS2d3dCocultClust3AND8AND9SOX2Network, fig.height=10, fig.width=12}
+```{r VlnPlot6samplesMergedDy2d3dONS2d3dCocultClust3AND8AND9SOX2Network, fig.width=14}
 VlnPlot(dy.o76.small,
         features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"),
         slot = "data",
@@ -1561,7 +1750,7 @@ VlnPlot(dy.o76.small,
 ```
 
 
-SOX2 network. POU3F2 is expressed in the ONS76 and DAOY co-cultured cells
+SOX2 network. POU3F2 is expressed in the ONS76 and DAOY co-cultured cells. The below heatmap is not that useful, earlier violin plots are more useful.
 ```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9Sox2Network, fig.height=10, fig.width=12}
 sox.genes <- c("SOX2", "POU3F2", "FABP7")
 DoHeatmap(daoy.o76.cells,
@@ -1573,7 +1762,7 @@ DoHeatmap(daoy.o76.cells,
 ```
 
 It is obvious that TGF-B/SMAD signalling is most active in the DAOY 2D-cultures which has the LOWEST Sox2 expression.
-```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SmadGenes, fig.height=10, fig.width=12}
+```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SmadGenes, fig.height=5}
 # choose the genes to display in the heatmap
 # note that ERBB1 is not present in daoy.o76.cells@assays$RNA@counts! To check this, simply convert
 # daoy.o76.cells@assays$RNA@counts to a data.frame (command is: 'as.data.frame(daoy.o76.cells@assays$RNA@counts)'),
@@ -1587,22 +1776,24 @@ DoHeatmap(daoy.o76.cells,
           group.by = levels("sample"),
           slot = "scale.data",
           assay = "RNA") +
-  theme(axis.text = element_text(size = 12))
+  guides(color = "none") +
+  theme(axis.text = element_text(size = 15))
 ```
 
 Investigate SHH signalling in the samples > multiple readouts of SHH signalling are expressed in DAOY-monolayer especially, but SHH itself is no more strongly expressed in these cells than in other samples. This therefore reflects cell-intrinsic overactivation of SHH signalling in DAOY-monolayer cells in particular.
-```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SHHgenes, fig.height=10, fig.width=12}
+```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9SHHgenes, fig.height=4}
 shh.genes <- c("GLI1", "GLI2", "GLI3", "PTCH1", "PTCH2", "HHIP", "SHH")
 DoHeatmap(daoy.o76.cells,
           features = shh.genes,
           group.by = levels("sample"),
           slot = "scale.data",
           assay = "RNA") +
+  guides(color = "none") +
   theme(axis.text = element_text(size = 12))
 ```
 
 Investigate Notch-delta signalling in all samples > of most interest is the expression of HES4, HES5 and HES6 in the ONS76 (cluster 9) or DAOY cells extracted from CBO coculture
-```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9Notchgenes, fig.height=10, fig.width=12}
+```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9Notchgenes, fig.height=4}
 notch.genes <- c("SOX2", "HEY1", "HEY2", "HEYL", "DEC1",
                   "HES1", "HES4", "HES6",  "HES2",
               "HES5", "HES7","DLL1", "DLL3", "DLL4", "JAG1", "JAG2")
@@ -1611,11 +1802,13 @@ DoHeatmap(daoy.o76.cells,
           group.by = levels("sample"),
           slot = "scale.data",
           assay = "RNA") +
+  guides(color = "none") +
   theme(axis.text = element_text(size = 12))
 ```
 
+
 Investigate Neuregulin signalling in all samples
-```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9notchGenes, fig.height=10, fig.width=12}
+```{r Heatmap7samplesMergedDy2d3dcocultONS2d3dclust3AND8clust9notchGenes, fig.height=4}
 neureg.genes <- c("SOX2", "ERBB2", "ERBB3", "ERBB4", "NRG1", "NRG2", "NRG3", "NRG4")
 DoHeatmap(daoy.o76.cells,
           features = neureg.genes,
@@ -1625,14 +1818,12 @@ DoHeatmap(daoy.o76.cells,
   theme(axis.text = element_text(size = 12))
 ```
 
-```
-{r}
+```{r}
 save.image("./RDataFiles/INTEGRATE_ONS76-CBO_ONS76-2D_ONS76-SPHER_CBO_seurat_50K.RData")
 ```
 
 
-```
-{r}
+```{r}
 sessionInfo()
 ```
 
