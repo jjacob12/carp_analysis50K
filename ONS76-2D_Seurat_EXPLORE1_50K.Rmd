@@ -29,25 +29,245 @@ library(patchwork)
 })
 ```
 
-```{r}
-# load the phase, cell cycle difference regressed object, SCTransformed
 
-phase.ons762d.filtRiboMito.sct <- readRDS("outputs50K/ONS76_2D/phase.filtRiboMito.SCT.regressedCCdiff.ons762d.rds")
+```{r}
+# load the data from scratch
+# load the ONS76-2D raw data (from "working_data" folder)
+data_dir <- "./working_data/ONS76-2D/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
 ```
 
 ```{r}
-# generate a clustered  seurat object, res = 0.5
-phase.ons76.2d.sct.clust <- phase.ons762d.filtRiboMito.sct %>% 
+# note these are .gz files which can be directly read. n = 3838 cells
+o76mono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+# create the seurat object, keep genes expressed in 10 or more cells
+o76mono <- CreateSeuratObject(counts = o76mono.data,
+                          min.cells = 10, min.genes=200,
+                          project = "ons76mono")
+
+dim(o76mono) # 15,699 genes and 648 cells
+```
+
+```{r}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = o76mono), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(o76mono[mito.genes, ])/Matrix::colSums(o76mono)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = o76mono), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(o76mono[ribo.genes, ])/Matrix::colSums(o76mono)
+
+# add the ribosome and mitochondrial gene percent to the metadata
+o76mono <- 
+  AddMetaData(object = o76mono, metadata = percent.mito, col.name = "percent.mito")
+
+o76mono <- 
+  AddMetaData(object = o76mono, metadata = percent.ribo, col.name = "percent.ribo")
+
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+o76mono <- o76mono[ ! grepl('^RP[SL]', rownames(o76mono)), ]
+
+# remove mitochondrial genes 
+o76mono <- o76mono[ ! grepl("^MT-", rownames(o76mono)), ]
+
+dim(o76mono) # 15,591 genes and 648 cells
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+o76mono <- subset(o76mono, subset = percent.mito < 0.1)
+dim(o76mono) # reduced to 15,591 genes and 474 cells
+```
+
+```{r}
+# save the NON-normalised, NON-clustered cbo seurat object
+saveRDS(o76mono, file = "./outputs50K/ONS76_2D/filt.RiboMitoCellsGenes.seurat.ons76monolayer.rds")
+```
+
+```{r}
+o76mono <- readRDS("outputs50K/ONS76_2D/filt.RiboMitoCellsGenes.seurat.ons76monolayer.rds")
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+o76mono <- NormalizeData(o76mono)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+o76mono <- CellCycleScoring(o76mono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+o76mono$CC.difference <- o76mono$S.Score - o76mono$G2M.Score
+```
+
+```{r}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+o76mono.input.integration <- SCTransform(o76mono, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(o76mono.input.integration, "./outputs50K/ONS76_2D/ONS76mono.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r}
+o76mono <- SCTransform(o76mono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
   RunPCA(verbose = FALSE) %>% 
   RunUMAP(dims=1:30, verbose=FALSE) %>% 
   FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, res = 0.5)
+  FindClusters(verbose=FALSE, resolution = 0.5)
 ```
 
 ```{r}
-# using res = 0.5 there are 3 clusters
-DimPlot(phase.ons76.2d.sct.clust)
+# save the clustered, SCTransformed object above
+saveRDS(o76mono, file = "./outputs50K/ONS76_2D/ons76mono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
 ```
+
+```{r}
+# load the above object. This object not yet been annotated.
+o76mono <- readRDS("outputs50K/ONS76_2D/ons76mono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r DimplotONS76monoUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(o76mono, label = TRUE)
+```
+
+```{r}
+# get the markers of each cluster
+o76mono.POSmarkers <- FindAllMarkers(object = o76mono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+o76mono.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r}
+# CNTN1 is expressed of these five
+o76mono.POSmarkers %>%
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX1"))
+```
+
+```{r}
+# save the positive markers of ONS76-2D
+saveRDS(o76mono.POSmarkers, 
+        file = "./outputs50K/ONS76_2D/POS.markers.ons76monolayer.SCT.clustered.rds")
+```
+
+```{r}
+o76mono.POSmarkers <- readRDS("outputs50K/ONS76_2D/POS.markers.ons76monolayer.SCT.clustered.rds")
+```
+
+
+```{r HeatmapONS76MonoTop10markers3clustersRes0.5, fig.height=6, fig.width=6}
+# first load dyMono seurat object above, then only run this chunk
+o76mono.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(o76mono, features = top10$gene) + NoLegend()
+```
+
+The heatmap shows the 3 clusters are somehwat distinguished.
+
+Repeat the clustering using resolution = 0.2
+```{r}
+# first load "filt.RiboMitoCellsGenes.seurat.ons76monolayer.rds" then normalise, run CC regression,
+# then cluster the cells as per this code chunk
+o76mono.res0.2 <- SCTransform(o76mono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.2)
+```
+
+```{r}
+# get the markers of each cluster
+o76mono.POSmarkers.res0.2 <- 
+  FindAllMarkers(object = o76mono.res0.2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+saveRDS(o76mono.res0.2,
+        file = "./outputs50K/ONS76_2D/ons76mono.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# save the POS markers at res=0.2
+saveRDS(o76mono.POSmarkers.res0.2,
+        file = "./outputs50K/ONS76_2D/POS.markers.res0.2.ONS76mono.SCT.clustered.rds")
+```
+
+
+```{r HeatmapONS76MonoTop10markers3clustersRes0.5, fig.height=6, fig.width=6}
+# first load dyMono seurat object above, then only run this chunk
+o76mono.POSmarkers.res0.2 %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(o76mono.res0.2, features = top10$gene) + guides(color = "none")
+```
+
+The above Heatmap with res=0.2 for clustering shows better discrimination between the two clusters. Run presto, then gProfiler on this sample to get an idea of what pathways are active in the different cell clusters.
+
+```{r}
+# prepare the data for gProfiler (web app) input
+o76mono.res0.2.genes.presto <- wilcoxauc(o76mono.res0.2, 'seurat_clusters')
+nrow(o76mono.res0.2.genes.presto)
+dplyr::count(o76mono.res0.2.genes.presto, group)
+```
+
+```{r}
+head(o76mono.res0.2.genes.presto, 3)
+```
+
+```{r}
+# filter and order the gene list
+o76mono.res0.2.genes.presto.clust0 <- o76mono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76mono.res0.2.genes.presto.clust0) # 136 genes only
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76mono.res0.2.genes.presto.clust0, 
+          "./outputs50K/ONS76_2D/ONS76mono.res0.2.cluster0.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list
+o76mono.res0.2.genes.presto.clust1 <- o76mono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "1" & !(feature == "MALAT1") & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76mono.res0.2.genes.presto.clust1) # 483 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76mono.res0.2.genes.presto.clust1, 
+          "./outputs50K/ONS76_2D/ONS76mono.res0.2.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+
 
 ***Clustree***
 ```{r}
@@ -58,70 +278,22 @@ DimPlot(phase.ons76.2d.sct.clust)
 resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
 
 # Find clusters using a range of resolutions, the clustering information is in the metadata slot
-ons76.2d.clusters <- FindClusters(object = phase.ons76.2d.sct.clust, 
+ons76.2d.clusters <- FindClusters(object = o76mono, 
                                       resolution = resolution.range,
                                       verbose = FALSE)
 ```
 
-```{r ClustreeCBO, fig.height=12}
-# the clustering tree finds 3 major clusters initially with res = 0.5 and 0.6.
+```{r ClustreeCBO, fig.height=6}
+# the clustering tree finds too many clusters! These clusters are not biologically
+# meaningful as pct.1 and pct.2 are so similar.
 # with res = 0.8 there are 4 clusters; with res = 1 there are 5 clusters.
 # use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
 
 clustree(ons76.2d.clusters)
 ```
 
-```{r}
-# get the number of cells per cluster
-table(Idents(phase.ons76.2d.sct.clust))
-```
-
-***Find the DEGs of each cluster***
-Find the markers of each cluster for res = 0.5
-```{r}
-# find POSITIVE markers of each cluster
-phase.ons76.2d.sct.POSdegs <- FindAllMarkers(object = phase.ons76.2d.sct.clust,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
-
-Inspection of the clusters reveals that actually they are quite homogeneous with pct.1 and pct.2 being quite similar. The major difference between clusters is quantitative - higher expression of the same gene in one cluster vs the others but most/all/significant minority of cells in both clusters express the same gene. So it doesn't make sense to split the clusters even more with higher 'res' values.
-```{r}
-phase.ons76.2d.sct.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 10)
-```
 
 
-```{r}
-# generate a clustered  seurat object, res = 0.2
-phase.ons76.2d.sct.clust.res0.2 <- phase.ons762d.filtRiboMito.sct %>% 
-  RunPCA(verbose = FALSE) %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, res = 0.2)
-```
-
-```{r}
-# using res = 0.2 there are 2 clusters
-DimPlot(phase.ons76.2d.sct.clust.res0.2)
-```
-
-```{r}
-# find POSITIVE markers of each cluster
-phase.ons76.2d.sct.res0.2.POSdegs <- FindAllMarkers(object = phase.ons76.2d.sct.clust.res0.2,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
-
-As can be seen, with only 2 clusters of cells, pct.1 and pct.2 are closely similar, so even just having 2 clusters, we can see they are very similar and therefore the clustering is not reflecting meaningful biological differences
-```{r}
-phase.ons76.2d.sct.res0.2.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 10)
-```
-
-In view of the similarity of the clusters it is not worth downstream analysis with presto or fgsea for each cluster separately. Treat this sample as a single cluster.
 
 
 
