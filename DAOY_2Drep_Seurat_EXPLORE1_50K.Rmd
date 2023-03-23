@@ -30,24 +30,270 @@ library(patchwork)
 ```
 
 ```{r}
-# load the phase, cell cycle difference regressed object, SCTransformed
-
-phase.daoy2d.filtRiboMito.sct <- readRDS("outputs50K/DAOY_2D/phase.filtRiboMito.SCT.regressedCCdiff.daoy.2d.rds")
+# load the data from scratch
+# load the DAOY-2D raw data (from "working_data" folder)
+data_dir <- "./working_data/DAOY-2D/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
 ```
 
 ```{r}
-# generate a clustered  seurat object, res = 0.5
-phase.daoy2d.sct.clust <- phase.daoy2d.filtRiboMito.sct %>% 
+# note these are .gz files which can be directly read. n = 3838 cells
+dyMono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+# create the seurat object, keep genes expressed in 10 or more cells
+dyMono <- CreateSeuratObject(counts = dyMono.data,
+                          min.cells = 10, min.genes=2000,  # set high as this sample was very deeply sequenced
+                          project = "dyMono")
+
+dim(dyMono) # 24,957 genes and 2922 cells
+```
+
+```{r}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dyMono), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dyMono[mito.genes, ])/Matrix::colSums(dyMono)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = dyMono), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(dyMono[ribo.genes, ])/Matrix::colSums(dyMono)
+
+# add the ribosome and mitochondrial gene percent to the metadata
+dyMono <- 
+  AddMetaData(object = dyMono, metadata = percent.mito, col.name = "percent.mito")
+
+dyMono <- 
+  AddMetaData(object = dyMono, metadata = percent.ribo, col.name = "percent.ribo")
+
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+dyMono <- dyMono[ ! grepl('^RP[SL]', rownames(dyMono)), ]
+
+# remove mitochondrial genes 
+dyMono <- dyMono[ ! grepl("^MT-", rownames(dyMono)), ]
+
+dim(dyMono) # 24,846 genes and 2922 cells
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+dyMono <- subset(dyMono, subset = percent.mito < 0.1)
+dim(dyMono) # reduced to 15,846 genes and 2633 cells
+```
+
+```{r}
+# save the NON-normalised, NON-clustered cbo seurat object
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds")
+```
+
+```{r}
+dyMono <- readRDS("outputs50K/DAOY_2D/filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds")
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+dyMono <- NormalizeData(dyMono)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyMono <- CellCycleScoring(dyMono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyMono$CC.difference <- dyMono$S.Score - dyMono$G2M.Score
+```
+
+```{r}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+dyMono.input.integration <- SCTransform(dyMono, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(dyMono.input.integration, "./outputs50K/DAOY_2D/DAOYmono.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r}
+dyMono <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
   RunPCA(verbose = FALSE) %>% 
   RunUMAP(dims=1:30, verbose=FALSE) %>% 
   FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, res = 0.5)
+  FindClusters(verbose=FALSE, resolution = 0.5)
 ```
 
 ```{r}
-# using res = 0.5 there are 3 clusters
-DimPlot(phase.daoy2d.sct.clust)
+# save the clustered, SCTransformed object above
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
 ```
+
+```{r}
+# load the above object.
+dyMono <- readRDS("outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r DimplotDAOYmonoRepUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(dyMono, label = TRUE)
+```
+
+```{r}
+# get the markers of each cluster - slow to run
+dyMono.POSmarkers <- 
+  FindAllMarkers(object = dyMono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+dyMono.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r}
+# None of these five genes is expressed
+dyMono.POSmarkers %>%
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX1"))
+```
+
+```{r}
+# save the positive markers of DAOY-2D (rep)
+saveRDS(dyMono.POSmarkers, 
+        file = "./outputs50K/DAOY_2D/POS.markers.DAOYmonolayerRep.SCT.clustered.rds")
+```
+
+```{r}
+dyMono.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.DAOYmonolayerRep.SCT.clustered.rds")
+```
+
+```{r HeatmapDaoyMonoTop10markers5clustersRes0.5, fig.height=6, fig.width=6}
+# first load dyMono seurat object above, then only run this chunk
+dyMono.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(dyMono, features = top10$gene) + NoLegend()
+```
+
+As can be seen from the above heatmap the res=0.5 clustering seems to generate too many clusters. For example, cluster 2 has many genes in common with cluster 1. Also cluster 3 and cluster 5 share many markers in common. Try resolution=0.2 and make anew heatmap
+
+```{r}
+# first load "filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds" then normalise, run CC regression,
+# then cluster the cells as per this code chunk
+dyMono.res0.2 <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.2) # for res=0.2, clustree shows there are 4 clusters
+```
+
+```{r}
+# get the markers of each cluster - slow to run
+dyMono.POSmarkers.res0.2 <- 
+  FindAllMarkers(object = dyMono.res0.2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+# save the POS markers at res=0.2
+saveRDS(dyMono.POSmarkers.res0.2,
+        file = "./outputs50K/DAOY_2D/POS.markers.res0.2.DAOYmonoRep.SCT.clustered.rds")
+```
+
+
+```{r HeatmapDaoyMonoTop10markers4clustersRes0.2, fig.height=5, fig.width=6}
+dyMono.POSmarkers.res0.2 %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10.res.0.2
+DoHeatmap(dyMono.res0.2, features = top10.res.0.2$gene) + guides(color = "none")
+```
+
+The above clusters are better defined. Cluster 0, 1, and 3 are well separated, and cluster 2 has lower level expression of genes that are also expressed in cluster 0 and 1, but not in cluster 3. So run presto, then gProfiler on this sample to get an idea of what pathways are active in the different cell clusters.
+
+```{r}
+saveRDS(dyMono.res0.2, 
+        file = "./outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# prepare the data for gProfiler (web app) input
+dyMono.res0.2.genes.presto <- wilcoxauc(dyMono.res0.2, 'seurat_clusters')
+nrow(dyMono.res0.2.genes.presto)
+dplyr::count(dyMono.res0.2.genes.presto, group)
+```
+
+```{r}
+head(dyMono.res0.2.genes.presto, 3)
+```
+
+```{r}
+# filter and order the gene list
+dyMono.res0.2.genes.presto.clust0 <- dyMono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.2.genes.presto.clust0) # 1331 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dyMono.res0.2.genes.presto.clust0, 
+          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster0.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list
+dyMono.res0.2.genes.presto.clust1 <- dyMono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.2.genes.presto.clust1) # 699 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dyMono.res0.2.genes.presto.clust1, 
+          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list
+# AS THERE ARE ONLY 2 MARKERS, DO NOT SAVE THE LIST, AND DO NOT RUN gPROFILER FOR THIS CLUSTER
+dyMono.res0.2.genes.presto.clust2 <- dyMono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.2.genes.presto.clust2) # 2 genes only! The reason for this is apparent on looking at the heatmap.
+```
+
+```{r}
+# filter and order the gene list
+dyMono.res0.2.genes.presto.clust3 <- dyMono.res0.2.genes.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.2.genes.presto.clust3) # 1142 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dyMono.res0.2.genes.presto.clust3, 
+          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster3.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+
+
 
 ***Clustree***
 ```{r}
@@ -58,39 +304,25 @@ DimPlot(phase.daoy2d.sct.clust)
 resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
 
 # Find clusters using a range of resolutions, the clustering information is in the metadata slot
-daoy2d.clusters <- FindClusters(object = phase.daoy2d.sct.clust, 
+dyMono.clusters <- FindClusters(object = dyMono, 
                                       resolution = resolution.range,
                                       verbose = FALSE)
 ```
 
 ```{r ClustreeCBO, fig.height=8}
-# the clustering tree finds 4 major clusters initially with res = 0.5 and 0.6.
+# the clustering tree finds too many clusters.
 # with res = 0.8 there are 4 clusters; with res = 1 there are 5 clusters.
 # use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
 
-clustree(daoy2d.clusters)
+clustree(dyMono.clusters)
 ```
 
 ```{r}
 # get the number of cells per cluster
-table(Idents(phase.daoy2d.sct.clust))
+table(Idents(dyMono.clusters))
 ```
 
-***Find the DEGs of each cluster***
-Find the markers of each cluster for res = 0.5
-```{r}
-# find POSITIVE markers of each cluster
-phase.daoy2d.sct.POSdegs <- FindAllMarkers(object = phase.daoy2d.sct.clust,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
 
-Although the clustering suggests there are 5 clusters, inspection of the differentially expressed genes show that the clustering is not biologically meaningful because pct.1 is similar to pct.2 for most genes. So treat the DAOY-2D rep as a single large cluster.
-```{r}
-phase.daoy2d.sct.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 10)
-```
 
 
 
