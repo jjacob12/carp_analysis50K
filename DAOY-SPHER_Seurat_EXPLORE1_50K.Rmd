@@ -21,6 +21,7 @@ knitr::opts_chunk$set(dev = "png",
 suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
+library(presto)
 library(clustree)
 library(tidyverse)
 library(magrittr)
@@ -29,26 +30,250 @@ library(patchwork)
 ```
 
 ```{r}
-# load the phase, cell cycle difference regressed, SCTransformed object
-
-phase.daoySpher.filtRiboMito.sct <- readRDS("outputs50K/DAOY_SPHER/phase.daoySpher.filtRiboMito.SCT.regressedCCdiff.rds")
+# load the data from scratch
+# load the DAOY-SPHER raw data (from "working_data" folder)
+data_dir <- "./working_data/DAOY-SPHER/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
 ```
 
 ```{r}
-# generate a clustered seurat object, res = 0.2
-# PCA was previously run on 'phase.ons762d.filtRiboMito.sct' in the QC file
+# note these are .gz files which can be directly read. n = 761 cells
+dySpher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+# create the seurat object, keep genes expressed in 10 or more cells
+dySpher <- CreateSeuratObject(counts = dySpher.data,
+                          min.cells = 10, min.genes=200,
+                          project = "dySpher")
 
-phase.daoySpher.sct.clust.res0.2 <- phase.daoySpher.filtRiboMito.sct %>% 
+dim(dySpher) # 16,238 genes and 761 cells
+```
+
+```{r}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dySpher), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dySpher[mito.genes, ])/Matrix::colSums(dySpher)
+
+# identify ribosomal genes
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = dySpher), value = TRUE)
+percent.ribo <- 
+  Matrix::colSums(dySpher[ribo.genes, ])/Matrix::colSums(dySpher)
+
+# add the ribosome and mitochondrial gene percent to the metadata
+dySpher <- 
+  AddMetaData(object = dySpher, metadata = percent.mito, col.name = "percent.mito")
+
+dySpher <- 
+  AddMetaData(object = dySpher, metadata = percent.ribo, col.name = "percent.ribo")
+
+# remove ribosomal and mitochondrial genes
+# remove ribosomal genes first
+dySpher <- dySpher[ ! grepl('^RP[SL]', rownames(dySpher)), ]
+
+# remove mitochondrial genes 
+dySpher <- dySpher[ ! grepl("^MT-", rownames(dySpher)), ]
+
+dim(dySpher) # 16,129 genes and 761 cells
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+dySpher <- subset(dySpher, subset = percent.mito < 0.1)
+dim(dySpher) # reduced to 16,129 genes and 649 cells
+```
+
+```{r}
+# save the NON-normalised, NON-clustered cbo seurat object
+saveRDS(dySpher, file = "./outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.seurat.DAOYspher.rds")
+```
+
+```{r}
+dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.seurat.DAOYspher.rds")
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+dySpher <- NormalizeData(dySpher)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dySpher <- CellCycleScoring(dySpher,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dySpher$CC.difference <- dySpher$S.Score - dySpher$G2M.Score
+```
+
+```{r}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+dySpher.input.integration <- SCTransform(dySpher, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(dySpher.input.integration, "./outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r}
+dySpher <- SCTransform(dySpher, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
   RunUMAP(dims=1:30, verbose=FALSE) %>% 
   FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, res = 0.2)
+  FindClusters(verbose=FALSE, resolution = 0.5)
 ```
-
 
 ```{r}
-# using res = 0.2 there are 2 clusters
-DimPlot(phase.daoySpher.sct.clust.res0.2)
+# save the clustered, SCTransformed object above
+saveRDS(dySpher, file = "./outputs50K/DAOY_SPHER/DAOYspher.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
 ```
+
+```{r}
+# load the above object
+dySpher <- readRDS("outputs50K/DAOY_SPHER/DAOYspher.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r DimplotONS76monoUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(dySpher, label = TRUE)
+```
+
+```{r}
+# get the markers of each cluster
+dySpher.POSmarkers <- FindAllMarkers(object = dySpher, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+dySpher.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r}
+# none is expressed of these five
+dySpher.POSmarkers %>%
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX1"))
+```
+
+```{r}
+# save the positive markers of DAOY_SPHER
+saveRDS(dySpher.POSmarkers, 
+        file = "./outputs50K/DAOY_SPHER/POS.markers.DAOYspheroid.SCT.clustered.rds")
+```
+
+```{r}
+dySpher.POSmarkers <- readRDS("outputs50K/DAOY_SPHER/POS.markers.DAOYspheroid.SCT.clustered.rds")
+```
+
+```{r}
+table(Idents(dySpher))
+```
+
+```{r HeatmapDaoySpherTop10markers4clustersRes0.5, fig.height=6, fig.width=6}
+# first load dyMono seurat object above, then only run this chunk
+dySpher.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(dySpher, features = top10$gene) + NoLegend()
+```
+
+As can be seen in the heatmap above, only cluster 3 can be readily distinguished from the other clusters using the markers. So, repeat the analysis using resolution = 0.2
+```{r}
+# first load the file "filt.RiboMitoCellsGenes.seurat.DAOYspher.rds", then normalise, get CC difference scores
+# and then run this code chunk
+dySpher.res0.2 <- SCTransform(dySpher, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.2)
+```
+
+```{r}
+# get the markers of each cluster
+dySpher.POSmarkers.res0.2 <- FindAllMarkers(object = dySpher.res0.2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+# save the positive markers of DAOY_SPHER at resolution = 0.2
+saveRDS(dySpher.POSmarkers.res0.2, 
+        file = "./outputs50K/DAOY_SPHER/POS.markers.res0.2.DAOYspheroid.SCT.clustered.rds")
+```
+
+```{r HeatmapDaoySpherTop10markers3clustersRes0.2, fig.height=5, fig.width=6}
+dySpher.POSmarkers.res0.2 %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10.res.0.2
+DoHeatmap(dySpher.res0.2, features = top10.res.0.2$gene) + guides(color = "none")
+```
+
+The Heatmap above with only 3 clusters shows there is better discrimination between clusters although cluster 0 is still the least well defined. Expect this cluster to have the least number of positive markers.
+
+```{r}
+saveRDS(dySpher.res0.2, 
+        file = "./outputs50K/DAOY_SPHER/DAOYspher.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# prepare the data for gProfiler (web app) input
+dySpher.res0.2.genes.presto <- wilcoxauc(dySpher.res0.2, 'seurat_clusters')
+nrow(dySpher.res0.2.genes.presto)
+dplyr::count(dySpher.res0.2.genes.presto, group)
+```
+
+```{r}
+head(dySpher.res0.2.genes.presto, 3)
+```
+
+```{r}
+# filter and order the gene list
+dySpher.res0.2.genes.presto.clust0 <- dySpher.res0.2.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dySpher.res0.2.genes.presto.clust0) # 79 genes only! Not worth running gProfiler on this gene list
+```
+
+```{r}
+# filter and order the gene list
+dySpher.res0.2.genes.presto.clust1 <- dySpher.res0.2.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dySpher.res0.2.genes.presto.clust1) # 131 genes only! Try running gProfiler on this gene list
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dySpher.res0.2.genes.presto.clust1, 
+          "./outputs50K/DAOY_SPHER/daoySpheroid.res0.2.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list
+dySpher.res0.2.genes.presto.clust2 <- dySpher.res0.2.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dySpher.res0.2.genes.presto.clust2) # 357 genes only. Try running gProfiler on this gene list
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dySpher.res0.2.genes.presto.clust2, 
+          "./outputs50K/DAOY_SPHER/daoySpheroid.res0.2.cluster2.genes.presto.gProfilerInput.csv", quote = F)
+```
+
 
 ***Clustree***
 ```{r}
@@ -59,86 +284,19 @@ DimPlot(phase.daoySpher.sct.clust.res0.2)
 resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
 
 # Find clusters using a range of resolutions, the clustering information is in the metadata slot
-daoySpher.clusters <- FindClusters(object = phase.daoySpher.sct.clust.res0.2, 
+dySpher.clusters <- FindClusters(object = dySpher, 
                                       resolution = resolution.range,
                                       verbose = FALSE)
 ```
 
 ```{r ClustreeCBO, fig.height=6}
-# the clustering tree finds 3 major clusters with res = 0.4.
-# when res > 0.4 the cluster assignment becomes unstable.
-# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
-clustree(daoySpher.clusters)
+# the clustering tree finds too many clusters! These clusters are not biologically
+# meaningful. See Endnote 'CARP Lab Notebook' > 'Log of Data Analysis' for details
+
+clustree(dySpher.clusters)
 ```
 
-Test how the clusters appear and check markers of each cluster
-```{r}
-# generate a clustered  seurat object, res = 0.4
-phase.daoySpher.sct.clust.res0.4 <- phase.daoySpher.filtRiboMito.sct %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, res = 0.4)
-```
 
-```{r}
-# using res = 0.4 there are 3 clusters, and only two of these are well separated
-DimPlot(phase.daoySpher.sct.clust.res0.4)
-```
-
-```{r}
-# get the number of cells per cluster
-table(Idents(phase.daoySpher.sct.clust.res0.4))
-```
-
-***Find the DEGs of each cluster***
-Find the markers of each cluster for res = 0.2
-```{r}
-# find POSITIVE markers of each cluster
-phase.daoySpher.sct.POSdegs <- FindAllMarkers(object = phase.daoySpher.sct.clust.res0.2,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
-
-Cluster 0 gene expression is similar in terms of pct.1 and pct.2. However, cluster 1 gene expression shows marked differences from cluster 0
-```{r}
-phase.daoySpher.sct.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 20)
-```
-
-Find the markers of each cluster for res = 0.4
-```{r}
-# find POSITIVE markers of each cluster
-phase.daoySpher.sct.res0.4.POSdegs <- FindAllMarkers(object = phase.daoySpher.sct.clust.res0.4,
-                                      min.pct = 0.25,
-                                      only.pos = TRUE)
-```
-
-As can be seen below the markers for cluster 0 and cluster 1 are expressed by similar proportions of cells in pct.1 and pct.2, so RESOLTION = 0.2 IS APPROPRIATE
-```{r}
-phase.daoySpher.sct.res0.4.POSdegs %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 20)
-```
-
-```{r}
-# save the UP-regulated genes (res = 0.2)
-saveRDS(phase.daoySpher.sct.POSdegs, 
-        file = "./outputs50K/DAOY_SPHER/POS.DEGs.AllClusts.phase.daoySpher.res0.2.sct.rds")
-
-```
-
-```{r}
-# load the markers object above
-phase.daoySpher.sct.POSdegs <- 
-  readRDS("outputs50K/DAOY_SPHER/POS.DEGs.AllClusts.phase.daoySpher.res0.2.sct.rds")
-```
-
-```{r}
-# save the phase.daoySpher.sct.clust.res0.2 as a new Seurat object
-saveRDS(phase.daoySpher.sct.clust.res0.2,
-        file = "./outputs50K/DAOY_SPHER/phase.daoySpher.SCT.clustered.res0.2.rds")
-```
 
 
 
