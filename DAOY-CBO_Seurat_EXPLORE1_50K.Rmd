@@ -55,7 +55,6 @@ dyCbo <-
   readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DaoyCbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-
 ```{r DimplotSCTCCdiffRegressedDaoyCboClustersClusterMapInput, fig.height=6, fig.width=10}
 DimPlot(dyCbo, label = TRUE)
 ```
@@ -65,8 +64,8 @@ DimPlot(dyCbo, label = TRUE)
 table(Idents(dyCbo))
 ```
 
-```
-{r}
+```{r}
+# load the saved markers dataframe
 dyCbo.POSmarkers <- 
   read.csv("outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.daoyCbo.csv",
                           stringsAsFactors = FALSE,
@@ -74,11 +73,22 @@ dyCbo.POSmarkers <-
 ```
 
 
-```
-{r}
+```{r}
+# look at some of the top markers of each cluster
 dyCbo.POSmarkers %>% 
-  group_by(cluster) %>% 
-  slice_head(n = 3)
+  filter(cluster == "14")
+```
+
+```{r}
+cbo.markers <- read.csv("outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv",
+                        header = TRUE,
+                        stringsAsFactors = FALSE)
+```
+
+
+```{r}
+dyCbo.POSmarkers %>% 
+  filter(gene %in% c("RSPO1", "RSPO3", "RSPO2", "MASP1", "SOX2-OT", "HES1",  "LMX1A", "CNTNAP2", "PLS3", "WNT8B", "ID4"))
 ```
 
 
@@ -89,56 +99,54 @@ First, we need to calculate the average transcriptome profiles for every annotat
 This is the 1st attempt to classify cell types/clusters using Spearman's correlation. This resulted in two rounds of cell type identification with some revision of the cell type assignment on the first round compared to the second. I think the assignment of cell type identity is more accurate after doing the correlation tests. Both UMAP plots of the annotated cell types is shown below. The first one is retained so that the changes evident on the revised cell type assignent can be better appreciated.
 
 
-
 ***Cluster annotation***
-THIS IS THE BEST ANNOTATION SO FAR
+THIS IS THE BEST ANNOTATION SO FAR (Feb 2023)
 Using the above correlations change the specification of the cell types as below.
 
-```
-{r}
+```{r}
 # continue to replace the cluster numbers with the identity of each cluster
-new.cluster.ids <- c("glia", "choroid plexus", "RP-choroid plexus_1", "RL/DCN",
-                     "granule precursors", "purkinje-like", "progenitors",
-                     "DAOY_cluster_7", "RP-choroid plexus_2", "ciliated cells", "oligodendrocytes", "DAOY_cluster_11",
-                     "DAOY_cluster_12")
+new.cluster.ids <- c("roof plate", "GABA-ergic neurons", "Purkinje cells_1", "4th vent/choroid plexus",
+                     "granule neurons", "Purkinje cells_2", "uncertain",
+                     "roof plate-like", "DAOY_cluster_8", "ciliated cells", 
+                     "RL/roof plate", "Purkinje cells_4", "oligodendrocytes", "DAOY_cluster_13", 
+                     "DAOY_cluster_14")
 
 names(new.cluster.ids) <- levels(dyCbo)
 dyCbo.annotate <- RenameIdents(dyCbo, new.cluster.ids)
 ```
 
 
-```
-{r}
+```{r}
 # Create metadata dataframe
 metadata <- dyCbo.annotate@meta.data
 # Add cell IDs to metadata
 metadata$cells <- rownames(metadata)
 # Create sample column
 metadata$celltype <- NA
-metadata$celltype[which(metadata$seurat_clusters == "0")] <- "glia"
-metadata$celltype[which(metadata$seurat_clusters == "1")] <- "choroid plexus"
-metadata$celltype[which(metadata$seurat_clusters == "2")] <- "RP-choroid plexus_1"
-metadata$celltype[which(metadata$seurat_clusters == "3")] <- "RL/DCN"
-metadata$celltype[which(metadata$seurat_clusters == "4")] <- "granule precursors"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "purkinje-like"
-metadata$celltype[which(metadata$seurat_clusters == "6")] <- "progenitors"
-metadata$celltype[which(metadata$seurat_clusters == "7")] <- "DAOY_cluster_7"
-metadata$celltype[which(metadata$seurat_clusters == "8")] <- "RP-choroid plexus_2"
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "GABA-ergic neurons"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "4th vent/choroid plexus"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Purkinje cells_2"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "uncertain"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "roof plate-like"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "DAOY_cluster_8"
 metadata$celltype[which(metadata$seurat_clusters == "9")] <- "ciliated cells"
-metadata$celltype[which(metadata$seurat_clusters == "10")] <- "oligodendrocytes"
-metadata$celltype[which(metadata$seurat_clusters == "11")] <- "DAOY_cluster_11"
-metadata$celltype[which(metadata$seurat_clusters == "12")] <- "DAOY_cluster_12"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "RL/roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Purkinje cells_4"
+metadata$celltype[which(metadata$seurat_clusters == "12")] <- "oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "13")] <- "DAOY_cluster_13"
+metadata$celltype[which(metadata$seurat_clusters == "14")] <- "DAOY_cluster_14"
 ```
 
-```
-{r}
+```{r}
 dyCbo.annotate@meta.data <- metadata
 ```
 
-```
-{r}
+```{r}
 # save the dyCbo.annotate object - 'clusterMap' is added to the end of the filename to remind me of the origins
-# of this file. THIS FILE IS NOT USED AS CLUSTERMAP INPUT FILE.
+# of this file. HOWEVER, THIS FILE IS NOT USED AS A CLUSTERMAP INPUT FILE.
 saveRDS(dyCbo.annotate, 
         file = "./outputs50K/DAOY-CBO/DaoyCbo.CellAnnot.filtRiboMito.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
@@ -156,53 +164,42 @@ DimPlot(dyCbo.annotate, reduction = "umap", label = TRUE, repel = TRUE, pt.size 
 
 ***Correlation heatmap of DAOY-CBO vs CBO - Spearman correlation***
 
-```
-{r}
+```{r}
 cbo.annotate <- 
   readRDS("outputs50K/CBO/cbo.filtRiboMito.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
 
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 av.exp.cbo <- sapply(sort(unique(cbo.annotate$celltype)), function(ct) rowMeans(cbo.annotate$RNA@data[,which(cbo.annotate$celltype == ct)] ))
 
 avg.exp.dyCbo <- sapply(levels(dyCbo.annotate@active.ident), function(ct) rowMeans(dyCbo.annotate$RNA@data[,which(dyCbo.annotate@active.ident == ct)]))
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 genes2cor <- intersect(VariableFeatures(cbo.annotate), rownames(dyCbo.annotate))
 corr2cbo.cl <- cor(avg.exp.dyCbo[genes2cor,], av.exp.cbo[genes2cor,], method = "spearman")
 ```
 
 Now the correlation matrix shows a better match of samples in the Reference (CBO) and query (DAOY-CBO) data
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 corr2cbo.cl
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 # save the correlation matrix corr2cbo.cl
 saveRDS(corr2cbo.cl, file = "./outputs50K/DAOY-CBO/CorrelnSpearmanDAOY-CBOvsCBOclusters.rds")
 ```
 
 
-```
-{r}
+```{r}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 # load the correlation matrix
 corr2cbo.cl <- readRDS("outputs50K/DAOY-CBO/CorrelnSpearmanDAOY-CBOvsCBOclusters.rds")
 ```
 
 
-```
-{r HeatmapDaoyCboVSCboClusterCorrelations2, fig.height=3,fig.width=3}
+```{r HeatmapDaoyCboVSCboClusterCorrelations2, fig.height=6,fig.width=6}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 graphics.off()
 par("mar")
@@ -215,13 +212,13 @@ par(mar=c(1,1,1,1))
 
 --------------------------------------------------------------------------------------------------------
 ***Which clusters are the malignant clusters?***
-Clusters 7, 11, 12. Only 1 NEUROD1+ cluster which is non-malignant.
+Clusters 8, 13, 14. Only 1 NEUROD1+ cluster which is non-malignant.
 
 ```{r}
 dyOnly.dyCboAnnotate <- subset(dyCbo.annotate, 
-                               idents = c("DAOY_cluster_7",
-                                          "DAOY_cluster_11",
-                                          "DAOY_cluster_12"))
+                               idents = c("DAOY_cluster_8",
+                                          "DAOY_cluster_13",
+                                          "DAOY_cluster_14"))
 ```
 
 ```{r}
@@ -230,38 +227,45 @@ dyOnly.dyCboAnnot.rescaled <- ScaleData(dyOnly.dyCboAnnotate)
 ```
 
 ```{r}
-new.cluster.ids.subset <- c("DAOY_cluster_7", "DAOY_cluster_11", "DAOY_cluster_12")
+new.cluster.ids.subset <- c("DAOY_cluster_8", "DAOY_cluster_13", "DAOY_cluster_14")
 names(new.cluster.ids.subset) <- levels(dyOnly.dyCboAnnot.rescaled)
 dyOnly.dyCboAnnot.rescaled <- RenameIdents(dyOnly.dyCboAnnot.rescaled, new.cluster.ids.subset)
 ```
 
 ```{r}
-# cluster 7 = 137 cells, cluster 11 = 73 cells, cluster 12 = 55 cells
+# cluster 8 = 136 cells, cluster 13 = 74 cells, cluster 14 = 55 cells
 table(dyOnly.dyCboAnnot.rescaled$seurat_clusters)
 ```
 
 ```{r}
-# save all the malignant clusters 7,11,12
+# save all the malignant clusters 8,13,14
 saveRDS(dyOnly.dyCboAnnot.rescaled, 
         file = "./outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
-```{r}
+```{r VlnplotSox2DAOYclustersDaoy-CboSamples}
+dyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 VlnPlot(dyOnly.dyCboAnnot.rescaled, features = 'SOX2')
 ```
 
 
 
-```{r VlnPlotGranuleNeuronGenesDaoyCbo, fig.width=14}
+```{r VlnPlotGranuleNeuronGenesDaoyCbo, fig.height=9, fig.width=12}
 # cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
 # malignant clusters are cluster 8 (n=137 cells), cluster 12 (n=77 cells), and cluster 13 (n=55 cells)
 VlnPlot(dyCbo.annotate, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX"))
 ```
 
-```{r VlnPlotDaoyCellsSox2networkErbb4Nrg3DaoyCbo, fig.width=14}
+```{r VlnPlotDaoyCellsSox2networkErbb4Nrg3DaoyCbo, fig.height=9, fig.width=12}
 # visualise gene expression indicating DAOY cell clusters
 VlnPlot(dyCbo.annotate, features = c("SOX2", "POU3F2","FABP7", "ERBB4", "NRG3"))
 ```
+
+```{r VlnplotsErbb4Sox2otx2, fig.height=9, fig.width=13}
+VlnPlot(dyCbo.annotate,
+        features = c("SOX2", "ERBB4", "POU3F2", "OTX2"))
+```
+
 
 ```{r VlnPlotDaoyCellsGranuleGenesDaoyCbo, fig.width=14}
 # visualise gene expression indicating DAOY cell clusters
@@ -280,58 +284,60 @@ VlnPlot(dyCbo,
         features = c("MYC", "MYCN", "MIR124-2HG", "CTNNA2", "IRX3"))
 ```
 
+
 --------------------------------------------------------------------------------------------------
-***Looking at each DAOY cluster for expression of SOX2 regulatory network***
-Extract the DAOY cells fro DAOY-CBO and save as a separate object
+***Examine each DAOY cluster for expression of SOX2 regulatory network***
+Extract the DAOY cells from DAOY-CBO and save as a separate object
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
+
 daoyOnly.dyCboAnnot <- subset(dyCbo.annotate, 
-                           idents = c("DAOY_cluster_7", "DAOY_cluster_11", "DAOY_cluster_12"))
+                           idents = c("DAOY_cluster_8", "DAOY_cluster_13", "DAOY_cluster_14"))
 ```
 
-```
-{r}
+```{r}
 # should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
 daoyOnly.dyCboAnnot.rescaled <- ScaleData(daoyOnly.dyCboAnnot)
 ```
 
-```
-{r}
+```{r}
 # change the 'Identity' on x-axis of VlnPlot from numbers only to something more meaningful
 
-new.cluster.ids.subset <- c("DAOY_cluster_7", "DAOY_cluster_11", "DAOY_cluster_12")
+new.cluster.ids.subset <- c("DAOY_cluster_8", "DAOY_cluster_13", "DAOY_cluster_14")
 names(new.cluster.ids.subset) <- levels(daoyOnly.dyCboAnnot.rescaled)
 daoyOnly.dyCboAnnot.rescaled <- RenameIdents(daoyOnly.dyCboAnnot.rescaled, new.cluster.ids.subset)
 ```
 
-```
-{r}
+```{r}
 levels(daoyOnly.dyCboAnnot.rescaled)
 ```
 
 ```{r}
-daoyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DaoyOnlyCells.SubsetDaoyCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+daoyOnly.dyCboAnnot.rescaled <- 
+  readRDS("outputs50K/DAOY-CBO/DaoyOnlyCells.SubsetDaoyCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
 
-```{r ViolinPlotSOX2NetworkDaoyOnlyDaoyCbo, fig.width=14}
+```{r ViolinPlotSOX2NetworkDaoyOnlyDaoyCbo, fig.height=9, fig.width=12}
 VlnPlot(daoyOnly.dyCboAnnot.rescaled, 
         features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"))
 ```
 
-```{r ViolinPlotSox2Erbb4DaoyOnlyDaoyCbo, fig.width=14}
+```{r ViolinPlotSox2Erbb4DaoyOnlyDaoyCbo, fig.height=9, fig.width=12}
 VlnPlot(daoyOnly.dyCboAnnot.rescaled, 
-        features = c("SOX2", "ERBB4", "FABP7", "OTX2", "GLI2"))
+        features = c("SOX2", "ERBB4", "NES", "PTCH1"))
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 saveRDS(daoyOnly.dyCboAnnot.rescaled, 
         file = "./outputs50K/DAOY-CBO/DaoyOnlyCells.SubsetDaoyCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
+
+```{r}
+head(daoyOnly.dyCboAnnot.rescaled@meta.data)
+```
+
+
 
 
 ---------------------------------------------------------------------------------------------------------
@@ -340,571 +346,133 @@ from: https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_
 
 The first website uses the output of Seurat FindMarkers() to generate the gene list, but this does not use all genes. Note that the arguments are different from the standard ones used to generate DEG list.
 
-Good package to use, ranks genes very fast for Gene Set Enrichment analysis
+Presto is good package to use, ranks genes very fast for Gene Set Enrichment analysis, but fgsea is prone to crashing!!
 
-```
-{r}
+```{r}
 dyCbo.genes.presto <- wilcoxauc(dyCbo, 'seurat_clusters')
 head(dyCbo.genes.presto)
 ```
 
-```
-{r}
+```{r}
 nrow(dyCbo.genes.presto)
 ```
 
-```
-{r}
+```{r}
 # we have all the genes for each cluster
 dplyr::count(dyCbo.genes.presto, group)
 ```
 
-***Cluster 7 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
-```
-{r}
+
+***Cluster 8 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+```{r}
 # order the gene list
-# the presto gene list puts ERBB4 at the top which is reassuring, and SOX2 is the 33rd listed gene
+# the presto gene list puts ERBB4 at the top which is reassuring, and SOX2 is the 36th listed gene
 dyCbo.genes.presto %>%
-  dplyr::filter(group == "7") %>%
+  dplyr::filter(group == "8") %>%
   dplyr::arrange(desc(logFC), desc(auc)) %>%
-  head()
+  head(10)
 ```
 
-```
-{r}
+```{r}
 # filter and order the gene list
-dyCbo.cl7.UPgenes.presto <- dyCbo.genes.presto %>% 
-  dplyr::filter(group == "7" & logFC > 0.25) %>%
+dyCbo.cl8.UPgenes.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "8" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyCbo.cl7.UPgenes.presto) # 2196 genes
+nrow(dyCbo.cl8.UPgenes.presto) # 704 genes
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
-write.csv(dyCbo.cl7.UPgenes.presto, 
-          "./outputs50K/DAOY-CBO/daoyCbo.daoy.cluster7.UPgenes.presto.gProfilerInput.csv", quote = F)
-```
-
-
-```
-{r}
-# this dataframe shows genes in cluster 8 whether up or downregulated. Needed for fgsea.
-clust7.genes.presto <- dyCbo.genes.presto %>%
-  dplyr::filter(group == "7") %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```
-{r}
-# this is the ordered (ranked) gene list for fgsea
-ranks.clus7 <- deframe(clust7.genes.presto)
-head(ranks.clus7)
-```
-
-****msigdbr HALLMARK geneset****
-```
-{r}
-# choose the HALLMARK gene set from msigdbr (this is only one way to choose a geneset)
-# object m_df is a HALLMARK geneset
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-head(m_df)
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus7.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus7, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus7.hallmark <- fgseaRes.clus7.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus7.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus7.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus7.hallmark <- 
-  readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-
-Visualise the significant HALLMARK genesets - the result is consistent with GO plots and REACTOME plots above
-```{r BarplotFGSEAmsigdbHALLMARKclust8DaoyCbo}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few.
-
-ggplot(fgseaResTidy.clus7.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES>0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-```{r EnrichmentplotFGSEAmsigdbHALLMARKe2fTargetsClust7DaoyCbo}
-plotEnrichment(fgsea_sets[["HALLMARK_E2F_TARGETS"]],
-               ranks.clus7) + labs(title="HALLMARK_E2F_TARGETS")
-```
-
-****REACTOME geneset**** - fgsea crashes! So leave this out.
-```
-{r}
-# choose the REACTOME gene set from msigdbr (this is only one way to choose a geneset)
-# object m_df is a HALLMARK geneset
-m_df<- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:REACTOME")
-head(m_df)
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values.
-# Warning - Reactome, if this gene set used fgsea crashes when scoretype='std'!!
-fgseaRes.clus7.reactome <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus7, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus7.reactome <- fgseaRes.clus7.reactome %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus7.reactome %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r BarplotFGSEAmsigdbREACTOMEclust7DaoyCbo}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few.
-
-ggplot(fgseaResTidy.clus7.reactome %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-
-****KEGG GENESET****: 
-
-this is a good workaround the problem of clusterProfiler throwing an error when KEGG database is used
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.kegg.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "CP:KEGG")
-
-head(msig.kegg.hs)
-```
-
-```
-{r}
-fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus7.kegg <- 
-  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus7, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# tidy up the data
-fgseaResTidy.clus7.kegg <- fgseaRes.clus7.kegg %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus7.kegg %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-
-```
-{r}
-saveRDS(fgseaResTidy.clus7.kegg, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus7.kegg <- readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
-```
-
-
-```{r BarplotFGSEAkeggClust7DaoyCbo}
-# only plot the top 20 pathways
-ggplot(fgseaResTidy.clus7.kegg %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "KEGG pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
+write.csv(dyCbo.cl8.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.daoy.cluster8.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
 
 ---------------------------------------------------------------------------------------------------------
-***Cluster 11 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
-```
-{r}
+***Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+```{r}
 dyCbo.genes.presto %>%
-  dplyr::filter(group == "11") %>%
+  dplyr::filter(group == "13") %>%
   dplyr::arrange(desc(logFC), desc(auc))
 
-clust11.genes.presto <- dyCbo.genes.presto %>%
-  dplyr::filter(group == "11") %>%
+clust13.genes.presto <- dyCbo.genes.presto %>%
+  dplyr::filter(group == "13") %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
   
-head(clust11.genes.presto)
+head(clust13.genes.presto)
 ```
 
-```
-{r}
-ranks.clus11 <- deframe(clust11.genes.presto)
-head(ranks.clus11)
+```{r}
+ranks.clus13 <- deframe(clust13.genes.presto)
+head(ranks.clus13)
 ```
 
-```
-{r}
-dyCbo.cl11.UPgenes.presto <- dyCbo.genes.presto %>% 
-  dplyr::filter(group == "11" & logFC > 0.25) %>%
+```{r}
+dyCbo.cl13.UPgenes.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "13" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyCbo.cl11.UPgenes.presto) # 600 genes
-```
-
-```
-{r}
-write.csv(dyCbo.cl11.UPgenes.presto, 
-          "./outputs50K/DAOY-CBO/daoyCbo.cluster11.UPgenes.presto.gProfilerInput.csv", quote = F)
-```
-
-****HALLMARK GENE SET****
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus11.hallmark <- 
-  fgseaMultilevel(fgsea_sets, stats = ranks.clus11, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus11.hallmark <- fgseaRes.clus11.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus11.hallmark,
-        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
+nrow(dyCbo.cl13.UPgenes.presto) # 570 genes
 ```
 
 ```{r}
-fgseaResTidy.clus11.hallmark <- 
-  readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-
-```{r BarplotFGSEAmsigdbHALLMARKclust12DaoyCbo}
-# note that padj values are not that low
-ggplot(fgseaResTidy.clus11.hallmark %>% filter(padj < 0.05) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-```{r EnrichmentplotFGSEAmsigdbHALLMARKhedgehogSignallingUpClust11DaoyCbo}
-plotEnrichment(fgsea_sets[["HALLMARK_HEDGEHOG_SIGNALING"]],
-               ranks.clus11) + labs(title="HALLMARK_HEDGEHOG_SIGNALING")
-```
-
-****KEGG GENESET**** - this makes fgsea crash so don't run this code
-```
-{r}
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.kegg.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "CP:KEGG")
-
-head(msig.kegg.hs)
-```
-
-```
-{r}
-fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus11.kegg <- 
-  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus11, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus11.kegg <- fgseaRes.clus11.kegg %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.kegg %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-****GO:BP genesets****
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```
-{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus11.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus11, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# tidy up the data
-fgseaResTidy.clus11.GOBP <- fgseaRes.clus11.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-
-```
-{r}
-saveRDS(fgseaResTidy.clus11.GOBP, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus11.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
-```
-
-
-```{r BarplotFGSEAgoBPclust11DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways
-ggplot(fgseaResTidy.clus11.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
+write.csv(dyCbo.cl13.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.cluster13.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
 
 ---------------------------------------------------------------------------------------------------
-***Cluster 12 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
-```
-{r}
+***Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+```{r}
 dyCbo.genes.presto %>%
-  dplyr::filter(group == "12") %>%
+  dplyr::filter(group == "14") %>%
   arrange(desc(logFC), desc(auc))
 
-clust12.genes.presto <- dyCbo.genes.presto %>%
-  dplyr::filter(group == "12") %>%
+clust14.genes.presto <- dyCbo.genes.presto %>%
+  dplyr::filter(group == "14") %>%
   arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
   
-head(clust12.genes.presto)
+head(clust14.genes.presto)
 ```
 
-```
-{r}
-ranks.clus12 <- deframe(clust12.genes.presto)
-head(ranks.clus12)
+```{r}
+ranks.clus14 <- deframe(clust14.genes.presto)
+head(ranks.clus14)
 ```
 
-```
-{r}
-dyCbo.cl12.UPgenes.presto <- dyCbo.genes.presto %>% 
-  dplyr::filter(group == "12" & logFC > 0.25) %>%
+```{r}
+dyCbo.cl14.UPgenes.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "14" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyCbo.cl12.UPgenes.presto) # 7027 genes as input for gProfiler
-```
-
-```
-{r}
-write.csv(dyCbo.cl12.UPgenes.presto, 
-          "./outputs50K/DAOY-CBO/daoyCbo.cluster12.UPgenes.presto.gProfilerInput.csv", quote = F)
-```
-
-****HALLMARK GENE SET****
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-head(m_df)
-```
-
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus12.hallmark <- 
-  fgseaMultilevel(fgsea_sets, stats = ranks.clus12, scoreType = "pos", eps = 0, minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus12.hallmark <- fgseaRes.clus12.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus12.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus12.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
+nrow(dyCbo.cl14.UPgenes.presto) # 1699 genes as input for gProfiler
 ```
 
 ```{r}
-fgseaResTidy.clus12.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
+write.csv(dyCbo.cl14.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.cluster14.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
 
-```{r BarplotFGSEAmsigdbHALLMARKClust12DaoyCbo}
-ggplot(fgseaResTidy.clus12.hallmark %>% filter(padj < 0.001) %>% head(n = 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-****GO:BP GENESET****
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-```
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus12.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus12, eps = 0, scoreType = "pos",  minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-fgseaResTidy.clus12.GOBP <- fgseaRes.clus12.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus12.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus12.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
-```
-
-```{r}
-# load the above file
-fgseaResTidy.clus12.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
-```
 
 
-```{r BarplotFGSEAgoBPclust12DaoyCbo}
-ggplot(fgseaResTidy.clus12.GOBP %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="GO:BP pathways NES from GSEA") + 
-  theme_minimal()
-```
 
 
+
+
+
+
+
+
+
+CODE RETAINED IN CASE IT PROVES USEFUL LATER
 ---------------------------------------------------------------------------------------------------
 ***Gene set enrichment analysis (GSEA) using enrichR-based Seurat function***. See https://github.com/satijalab/seurat/issues/5151 for guidance and refer to https://maayanlab.cloud/Enrichr/#libraries for a list of gene sets. DOES NOT WORK WITHOUT AN INTERNET CONNECTION. MUST LOAD RSTUDIO SERVER ON RESCOMP1 OR 3 (HEADNODE) TO GET INTERNET CONNECTION. WARN BMRC HELPDESK IN ADVANCE!!
 
@@ -1082,6 +650,460 @@ DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
 ```
 
 
+--------------------------------------------------------------------------------------
+RETAINED CODE THAT DOES NOT WORK
+***Fast Gene set enrichment (fgsea)***
+```
+{r}
+# this dataframe shows genes in cluster 8 whether up or downregulated. Needed for fgsea.
+clust8.genes.presto <- dyCbo.genes.presto %>%
+  dplyr::filter(group == "8") %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```
+{r}
+# this is the ordered (ranked) gene list for fgsea
+ranks.clus8 <- deframe(clust8.genes.presto)
+head(ranks.clus8)
+```
+
+****msigdbr HALLMARK geneset****
+```
+{r}
+# choose the HALLMARK gene set from msigdbr (this is only one way to choose a geneset)
+# object m_df is a HALLMARK geneset
+m_df<- msigdbr(species = "Homo sapiens", category = "H")
+head(m_df)
+```
+
+```
+{r}
+fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# set eps to zero to get lower p-values
+# when scoreType='std' an error results and fgsea crashes. A warning message states that all values in the 
+# stats vector  are > 0 and recommends switch ScoreType to 'pos'.
+fgseaRes.clus8.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus8.hallmark <- fgseaRes.clus8.hallmark %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus8.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus7.hallmark, 
+        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus8.hallmark <- 
+  readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+
+Visualise the significant HALLMARK genesets - the result is consistent with GO plots and REACTOME plots above
+```
+{r BarplotFGSEAmsigdbHALLMARKclust8DaoyCbo}
+# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
+# genesets to the top few.
+
+ggplot(fgseaResTidy.clus7.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES>0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```
+{r EnrichmentplotFGSEAmsigdbHALLMARKe2fTargetsClust7DaoyCbo}
+plotEnrichment(fgsea_sets[["HALLMARK_E2F_TARGETS"]],
+               ranks.clus7) + labs(title="HALLMARK_E2F_TARGETS")
+```
+
+****REACTOME geneset**** - fgsea crashes! So leave this out.
+```
+{r}
+# choose the REACTOME gene set from msigdbr (this is only one way to choose a geneset)
+# object m_df is a HALLMARK geneset
+m_df<- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:REACTOME")
+head(m_df)
+```
+
+```
+{r}
+fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# set eps to zero to get lower p-values.
+# Warning - Reactome, if this gene set used fgsea crashes when scoretype='std'!!
+fgseaRes.clus8.reactome <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus8.reactome <- fgseaRes.clus8.reactome %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus8.reactome %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```
+{r BarplotFGSEAmsigdbREACTOMEclust7DaoyCbo}
+# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
+# genesets to the top few.
+
+ggplot(fgseaResTidy.clus8.reactome %>% filter(padj < 0.01) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+
+****KEGG GENESET****: 
+
+this is a good workaround the problem of clusterProfiler throwing an error when KEGG database is used
+```
+{r}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.kegg.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "CP:KEGG")
+
+head(msig.kegg.hs)
+```
+
+```
+{r}
+fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+
+fgseaRes.clus8.kegg <- 
+  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus8, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# tidy up the data
+fgseaResTidy.clus7.kegg <- fgseaRes.clus7.kegg %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus7.kegg %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+
+```
+{r}
+saveRDS(fgseaResTidy.clus7.kegg, 
+        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus7.kegg <- readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAkeggClust7DaoyCbo}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus7.kegg %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= "KEGG pathways NES from GSEA") + 
+  theme_minimal() # can change bar colours using ggplot
+```
+
+****HALLMARK GENE SET****
+```
+{r}
+m_df<- msigdbr(species = "Homo sapiens", category = "H")
+```
+
+```
+{r}
+fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+fgseaRes.clus13.hallmark <- 
+  fgseaMultilevel(fgsea_sets, stats = ranks.clus13, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus11.hallmark <- fgseaRes.clus11.hallmark %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus11.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus11.hallmark,
+        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus11.hallmark <- 
+  readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAmsigdbHALLMARKclust12DaoyCbo}
+# note that padj values are not that low
+ggplot(fgseaResTidy.clus11.hallmark %>% filter(padj < 0.05) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```
+{r EnrichmentplotFGSEAmsigdbHALLMARKhedgehogSignallingUpClust11DaoyCbo}
+plotEnrichment(fgsea_sets[["HALLMARK_HEDGEHOG_SIGNALING"]],
+               ranks.clus11) + labs(title="HALLMARK_HEDGEHOG_SIGNALING")
+```
+
+****KEGG GENESET**** - this makes fgsea crash so don't run this code
+```
+{r}
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.kegg.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "CP:KEGG")
+
+head(msig.kegg.hs)
+```
+
+```
+{r}
+fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+
+fgseaRes.clus11.kegg <- 
+  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus11, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus11.kegg <- fgseaRes.clus11.kegg %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus11.kegg %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+****GO:BP genesets****
+```
+{r}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```
+{r}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+
+fgseaRes.clus11.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus11, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# tidy up the data
+fgseaResTidy.clus11.GOBP <- fgseaRes.clus11.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus11.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+
+```
+{r}
+saveRDS(fgseaResTidy.clus11.GOBP, 
+        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus11.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAgoBPclust11DaoyCbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus11.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= "GO:BP pathways NES from GSEA") + 
+  theme_minimal() # can change bar colours using ggplot
+```
+
+****HALLMARK GENE SET****
+```
+{r}
+m_df<- msigdbr(species = "Homo sapiens", category = "H")
+head(m_df)
+```
+
+```
+{r}
+m_df<- msigdbr(species = "Homo sapiens", category = "H")
+fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+fgseaRes.clus12.hallmark <- 
+  fgseaMultilevel(fgsea_sets, stats = ranks.clus12, scoreType = "pos", eps = 0, minSize = 15, maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus12.hallmark <- fgseaRes.clus12.hallmark %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus12.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus12.hallmark, 
+        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus12.hallmark <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAmsigdbHALLMARKClust12DaoyCbo}
+ggplot(fgseaResTidy.clus12.hallmark %>% filter(padj < 0.001) %>% head(n = 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+****GO:BP GENESET****
+
+```
+{r}
+# DO NOT RUN THIS CHUNK
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+```
+
+```
+{r}
+# DO NOT RUN THIS CHUNK
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+
+fgseaRes.clus12.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus12, eps = 0, scoreType = "pos",  minSize = 15, maxSize = 200)
+```
+
+```
+{r}
+# DO NOT RUN THIS CHUNK
+fgseaResTidy.clus12.GOBP <- fgseaRes.clus12.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus12.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus12.hallmark, 
+        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
+```
+
+```
+{r}
+# load the above file
+fgseaResTidy.clus12.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
+```
+
+
+```
+{r BarplotFGSEAgoBPclust12DaoyCbo}
+ggplot(fgseaResTidy.clus12.GOBP %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="GO:BP pathways NES from GSEA") + 
+  theme_minimal()
+```
+
 
 ---------------------------------------------------------------------------------------------------
 ***Differentially expressed gene GO term enrichment using clusterProfiler***
@@ -1118,8 +1140,6 @@ geneid.ls <- deg.ls %>% map(~{
   return(gene)
 })
 ```
-
-
 
 ```
 {r}
