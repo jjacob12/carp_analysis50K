@@ -1,0 +1,146 @@
+---
+title: "hovestadt_nature_2019_smartSeq2_QC_and_analysis"
+author: "JJ"
+date: "2023-03-02"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+})
+```
+
+```{r path_to_data}
+raw.counts.muv41 <- read.table(file = "./hovestadt_Nature2019/GSM3905417_MUV41.txt",
+                         sep = "")
+```
+
+```{r}
+head(raw.counts.muv41)
+```
+
+```{r}
+muv41 <- CreateSeuratObject(raw.counts.muv41,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "reanalysis_hovestadt")
+```
+
+```{r}
+dim(muv41)
+```
+
+```{r}
+muv41 <- SCTransform(muv41, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+DimPlot(muv41, label = T, repel = T)
+```
+SDF
+```{r}
+VlnPlot(muv41, features = c("SOX2", "ERBB4"))
+```
+
+```{r path_to_data}
+raw.counts.sj454 <- read.table(file = "./hovestadt_Nature2019/GSM3905423_SJ454.txt",
+                         sep = "")
+```
+
+```{r}
+head(raw.counts.sj454)
+```
+
+```{r}
+sj454 <- CreateSeuratObject(raw.counts.sj454,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "reanalysis_hovestadt")
+```
+
+```{r}
+dim(sj454)
+```
+
+```{r}
+sj454 <- SCTransform(sj454, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+DimPlot(sj454, label = T, repel = T)
+```
+
+```{r}
+VlnPlot(sj454, features = c("SOX2", "ERBB4", "POU3F2"))
+```
+
+```{r path_to_data}
+raw.counts.sj577 <- read.table(file = "./hovestadt_Nature2019/GSM3905425_SJ577.txt",
+                         sep = "")
+```
+
+```{r}
+head(raw.counts.sj577)
+```
+
+```{r}
+sj577 <- CreateSeuratObject(raw.counts.sj577,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "reanalysis_hovestadt")
+```
+
+```{r}
+dim(sj577)
+```
+
+```{r}
+sj577 <- SCTransform(sj577, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+DimPlot(sj577, label = T, repel = T)
+```
+
+```{r}
+VlnPlot(sj577, features = c("SOX2", "ERBB4", "POU3F2"))
+```
+
+
+
+
+
+
+
+
+
+
