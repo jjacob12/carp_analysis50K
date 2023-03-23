@@ -83,104 +83,71 @@ dim(o76cbo.POSmarkers)
 ```
 
 Check out the first few DEGs by group (cluster_ID) of 'markers.pos'
-```
-{r}
+```{r}
 # In clusterMap, cluster 1 in ONS76-CBO has no counterpart in CBO. However, manual inspection by comparing
 # markers of cluster 1 in ONS76-CBO and cluster 1 in CBO suggest these cluster 1 ONS76-CBO cells 
 # are in fact most similar to CBO 'RP-choroid plexus_1'
 
 o76cbo.POSmarkers %>% 
-  dplyr::filter(cluster == "1") %>% 
-  head(10)
-  
+  dplyr::filter(gene %in% c("NACA", "FOXO1", "ATP5F1E", "S100A11"))
 ```
 
-```
-{r}
+```{r}
 # load the cbo markers to compare with the above
 cbo.markers <- read.csv("outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv",
                         header = TRUE,
                         stringsAsFactors = FALSE)
 ```
 
-```
-{r}
+```{r}
 cbo.markers %>% 
-  filter(cluster == "1") %>% 
-  head(10)
-```
-
-```
-{r}
-# check if the top genes in cluster 1 of o76cbo is represented in cbo. All the below genes
-# the top markers are similar to the markers of cluster 1 in CBO sample.
-cbo.markers %>% 
-  filter(gene %in% c("SOX2", "SOX2-OT", "IGFBP2", "TTYH1", "ARX", "C1orf61", "HDAC9", "PTCHD1-AS"))
-```
-
-```
-{r}
-# According to clusterMap, ONS76-CBO cluster 1 has no counterpart cluster in CBO. Inspect this cluster
-# manually to check:
-# answer: yes cluster 1 is now annotated as 'RP-choroid plexus_like'
-
-o76cbo.POSmarkers %>% 
-  dplyr::filter(cluster == "1") %>% 
-  head(10)
+  filter(cluster == "8") %>% 
+  head()
 ```
 
 
 ***CLUSTER ANNOTATION*** 
-```
-{r}
+```{r}
 # continue to replace the cluster numbers with the identity of each cluster
-new.cluster.ids <- c("glia", "RP-choroid plexus_like", "RP-choroid plexus_1", 
-                     "choroid plexus", "granule precursors", "ONS76_cluster_5", "purkinje-like",
-                     "RL/DCN", "oligodendrocytes", "ONS76_cluster_9", "ONS76_cluster_10", "progenitors",
-                    "ONS76_cluster_12")
+new.cluster.ids <- c("roof plate", "Purkinje_1-3", "granule neurons", 
+                     "ONS76_cluster_3", "4th vent/choroid plexus", "GABA-ergic neurons", "uncertain",
+                     "oligodendrocytes", "ONS76_cluster_8", "uncertain", "RL/roof plate")
 
 names(new.cluster.ids) <- levels(o76cbo)
 o76cbo.annotate <- RenameIdents(o76cbo, new.cluster.ids)
 ```
 
 
-```
-{r}
+```{r}
 # Create metadata dataframe
 metadata <- o76cbo.annotate@meta.data
 # Add cell IDs to metadata
 metadata$cells <- rownames(metadata)
 # Create sample column
 metadata$celltype <- NA
-metadata$celltype[which(metadata$seurat_clusters == "0")] <- "glia"
-metadata$celltype[which(metadata$seurat_clusters == "1")] <- "RP-choroid plexus_like"
-metadata$celltype[which(metadata$seurat_clusters == "2")] <- "RP-choroid plexus_1"
-metadata$celltype[which(metadata$seurat_clusters == "3")] <- "choroid plexus"
-metadata$celltype[which(metadata$seurat_clusters == "4")] <- "granule precursors"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "ONS76_cluster_5"
-metadata$celltype[which(metadata$seurat_clusters == "6")] <- "purkinje-like"
-metadata$celltype[which(metadata$seurat_clusters == "7")] <- "RL/DCN"
-metadata$celltype[which(metadata$seurat_clusters == "8")] <- "oligodendrocytes"
-metadata$celltype[which(metadata$seurat_clusters == "9")] <- "ONS76_cluster_9"
-metadata$celltype[which(metadata$seurat_clusters == "10")] <- "ONS76_cluster_10"
-metadata$celltype[which(metadata$seurat_clusters == "11")] <- "progenitors"
-metadata$celltype[which(metadata$seurat_clusters == "12")] <- "ONS76_cluster_12"
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje_1-3"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "ONS76_cluster_3"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "4th vent/choroid plexus"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "GABA-ergic neurons"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "uncertain"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "ONS76_cluster_8"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "uncertain"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "RL/roof plate"
 ```
 
-```
-{r}
+```{r}
 o76cbo.annotate@meta.data <- metadata
 ```
 
-```
-{r}
+```{r}
 head(o76cbo.annotate@meta.data)
 ```
 
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 saveRDS(o76cbo.annotate, 
   file = "./outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtRiboMito.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
@@ -203,63 +170,44 @@ DimPlot(o76cbo.annotate, label = TRUE, repel = TRUE)
 ```
 
 
-
 --------------------------------------------------------------------------------------------------------
 ***Correlation heatmap of ONS76-CBO vs CBO - Spearman correlation***
 code from: https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/Tutorial.md
 using Spearman correlation
 KNITTING THESE CODE CHUNKS FAILS!!
 
-```
-{r}
-cbo.annotate <- 
-  readRDS("outputs50K/CBO/cbo.filtRiboMito.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
-```
-
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 av.exp.cbo <- sapply(sort(unique(cbo.annotate$celltype)), function(ct) rowMeans(cbo.annotate$RNA@data[,which(cbo.annotate$celltype == ct)] ))
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 avg.exp.ons76Cbo <- sapply(levels(o76cbo.annotate@active.ident), function(ct) rowMeans(o76cbo.annotate$RNA@data[,which(o76cbo.annotate@active.ident == ct)]))
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 genes2cor <- intersect(VariableFeatures(cbo.annotate), 
                        rownames(o76cbo.annotate))
 corr2ons76.cbo.cl <- cor(avg.exp.ons76Cbo[genes2cor,], av.exp.cbo[genes2cor,], method = "spearman")
 ```
 
 ```{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 corr2ons76.cbo.cl
 ```
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r}
 # save the correlation matrix corr2cbo.cl
 saveRDS(corr2ons76.cbo.cl, file = "./outputs50K/ONS76-CBO/CorrelnSpearmanONS76-CBOvsCBOclusters.rds")
 ```
 
-```
-{r}
+```{r}
 corr2ons76.cbo.cl <- readRDS("outputs50K/ONS76-CBO/CorrelnSpearmanONS76-CBOvsCBOclusters.rds")
 ```
 
 
 My cell annotations based on the positive DEGs in each cluster turned out to be accurate
-```
-{r HeatmapONS76CboVSCboClusterCorrelations, fig.height=3, fig.width=3}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+```{r HeatmapONS76CboVSCboClusterCorrelations, fig.height=6, fig.width=6}
 
- heatmap3(corr2ons76.cbo.cl, scale="none", margins=c(15,17),
+heatmap3(corr2ons76.cbo.cl, scale="none", margins=c(15,17),
           labRow = colnames(avg.exp.ons76Cbo), labCol = colnames(av.exp.cbo), cexRow=0.8, cexCol=0.8,
           col=colorRampPalette(rev(c("#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac")))(30))
 
@@ -270,38 +218,29 @@ My cell annotations based on the positive DEGs in each cluster turned out to be 
 ***Identification of healthy and cancerous NEUROD1 clusters in ONS76-CBO sample generated by SCTransform***
 The Violin Plot shows that the NEUROD1 clustering using SCTransform() is consistent with the results of conventional normalisation and identifies clusters 4,5,9,12 as the NEUROD1 clusters. Also the other markers allow us to distinguish the healthy from cancerous cells. There are four NEUROD1 clusters in the ONS76-CBO sample, but only one in the CBO sample. The ONS76-CBO sample should contain both healthy and cancerous NEUROD1 cells.
 Which ones are the NEUROD1 clusters? In the CBO sample, clustering shows there is only 1 NEUROD1 cluster and this cluster also expresses RBFOX3 and RTN1 (derived from  https://doi.org/10.7554/eLife.37551). We can see that the only cluster that expresses all three genes, as in the NEUROD1 cluster in CBO sample, is cluster 4/'granule precursors'. So cluster 4 NEUROD1+ cells must be the healthy cells and the other three clusters are medulloblastoma clusters that have differentiated. The SCTransform better distinguishes the healthy from the cancerous NEUROD1+ clusters than conventional normalisation
-```{r ViolinPlotNeurod1clustersONS76cboSCT, fig.width=14}
+```{r ViolinPlotNeurod1clustersONS76cboSCT, fig.height=9, fig.width=12}
 # there are 4 NEUROD1+ clusters
 # only cluster 4 expresses NEUROD1, RBFOX3 and RTN1 and must be wild type cells
 
 VlnPlot(o76cbo.annotate, features = c("NEUROD1", "RBFOX3", "RTN1", "NES", "NRG3"))
 ```
 
-***Extract the cells/clusters that are NeuroD1+***. 
-There are 634 NEUROD1 positive cells - both healthy and cancerous
+```{r ViolinPlotSox2Pou3f2Erbb4Nrg3ONS76cboSCT, fig.height=9, fig.width=12}
+VlnPlot(o76cbo.annotate, features = c("SOX2", "POU3F2", "ERBB4", "NRG3"))
 ```
-{r}
+
+
+***Extract the ONS76 cells/clusters that are NeuroD1+ and then all malignant clusters***. 
+There are 634 NEUROD1 positive cells - both healthy and cancerous
+```{r}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-# 392 NEUROD1+ cancer cells
-neurod1.ons76cbo <- subset(o76cbo, idents = c("5", "9", "12")). # cluster 4 is non-malignant NEUROD1 cluster
+# 281 NEUROD1+ cancer cells
+neurod1.ons76cbo <- subset(o76cbo, idents = c("3"))
 dim(neurod1.ons76cbo)
 ```
 
-Find out how many healthy cells there are, and how many cancerous ones.
-```
-{r}
-# 235 NON-malignant NEUROD1+ granule precursors
-table(o76cbo.annotate$seurat_clusters)
-```
 
-```
-{r}
-table(neurod1.ons76cbo$seurat_clusters) 
-```
-
-
-```
-{r}
+```{r}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 
 # save the malignant neurod1.ons76cbo clusters 5,9,12 above - this was generated from o76cbo
@@ -310,45 +249,40 @@ table(neurod1.ons76cbo$seurat_clusters)
 saveRDS(neurod1.ons76cbo, file = "./outputs50K/ONS76-CBO/neurod1ClustsCancer.CCDiffRegress.noMitoNoRiboSCT.ons76cbo.rds")
 ```
 
-```
-{r}
-# subset o76cbo.annotate for all the malignant clusters
+```{r}
+# subset o76cbo.annotate for ALL the malignant clusters 3, 8
 o76only.o76cboAnnot <- 
   subset(o76cbo.annotate, 
-         idents = c("ONS76_cluster_5", "ONS76_cluster_9", "ONS76_cluster_10", "ONS76_cluster_12"))
+         idents = c("ONS76_cluster_3", "ONS76_cluster_8"))
 ```
 
-```
-{r}
+```{r}
 # should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
 o76only.o76cboAnnot.rescaled <- ScaleData(o76only.o76cboAnnot)
 ```
 
-```
-{r}
+```{r}
 # change the 'Identity' on x-axis of VlnPlot from numbers only to something more meaningful
 
-new.cluster.ids.subset <- c("ONS76_cluster_5", "ONS76_cluster_9", "ONS76_cluster_10", "ONS76_cluster_11")
+new.cluster.ids.subset <- c("ONS76_cluster_3", "ONS76_cluster_8")
 names(new.cluster.ids.subset) <- levels(o76only.o76cboAnnot.rescaled)
 o76only.o76cboAnnot.rescaled <- RenameIdents(o76only.o76cboAnnot.rescaled, new.cluster.ids.subset)
 ```
 
-```
-{r}
-# ONS76-CBO, cancer cell numbers: clust 5 = 215, clust 9 = 116, clust 10 = 74, clust 12 = 60
+```{r}
+# ONS76-CBO, cancer cell numbers: clust 3 = 281 cells, clust 8 = 80 cells
 table(o76only.o76cboAnnot.rescaled$seurat_clusters)
 ```
 
-```
-{r}
-# save all the malignant clusters 5,9,10,11
+```{r}
+# save all the malignant clusters 3 and 8
 saveRDS(o76only.o76cboAnnot.rescaled, 
         file = "./outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
 
 ------------------------------------------------------------------------------------------
-***Gene expression in ONS76 cancer clusters 5, 9, 10, 11***
+***Gene expression in ONS76 cancer clusters 3 and 8***
 
 ```{r}
 # load the object
@@ -356,7 +290,7 @@ o76only.o76cboAnnot.rescaled <-
   readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
-```{r ViolinPlotSox2networkONS76onlyONS76cbo, fig.width=14}
+```{r ViolinPlotSox2networkONS76onlyONS76cbo, fig.height=7, fig.width=10}
 # plot of the clusters containing granule/RL lineage - clusters 2, 4, 6, 9 and 10 contain RL/granule
 # lineage.
 # CDH1 is expressed (in WT cells and ONS76 cells), but CDH5 (marker of ONS76 cells) is not expressed.
@@ -368,9 +302,9 @@ VlnPlot(o76only.o76cboAnnot.rescaled,
   
 ```
 
-```{r ViolinPlotERRB4nrg3Meis1ZicONS76onlyONS76cbo, fig.width=14}
+```{r ViolinPlotERRB4nrg3Meis1ZicONS76onlyONS76cbo, fig.height=7, fig.width=10}
 VlnPlot(o76only.o76cboAnnot.rescaled, 
-        features = c("ERBB4", "NRG3", "MEIS1", "ZIC1", "ZIC2", "OLIG2"))
+        features = c("ERBB4", "NRG3", "NES", "MEIS1", "OLIG2"))
 ```
 
 ```{r ViolinPlotSHHgenesMycONS76cbo, fig.width=14}
@@ -388,614 +322,123 @@ The first website uses the output of Seurat FindMarkers() to generate the gene l
 
 Get the genes for control CBO sample cluster 5, which I have called granule precursors first and compare the ONS76-CBO sample to the cells in cluster 5 CBO.
 
-```
-{r}
+```{r}
 # load the clusterMap cell, gene, ribo, mito, CC.difference regressed, SCTransformed seurat object
 cbo <- 
   readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-```
-{r}
+```{r}
 # apply presto to CBO control
 cbo.presto <- wilcoxauc(cbo, 'seurat_clusters')
 head(cbo.presto)
 ```
 
-```
-{r}
+```{r}
 # apply presto to ONS76-CBO sample
 o76cbo.presto <- wilcoxauc(o76cbo, 'seurat_clusters')
 head(o76cbo.presto)
 ```
 
-```
-{r}
+```{r}
 # we have all the genes for each cluster
 dplyr::count(cbo.presto, group)
 ```
 
-```
-{r}
+```{r}
 # we have all the genes for each cluster
 dplyr::count(o76cbo.presto, group)
 ```
 
 
-****Cluster 4 CBO control (granule precursors) - GO:BP gene set****
-Test the gene set enrichment of cluster 4 in CBO, the granule cell cluster
-```
-{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust4.cbo.genes.presto <- cbo.presto %>%
-  dplyr::filter(group == "4" & !(feature == "MALAT1")) %>%
+
+****Cluster 5 CBO control (granule precursors) including input for gProfiler and Cytoscape****
+
+```{r}
+# this code used to generate sorted gene list as input for gProfiler (web app)
+cbo.cl5.UPgenes.presto <- cbo.presto %>% 
+  dplyr::filter(group == "5" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
+
+nrow(cbo.cl5.UPgenes.presto) # genes=952
 ```
 
-```
-{r}
-ranks.clus4 <- deframe(clust4.cbo.genes.presto)
-head(ranks.clus4)
-```
-
-```
-{r}
-H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
-head(H.geneset)
-```
-
-```
-{r}
-fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus4.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus4, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# top GO terms are related to proliferation not neuronal differentiation! Consistent with this
-# granule cluster being composed of granule precursors
-fgseaResTidy.clus4.hallmark <- fgseaRes.clus4.hallmark %>%
-  as_tibble() %>%
-  dplyr::arrange(desc(NES))
-
-fgseaResTidy.clus4.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  dplyr::arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus4.hallmark,
-        file = "./outputs50K/CBO/granule.cluster4.cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus4.hallmark <- 
-  readRDS("outputs50K/CBO/granule.cluster4.cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-
-The GO:BP enrichments clearly show these granule 'neurons' are unlikely to be terminally differentiated and are still proliferative. This is why cluster 5,9,11 in ONS76-CBO  have a gene expression profile of proliferative cells and that is correlated (Spearman correlation) with the gene expression profile of cluster 6 granule cells in the CBO control.
-
-```{
-r BarplotFGSEAmsigdbHALLMARKclust4granuleCbo, fig.height=2, fig.width=3}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few
-
-ggplot(fgseaResTidy.clus4.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark Pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-
-****Cluster 5 ONS76-CBO - geneset enrichment (FGSEA) including input for g:Profiler and Cytoscape****
 ```{r}
-# filter gene expression for cluster 5, the ONS76 cluster
+# save as csv for input to g:Profiler (web app)
+write.csv(cbo.cl5.UPgenes.presto, 
+          "./outputs50K/CBO/CBO.cluster5.UPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
+
+
+****Cluster 3 ONS76-CBO - geneset enrichment (FGSEA) including input for g:Profiler and Cytoscape****
+```{r}
+# filter gene expression for cluster 3, the ONS76 NEUROD1+ cluster
 # the presto gene list puts EYA2 and NEUROD1 near the top which is reassuring
 o76cbo.presto %>%
-  dplyr::filter(group == "5") %>%
+  dplyr::filter(group == "3") %>%
   arrange(desc(logFC), desc(auc)) %>%
   head()
 ```
 
 ```{r}
 # this code used to generate sorted gene list as input for gProfiler (web app)
-ons76cbo.cl5.UPgenes.presto <- o76cbo.presto %>% 
-  dplyr::filter(group == "5" & logFC > 0.25) %>%
+ons76cbo.cl3.UPgenes.presto <- o76cbo.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(ons76cbo.cl5.UPgenes.presto) # genes=2640
+nrow(ons76cbo.cl3.UPgenes.presto) # genes=960
 ```
 
 ```{r}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 # save as csv for input to g:Profiler (web app)
-write.csv(ons76cbo.cl5.UPgenes.presto, 
-          "./outputs50K/ONS76-CBO/ONS76cbo.cluster5.UPgenes.PRESTO.gProfilerInput.csv", 
+write.csv(ons76cbo.cl3.UPgenes.presto, 
+          "./outputs50K/ONS76-CBO/ONS76cbo.cluster3.UPgenes.PRESTO.gProfilerInput.csv", 
           quote = F)
 ```
 
-```{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust5.genes.presto <- o76cbo.presto %>%
-  dplyr::filter(group == "5") %>%
-  arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
 
-```{r}
-ranks.clus5 <- deframe(clust5.genes.presto)
-head(ranks.clus5)
-```
-
-
-****Cluster 5 - HALLMARK genesets****
-The Hallmark genesets are enriched for 'mitotic spindle', MYC targets, E2F targets - i.e. all cell cycle related - and this is quite similar to the healthy granule cluster, cluster 4 which could explain why the correlation heatmap and the UMAP plots show cluster 4 next to cluster 3.
-```{r}
-H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
-head(H.geneset)
-```
-
-```{r}
-fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus5.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus5, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-fgseaResTidy.clus5.hallmark <- fgseaRes.clus5.hallmark %>%
-  as_tibble() %>%
-  dplyr::arrange(desc(NES))
-
-fgseaResTidy.clus5.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  dplyr::arrange(padj) %>% 
-  head(10)
-```
-
-```{r}
-saveRDS(fgseaResTidy.clus5.hallmark,
-        file = "./outputs50K/ONS76-CBO/cluster5.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus5.hallmark <- 
-  readRDS("outputs50K/ONS76-CBO/cluster5.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-
-```{r BarplotFGSEAmsigdbHallmarkClust5ons76cbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few
-
-ggplot(fgseaResTidy.clus5.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark Pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-****Cluster 5 - GO:BP genesets****
-```{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus5.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus5, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-# tidy up the data
-fgseaResTidy.clus5.GOBP <- fgseaRes.clus5.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus5.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-
-```{r}
-saveRDS(fgseaResTidy.clus5.GOBP, 
-        file = "./outputs50K/ONS76-CBO/cluster5.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus5.GOBP <- 
-  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster5.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-
-```{r BarplotFGSEAgoBPclust11DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways
-ggplot(fgseaResTidy.clus5.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-
-****Cluster 9 - HALLMARK genesets****
+****ONS76-CBO Cluster 8****
 ```{r}
 o76cbo.presto %>%
-  dplyr::filter(group == "9") %>%
+  dplyr::filter(group == "8") %>%
   arrange(desc(logFC), desc(auc)) %>%
   head()
 ```
 
 ```{r}
-# this code used to generate sorted gene list as input for gProfiler (web app). Unlikely to show
-# gene set enrichment as there are only 72 genes differentially expressed in cluster 9
-ons76cbo.cl9.UPgenes.presto <- o76cbo.presto %>% 
-  dplyr::filter(group == "9" & logFC > 0.25) %>%
+# this code used to generate sorted gene list as input for gProfiler (web app).
+ons76cbo.cl8.UPgenes.presto <- o76cbo.presto %>% 
+  dplyr::filter(group == "8" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(ons76cbo.cl9.UPgenes.presto) # genes = 96 only
+nrow(ons76cbo.cl8.UPgenes.presto) # genes = 463 only
 ```
 
 
 ```{r}
 # save as csv for input to g:Profiler (web app)
-write.csv(ons76cbo.cl9.UPgenes.presto, 
-          "./outputs50K/ONS76-CBO/ONS76cbo.cluster9.UPgenes.PRESTO.gProfilerInput.csv", 
+write.csv(ons76cbo.cl8.UPgenes.presto, 
+          "./outputs50K/ONS76-CBO/ONS76cbo.cluster8.UPgenes.PRESTO.gProfilerInput.csv", 
           quote = F)
-```
-
-```{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust9.genes.presto <- o76cbo.presto %>%
-  dplyr::filter(group == "9") %>%
-  arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```{r}
-ranks.clus9 <- deframe(clust9.genes.presto)
-head(ranks.clus9)
-```
-
-```{r}
-H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
-head(H.geneset)
-```
-
-```{r}
-fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus9.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus9, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-# there are no significant gene sets with padj<0.05
-fgseaResTidy.clus9.hallmark <- fgseaRes.clus9.hallmark %>%
-  as_tibble() %>%
-  dplyr::arrange(desc(NES))
-
-fgseaResTidy.clus9.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  dplyr::arrange(padj) %>% 
-  head(10)
-```
-
-```{r}
-saveRDS(fgseaResTidy.clus9.hallmark,
-        file = "./outputs50K/ONS76-CBO/cluster9.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus9.hallmark <- 
-  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster9.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-
-```{r BarplotFGSEAgoBPclust11DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - NO ENRICHED PATHWAYS!!!
-ggplot(fgseaResTidy.clus9.hallmark %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-****Cluster 9 GO:BP genesets****
-
-```{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus9.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus9, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-# tidy up the data
-fgseaResTidy.clus9.GOBP <- fgseaRes.clus9.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus9.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```{r}
-# no significant gene sets!
-saveRDS(fgseaResTidy.clus9.GOBP, 
-        file = "./outputs50K/ONS76-CBO/cluster9.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus9.GOBP <- 
-  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster9.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-
-```{r BarplotFGSEAgoBPclust9DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus9.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-
-****Cluster 10 - GO:BP genesets****
-```{r}
-o76cbo.presto %>%
-  dplyr::filter(group == "10") %>%
-  arrange(desc(logFC), desc(auc)) %>%
-  head()
-```
-
-```{r}
-# this code used to generate sorted gene list as input for gProfiler (web app). Unlikely to show
-# gene set enrichment as there are only 72 genes differentially expressed in cluster 9
-ons76cbo.cl10.UPgenes.presto <- o76cbo.presto %>% 
-  dplyr::filter(group == "10" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(ons76cbo.cl10.UPgenes.presto) # genes = 381 only
-```
-
-```{r}
-# save as csv for input to g:Profiler (web app)
-write.csv(ons76cbo.cl10.UPgenes.presto, 
-          "./outputs50K/ONS76-CBO/ONS76cbo.cluster10.UPgenes.PRESTO.gProfilerInput.csv", 
-          quote = F)
-```
-
-```{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust10.genes.presto <- o76cbo.presto %>%
-  dplyr::filter(group == "10") %>%
-  arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```{r}
-ranks.clus10 <- deframe(clust10.genes.presto)
-head(ranks.clus10)
-```
-
-```{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-fgseaRes.clus10.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus10, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-# tidy up the data
-fgseaResTidy.clus10.GOBP <- fgseaRes.clus10.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus10.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```{r}
-saveRDS(fgseaResTidy.clus10.GOBP, 
-        file = "./outputs50K/ONS76-CBO/cluster10.ONS76Cbo.multifgsea.presto.GOBPGenes.rds")
-```
-
-```{r}
-# no need to plot - no significant genesets!
-fgseaResTidy.clus10.GOBP <- 
-  readRDS("outputs50K/ONS76-CBO/cluster10.ons76cbo.multifgsea.presto.GOBPGenes.rds")
-```
-
-```{r BarplotFGSEAgoBPclust10DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus10.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-
-****Cluster 12 - GO:BP genesets****
-```{r}
-o76cbo.presto %>%
-  dplyr::filter(group == "12") %>%
-  arrange(desc(logFC), desc(auc)) %>%
-  head()
-```
-
-```{r}
-# this code used to generate sorted gene list as input for gProfiler (web app). Unlikely to show
-# gene set enrichment as there are only 72 genes differentially expressed in cluster 9
-ons76cbo.cl12.UPgenes.presto <- o76cbo.presto %>% 
-  dplyr::filter(group == "12" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(ons76cbo.cl12.UPgenes.presto) # genes = 6264
-```
-
-```{r}
-# save as csv for input to g:Profiler (web app)
-write.csv(ons76cbo.cl12.UPgenes.presto, 
-          "./outputs50K/ONS76-CBO/ONS76cbo.cluster12.UPgenes.PRESTO.gProfilerInput.csv", 
-          quote = F)
-```
-
-```{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust12.genes.presto <- o76cbo.presto %>%
-  dplyr::filter(group == "12") %>%
-  arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```{r}
-ranks.clus12 <- deframe(clust12.genes.presto)
-head(ranks.clus12)
-```
-
-```{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```{r}
-fgseaRes.clus12.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus12, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```{r}
-# tidy up the data
-fgseaResTidy.clus12.GOBP <- fgseaRes.clus12.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus12.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```{r}
-saveRDS(fgseaResTidy.clus12.GOBP, 
-        file = "./outputs50K/ONS76-CBO/cluster12.ONS76Cbo.multifgsea.presto.GOBPGenes.rds")
-```
-
-```{r}
-fgseaResTidy.clus12.GOBP <- 
-  readRDS("outputs50K/ONS76-CBO/cluster12.ons76cbo.multifgsea.presto.GOBPGenes.rds")
-```
-
-```{r BarplotFGSEAgoBPclust12DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus12.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
 ```
 
 
 --------------------------------------------------------------------------------------------------
 ***Examine cell cycle and proliferating cells using AddModuleScore()***
 Find the cells that are actively proliferating in this sample
-```
-{r}
+```{r}
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 prolif.genes <- list(c(s.genes, g2m.genes))
 ```
 
-```
-{r AddModuleScoreProlifernONS76cbo, fig.height=4}
+```{r AddModuleScoreProlifernONS76cbo, fig.height=4}
 phase.ons76cbo.sct.clust <- AddModuleScore(phase.ons76cbo.sct.clust,
                         features = prolif.genes,
                         name = "prolif.genes")
@@ -1008,8 +451,357 @@ save.image("./RDataFiles/ONS76-CBO_Seurat_EXPLORE1_50K.RData")
 ```
 
 
-
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
 UNUSED CODE RETAINED IN CASE IT TURNS OUT TO BE USEFUL
+****Cluster 8 GO:BP genesets****
+
+```
+{r}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```
+{r}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+
+fgseaRes.clus8.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus8, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# tidy up the data
+fgseaResTidy.clus8.GOBP <- fgseaRes.clus8.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus8.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```
+{r}
+# no significant gene sets!
+saveRDS(fgseaResTidy.clus8.GOBP, 
+        file = "./outputs50K/ONS76-CBO/cluster9.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus8.GOBP <- 
+  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster8.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAgoBPclust8DaoyCbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways - no enriched gene sets!
+ggplot(fgseaResTidy.clus8.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= "GO:BP pathways NES from GSEA") + 
+  theme_minimal() # can change bar colours using ggplot
+```
+
+```
+{r}
+# continue with preparing data for input to fgsea and getting bar charts of gene set 
+# enrichment analysis
+clust8.genes.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "8") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```
+{r}
+ranks.clus8 <- deframe(clust8.genes.presto)
+head(ranks.clus8)
+```
+
+```
+{r}
+H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
+head(H.geneset)
+```
+
+```
+{r}
+fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# set eps to zero to get lower p-values
+fgseaRes.clus8.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# there are no significant gene sets with padj<0.05
+fgseaResTidy.clus8.hallmark <- fgseaRes.clus8.hallmark %>%
+  as_tibble() %>%
+  dplyr::arrange(desc(NES))
+
+fgseaResTidy.clus8.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  dplyr::arrange(padj) %>% 
+  head(10)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus9.hallmark,
+        file = "./outputs50K/ONS76-CBO/cluster9.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus8.hallmark <- 
+  readRDS("outputs50K/ONS76-CBO/cluster8.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAgoBPclust8ons76Cbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways - NO ENRICHED PATHWAYS!!!
+ggplot(fgseaResTidy.clus8.hallmark %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= "GO:BP pathways NES from GSEA") + 
+  theme_minimal() # can change bar colours using ggplot
+```
+
+****Cluster 5 - HALLMARK genesets****
+The Hallmark genesets are enriched for 'mitotic spindle', MYC targets, E2F targets - i.e. all cell cycle related - and this is quite similar to the healthy granule cluster, cluster 4 which could explain why the correlation heatmap and the UMAP plots show cluster 4 next to cluster 3.
+```
+{r}
+H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
+head(H.geneset)
+```
+
+```
+{r}
+fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# set eps to zero to get lower p-values
+fgseaRes.clus3.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus3, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+fgseaResTidy.clus3.hallmark <- fgseaRes.clus3.hallmark %>%
+  as_tibble() %>%
+  dplyr::arrange(desc(NES))
+
+fgseaResTidy.clus3.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  dplyr::arrange(padj) %>% 
+  head(5)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus3.hallmark,
+        file = "./outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus3.hallmark <- 
+  readRDS("outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAmsigdbHallmarkClust5ons76cbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
+# genesets to the top few
+
+ggplot(fgseaResTidy.clus3.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark Pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+****Cluster 3 - GO:BP genesets****
+```
+{r}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```
+{r}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+
+fgseaRes.clus3.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# tidy up the data
+fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus3.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+
+```
+{r}
+saveRDS(fgseaResTidy.clus3.GOBP, 
+        file = "./outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus5.GOBP <- 
+  readRDS("outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+```
+{r BarplotFGSEAgoBPclust3ONS76Cbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus3.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= "GO:BP pathways NES from GSEA") + 
+  theme_minimal() # can change bar colours using ggplot
+```
+
+```
+{r}
+# continue with preparing data for input to fgsea and getting bar charts of gene set 
+# enrichment analysis
+clust3.genes.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "3") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```
+{r}
+ranks.clus5 <- deframe(clust5.genes.presto)
+head(ranks.clus3)
+```
+
+Test the gene set enrichment of cluster 5 in CBO, the granule cell cluster
+```
+{r}
+# continue with preparing data for input to fgsea and getting bar charts of gene set 
+# enrichment analysis
+clust5.cbo.genes.presto <- cbo.presto %>%
+  dplyr::filter(group == "5" & !(feature == "MALAT1")) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```
+{r}
+ranks.clus5 <- deframe(clust5.cbo.genes.presto)
+head(ranks.clus5)
+```
+
+```
+{r}
+H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
+head(H.geneset)
+```
+
+```
+{r}
+fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```
+{r}
+# set eps to zero to get lower p-values
+fgseaRes.clus5.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus5, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```
+{r}
+# top GO terms are related to proliferation not neuronal differentiation! Consistent with this
+# granule cluster being composed of granule precursors
+fgseaResTidy.clus5.hallmark <- fgseaRes.clus5.hallmark %>%
+  as_tibble() %>%
+  dplyr::arrange(desc(NES))
+
+fgseaResTidy.clus5.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  dplyr::arrange(padj) %>% 
+  head(10)
+```
+
+```
+{r}
+saveRDS(fgseaResTidy.clus5.hallmark,
+        file = "./outputs50K/CBO/granule.cluster5.cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+```
+{r}
+fgseaResTidy.clus5.hallmark <- 
+  readRDS("outputs50K/CBO/granule.cluster5.cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+
+The GO:BP enrichments clearly show these granule 'neurons' are unlikely to be terminally differentiated and are still proliferative. This is why cluster 5,9,11 in ONS76-CBO  have a gene expression profile of proliferative cells and that is correlated (Spearman correlation) with the gene expression profile of cluster 6 granule cells in the CBO control.
+
+```
+{r BarplotFGSEAmsigdbHALLMARKclust4granuleCbo, fig.height=2, fig.width=3}
+# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
+# genesets to the top few
+
+ggplot(fgseaResTidy.clus5.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark Pathways NES from GSEA") + 
+  theme_minimal()
+```
 
 -------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
