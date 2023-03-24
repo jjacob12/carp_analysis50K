@@ -459,6 +459,7 @@ dim(dyOnly.dyCbo)
 ```{r}
 table(dyOnly.dyCbo@meta.data$orig.ident) # 265 cells
 ```
+
 As can be seen from the below, the dyOnly.dyCbo object has a prefix before the cell ID. This must be removed before proceeding
 ```{r}
 head(WhichCells(dyOnly.dyCbo))
@@ -567,12 +568,6 @@ saveRDS(dy.3samples.combined.sct,
 ```
 
 ```{r}
-dy.3samples.combined.sct.prepSct <- 
-  readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
-```
-
-
-```{r}
 nrow(dySpherV2d.allMarkers)
 ```
 
@@ -633,11 +628,11 @@ EnhancedVolcano(dySpherV2d.allMarkers.gene,
 
 ```{r}
 # load the PrepSCTFindMarkers object
-dy.3samples.combined.sct <- 
+dy.3samples.combined.sct.prepSct <- 
   readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
 
 dy.3samples.combined.sct.subset <- 
-  subset(dy.3samples.combined.sct, idents = c("DAOY_coculture", "DAOY_spheroid"))
+  subset(dy.3samples.combined.sct.prepSct, idents = c("DAOY_coculture", "DAOY_spheroid"))
 
 dyCocultVspher.allMarkers <- FindMarkers(dy.3samples.combined.sct.subset,
                                      assay = "SCT",
@@ -727,50 +722,101 @@ dy.3samples.combined.sct <-
 table(dy.3samples.combined.sct@meta.data$orig.ident)
 ```
 
-Nice overlap of DAOY cells grown in different conditions
+Nice overlap of DAOY cells grown in different conditions.The clustering of the different samples shows little/no separation between cells originating from different samples, which is fine, and what is expected after integration.
 ```{r DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dRep, fig.height=6, fig.width=10}
 DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "orig.ident") +
   labs(title = "")
 ```
 
-The clustering of the different samples shows little/no separation between cells originating from different samples, which is fine, and what is expected after integration
+-------------------------------------------------------------------------------------------------------
+***Heatmap of genes expressed in integrated ONS76 monolayer, spheroid and extracted coculture cells***
 
 ```{r}
+# load the PrepSCTFindMarkers object
+dy.3samples.combined.sct.prepSct <- 
+  readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
+
+dy.3samples.allMarkers <- FindAllMarkers(dy.3samples.combined.sct.prepSct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r}
+nrow(dy.3samples.allMarkers) # 4847 markers
+```
+
+```{r}
+head(dy.3samples.allMarkers) # there is already a 'gene' column and rownames are also genes
+```
+
+```{r}
+# remove rownames
+dy.3samples.allMarkers.gene <- dy.3samples.allMarkers %>% 
+  rownames_to_column(var = "gene_name") %>% 
+  select(-"gene_name")
+```
+
+```{r}
+head(dy.3samples.allMarkers.gene, 5)
+```
+
+```{r}
+# save the DEGs which are UP regulated
+write.csv(dy.3samples.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.csv", 
+          quote = FALSE)
+```
+
+```{r}
+# load the markers csv file
+dy.3samples.allMarkers.gene <- 
+  read.csv("outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.csv")
+```
+
+```{r}
+# this takes the top 20 genes in each cluster (mono, spher, coculture) sorted by avg_Log2FC.
+# ERBB4 is at the top of the list in coculture condition!
+top20.genes <- dy.3samples.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>%
+  dplyr::arrange(desc(avg_log2FC)) %>% 
+  slice_head(n = 20)
+```
+
+```{r}
+# switch Idents to "orig.ident"
 Idents(dy.3samples.combined.sct) <- "orig.ident"
-```
 
-```{r}
-# to plot the top 30 genes based on average log2FC
-top30 <- dyCocultVspher.allMarkers.gene.sorted %>% top_n(n = 30, wt = avg_log2FC) # wt = -p_val_adj is an alternative
-```
-
-```{r}
-# list includes ERBB4 near the top
-top30
-```
-
-
-```{r}
-# set DefaultAssay before running DoHeatmap: use RNA assay for integrated data
+# set DefaultAssay to RNA before running DoHeatmap, as this is integrated object
 DefaultAssay(dy.3samples.combined.sct) <- "RNA"
 
-# scale the data after setting the Default assay
-dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, verbose = FALSE)
+# scale the data and specifically scale the genes of interest
+dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, 
+                                              features = top20.genes$gene,
+                                              verbose = FALSE)
 ```
 
-
-```{r HeatmapTop30genesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
+```{r HeatmapTop20genesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
 # Heatmap now uses all cells, no need to downsample
-DoHeatmap(dy.3samples.combined.sct.scaled, features = top30$gene, size = 10, assay = "RNA", group.by = "ident") + 
+DoHeatmap(dy.3samples.combined.sct.scaled, 
+          features = top20.genes$gene, 
+          size = 10, assay = "RNA", group.by = "ident") + 
   guides(color = "none") +
-  theme(text = element_text(size = 20), legend.title = element_text(size=20), legend.text=element_text(size=20))
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
 ```
+
 
 ```{r HeatmapSelectGenesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=8, fig.width=12}
 features <- c("ERBB4", "NES", "SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "PTCH1")
+
+dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, 
+                                              features = features,
+                                              verbose = FALSE)
 DoHeatmap(dy.3samples.combined.sct.scaled, features = features, size = 10, assay = "RNA", group.by = "ident") + 
   guides(color = "none") +
-  theme(text = element_text(size = 20), legend.title = element_text(size=20), legend.text=element_text(size=15))
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), legend.text=element_text(size=15))
 ```
 
 
@@ -886,6 +932,17 @@ head(summ.stats.cc.1)
 ```
 
 ```{r}
+saveRDS(metadata.cc.dy,
+        file = "./outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
+```
+
+```{r}
+metadata.cc.o76 <- 
+  readRDS("outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
+```
+
+
+```{r}
 # convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
 summ.stats.cc.2 <- summ.stats.cc.1 %>% 
   dplyr::group_by(orig.ident) %>% 
@@ -913,12 +970,50 @@ ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = fo
   labs(x = "", y = "Proportion")
 ```
 
-WHAT IS THE IDENTITY OF CELLS IN G1? GROUP CELLS BY 'PHASE' AND RUN DOHEATMAP
+A STATISTICAL TEST IS NEEDED FOR THE ABOVE BARCHART - Chi-squared test goodness of fit
+This confirms the difference in proportions of cells in G1 and other phases of the cell cycle is highly significant
+
+```{r}
+# is there a statistically significant difference in the proportion of cells (of whatever orig.ident)
+# that are in G1, G2M and S? Null hypothesis is that proportion of cells that are in G1, G2M and S are equal
+table(metadata.cc.dy)
+```
+
+```{r}
+# check the proportions (or numbers of cells) of each phase
+table(metadata.cc.dy$Phase)
+```
+
+```{r}
+# run the chi squared test (base R) Goodness of Fit test - highly significant! 
+# X-squared = 15.33, df = 2, p-value = 0.0004691, so reject the null hypothesis
+metadata.cc.dy %>% 
+  select(Phase) %>% 
+  table %>% 
+  chisq.test()
+```
+
+```{r}
+# null hypothesis is that Phase and orig.ident (i.e. growth conditions) are independent.
+# now do a chi-squared test on the whole table, i.e. both orig.ident and Phase
+metadata.cc.dy %>%
+  table() %>% 
+  chisq.test()    # X-squared = 452.96, df = 4, p-value < 2.2e-16. Highly significant.
+```
+
+```{r}
+# find expected values
+metadata.cc.dy %>%
+  table() %>% 
+  chisq.test() %>% 
+  .$expected
+```
 
 
 ```{r}
 sessionInfo()
 ```
+
 
 
 ----------------------------------------------------------------------------------------------------
