@@ -323,42 +323,88 @@ o76.3samples.combined.sct <-
 table(o76.3samples.combined.sct@meta.data$orig.ident)
 ```
 
-Nice overlap of ONS76 cells grown in different conditions
+Nice overlap of ONS76 cells grown in different conditions. The clustering of the different samples shows little/no separation between cells originating from different samples, which is fine, and what is expected after integration
 ```{r DimPlotIntegratedONS76OnlyCocultVsONS76SpherVsONS76mono, fig.height=6, fig.width=10}
 DimPlot(o76.3samples.combined.sct, reduction = "umap", group.by = "orig.ident") +
   labs(title = "")
 ```
 
-The clustering of the different samples shows little/no separation between cells originating from different samples, which is fine, and what is expected after integration
+
+
+-------------------------------------------------------------------------------------------------------
+***Heatmap of genes expressed in integrated ONS76 monolayer, spheroid and extracted coculture cells***
 
 ```{r}
+o76.3samples.allMarkers <- FindAllMarkers(o76.3samples.combined.sct.prepSct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r}
+nrow(o76.3samples.allMarkers)
+```
+
+```{r}
+head(o76.3samples.allMarkers) # there is already a 'gene' column and rownames are also genes
+```
+
+
+```{r}
+o76.3samples.allMarkers.gene <- o76.3samples.allMarkers %>% 
+  rownames_to_column(var = "gene_name") %>% 
+  select(-"gene_name")
+```
+
+```{r}
+head(o76.3samples.allMarkers.gene, 5)
+```
+
+```{r}
+# save the DEGs which are UP regulated
+write.csv(o76.3samples.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.ONS76Coculture.ONS76mono.ONS76Spher.csv",        quote = FALSE)
+```
+
+```{r}
+# load the markers csv file
+o76.3samples.allMarkers.gene <- 
+  read.csv("outputs50K/INTEGRATE/DEgenesUP.Integrated.ONS76Coculture.ONS76mono.ONS76Spher.csv")
+```
+
+```{r}
+# this takes the top 20 genes in each cluster (mono, spher, coculture) sorted by avg_Log2FC
+top20.genes <- o76.3samples.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>%
+  dplyr::arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+```
+
+```{r}
+# switch Idents to "orig.ident"
 Idents(o76.3samples.combined.sct) <- "orig.ident"
-```
 
-```{r}
-# to plot the top 30 genes based on average log2FC
-top30 <- o76CocultVspher.allMarkers.gene.sorted %>% top_n(n = 30, wt = avg_log2FC) # wt = -p_val_adj is an alternative
-```
-
-```{r}
-# list includes ERBB4 near the top
-top30
-```
-
-```{r}
-# set DefaultAssay before running DoHeatmap: use RNA assay for integrated data
+# set DefaultAssay to RNA before running DoHeatmap, as this is integrated object
 DefaultAssay(o76.3samples.combined.sct) <- "RNA"
 
-# scale the data after setting the Default assay
-o76.3samples.combined.sct.scaled <- ScaleData(o76.3samples.combined.sct, verbose = FALSE)
+# scale the data and specifically scale the genes of interest
+o76.3samples.combined.sct.scaled <- ScaleData(o76.3samples.combined.sct, 
+                                              features = top20.genes$gene,
+                                              verbose = FALSE)
 ```
 
-```{r HeatmapTop30genesONS76monoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
+
+```{r HeatmapTop20genesONS76monoSpherO76onlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
 # Heatmap now uses all cells, no need to downsample
-DoHeatmap(o76.3samples.combined.sct.scaled, features = top30$gene, size = 10, assay = "RNA", group.by = "ident") + 
+DoHeatmap(o76.3samples.combined.sct.scaled, 
+          features = top20.genes$gene, 
+          size = 10, assay = "RNA", group.by = "ident") + 
   guides(color = "none") +
-  theme(text = element_text(size = 20), legend.title = element_text(size=20), legend.text=element_text(size=20))
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
 ```
+
 
 ```{r VlnPlotSOX2NetworkONS76monoVs3dVsONS76CocultAllCells, fig.height=9, fig.width=12}
 # check the RNA slot is used when plotting integrated data!!! In this case I made the default assay = RNA
@@ -726,6 +772,8 @@ VlnPlot(dy.o76.cells,
         assay = "RNA")
 ```
 
+
+
 ****Merged object of above samples WITHOUT DAOY-only cells in co-culture****
 
 ```{r}
@@ -805,9 +853,10 @@ VlnPlot(daoy.o76.cells.noDyCocult,
 ```
 
 
-***Find the proportions of cells in different phases of the cell cycle per ONS76 sample***
+--------------------------------------------------------------------------------------------------------------
+***Find the proportions of cells in different phases of the cell cycle for each ONS76 sample***
 ```{r}
-# load the saved object, "dy.3samples.combined.sct" first, which has cell cycle phase info in metadata
+# load the saved object, "o76.3samples.combined.sct" first, which has cell cycle phase info in metadata
 
 # transfer meta.data to a new object called metadata.dy
 metadata.o76 <- o76.3samples.combined.sct@meta.data %>% 
@@ -828,6 +877,17 @@ summ.stats.cc.1
 ```
 
 ```{r}
+saveRDS(metadata.cc.o76,
+        file = "./outputs50K/INTEGRATE/CellCycleProportionsDataframeONS76MonoSpherCoculture.integrated.rds")
+```
+
+```{r}
+metadata.cc.o76 <- 
+  readRDS("outputs50K/INTEGRATE/CellCycleProportionsDataframeONS76MonoSpherCoculture.integrated.rds")
+```
+
+
+```{r}
 # convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
 summ.stats.cc.2 <- summ.stats.cc.1 %>% 
   dplyr::group_by(orig.ident) %>% 
@@ -845,7 +905,7 @@ summ.stats.cc.2$orig.ident <- factor(summ.stats.cc.2$orig.ident, levels = c("ONS
 levels(summ.stats.cc.2$orig.ident)
 ```
 
-```{r BarchartCellCyclePhaseProportionsON76MonoSpherCoculture, fig.height=4, fig.width=3}
+```{r BarchartCellCyclePhaseProportionsONS76MonoSpherCocultureIntegrated, fig.height=4, fig.width=3}
 # create a stacked barchart of the result
 ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = format(round(props, digits = 2), nsmall = 2))) +
   geom_bar(position = "stack", stat = "identity") +
@@ -855,7 +915,209 @@ ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = fo
   labs(x = "", y = "Proportion")
 ```
 
-WHAT IS THE IDENTITY OF CELLS IN G1? GROUP CELLS BY 'PHASE' AND RUN DOHEATMAP
+A STATISTICAL TEST IS NEEDED FOR THE ABOVE BARCHART - Chi-squared test goodness of fit
+This confirms the difference in proportions of cells in G1 and other phases of the cell cycle is highly significant
+
+```{r}
+# is there a statistically significant difference in the proportion of cells (of whatever orig.ident)
+# that are in G1, G2M and S? Null hypothesis is that proportion of cells that are in G1, G2M and S are equal
+table(metadata.cc.o76)
+```
+
+```{r}
+# check the proportions (or numbers of cells) of each phase
+table(metadata.cc.o76$Phase)
+```
+
+```{r}
+# run the chi squared test (base R) Goodness of Fit test - highly significant! 
+# X-squared = 227.71, df = 2, p-value < 2.2e-16 so reject the null hypothesis
+metadata.cc.o76 %>% 
+  select(Phase) %>% 
+  table %>% 
+  chisq.test()
+```
+
+```{r}
+# null hypothesis is that Phase and orig.ident (i.e. growth conditions) are independent
+# now do a chi-squared test on the whole table, i.e. both orig.ident and Phase
+metadata.cc.o76 %>%
+  table() %>% 
+  chisq.test()    # X-squared = 151.29, df = 4, p-value < 2.2e-16. Highly significant.
+```
+
+```{r}
+# find expected values
+metadata.cc.o76 %>%
+  table() %>% 
+  chisq.test() %>% 
+  .$expected
+```
+
+
+----------------------------------------------------------------------------------------------------------------
+***Integrated analysis of cells in G1 phase only from ONS76-2D, ONS76-SPHER and ONS76only-ONS76-CBO coculture using SCTransform integration***
+What is the identity of G1 phase cells in the three conditions? Only cells in G1 phase of cell cycle have been selected for this analysis.
+```{r}
+# load the datasets which have the correctly formatted cell names
+o76mono.g1cells <- 
+  readRDS("outputs50K/ONS76_2D/G1phaseCells.ONS76monolayer.inputIntegration.SCTransformed.PCA.unclustered.rds")
+o76spher.g1cells <- readRDS("outputs50K/ONS76_SPHER/G1phaseCells.ONS76spheroid.inputIntegration.SCTransformed.PCA.unclustered.rds")
+o76onlyO76cbo.g1cells <- 
+  readRDS("outputs50K/ONS76-CBO/G1phaseCells.ONS76onlyONS76cbo.inputIntegration.SCTransformed.PCA.unclustered.rds")
+```
+
+```{r}
+o76.g1.list <- list(o76mono.g1cells, o76spher.g1cells, o76onlyO76cbo.g1cells)
+features <- SelectIntegrationFeatures(object.list = o76.g1.list, nfeatures = 3000)
+o76.g1.list <- PrepSCTIntegration(object.list = o76.g1.list, anchor.features = features)
+```
+
+```{r}
+o76.g1.anchors <- FindIntegrationAnchors(object.list = o76.g1.list, normalization.method = "SCT",
+    anchor.features = features)
+```
+
+```{r}
+o76.g1.comb.sct <- IntegrateData(anchorset = o76.g1.anchors, normalization.method = "SCT")
+```
+
+```{r}
+# integration parameters, e.g. res=0.3 are from the Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+o76.g1.comb.sct <- RunPCA(o76.g1.comb.sct, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30) %>% 
+  FindNeighbors(reduction = "pca", dims = 1:30) %>% 
+  FindClusters(resolution = 0.3)
+```
+
+```{r}
+table(o76.g1.comb.sct$orig.ident) # mono=172, spher=668, cocult=172 which are the correct numbers of
+                                  # cells in G1
+```
+
+```{r}
+# change the orig.ident notation for future plots
+o76.g1.comb.sct@meta.data[o76.g1.comb.sct@meta.data == "ons76mono"] <- "ONS76_monolayer_G1"
+o76.g1.comb.sct@meta.data[o76.g1.comb.sct@meta.data == "ons76spher"] <- "ONS76_spheroid_G1"
+o76.g1.comb.sct@meta.data[o76.g1.comb.sct@meta.data == "ons76cbo"] <- "ONS76_coculture_G1"
+```
+
+```{r}
+# save the integrated object
+saveRDS(o76.g1.comb.sct,
+        file = "./outputs50K/INTEGRATE/G1cells.ons76onlyCocult.ONS76spher.ONS76mono.integrated.SCT.rds")
+```
+
+```{r}
+# load the above integrated object
+o76.g1.comb.sct <- readRDS("outputs50K/INTEGRATE/G1cells.ons76onlyCocult.ONS76spher.ONS76mono.integrated.SCT.rds")
+```
+
+```{r}
+Idents(o76.g1.comb.sct) <- "orig.ident"
+```
+
+```{r}
+# find Markers
+# from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+o76.g1.comb.sct <- PrepSCTFindMarkers(o76.g1.comb.sct)
+
+o76.g1.comb.sct.allMarkers <- FindAllMarkers(o76.g1.comb.sct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r}
+nrow(o76.g1.comb.sct.allMarkers) # 3630 differentially expressed UP-regulated genes
+```
+
+```{r}
+head(o76.g1.comb.sct.allMarkers) # there is already a "gene" column
+```
+
+```{r}
+# avoid rows by converting rows to a column
+o76.g1.comb.sct.allMarkers.gene <- o76.g1.comb.sct.allMarkers %>% 
+  rownames_to_column(var = "gene_name")
+```
+
+
+```{r}
+# save the DEGs which are UP-regulated
+write.csv(o76.g1.comb.sct.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.G1cells.Integrated.ONS76mono.ONS76spher.ONS76coculture.csv",        quote = FALSE)
+```
+
+```{r}
+# load the markers csv file
+o76.g1.comb.sct.allMarkers.gene <- 
+  read.csv("outputs50K/INTEGRATE/DEgenesUP.G1cells.Integrated.ONS76mono.ONS76spher.ONS76coculture.csv")
+```
+
+```{r}
+# compared sorting on p_val_adj and avg_log2FC, and p_val_adj is better (includes Neurod1)
+top20.g1.sorted <- o76.g1.comb.sct.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+```{r}
+top20.g1.sorted
+```
+
+From the list of genes 'top20.g1.sorted' I selected some from each condition to plot
+```{r}
+DefaultAssay(o76.g1.comb.sct) <- "SCT"  # in general not the best assay for integrated data - better
+                                        # to use RNA assay, but the results for both assays are very
+                                        # similar
+```
+
+
+```{r DotplotG1phaseGenesONS76IntegratedMonoSpherCocult, fig.height=4, fig.width=5}
+# see this vignette - (https://github.com/satijalab/seurat/issues/5742) 
+# binarised expression (only grey OR blue, nothing in between) occurs when low number of groups.  
+# All the genes shown here are differentially expressed when running FindAllMarkers above.
+
+ons76.markers.g1 <- c("DKK1", "ANKRD1", "FST", "BIRC5", "LYPD6B",
+                      "ITM2B", "TIMP1", "IGFBP4", "IGFBP5", "CD59",
+                      "NEUROD1", "DCX", "TUBB2B", "NR2F1", "KCNB2")
+DotPlot(object = o76.g1.comb.sct, features = ons76.markers.g1, col.min = 0) +
+  theme(axis.text.x = element_text(size = 14, angle = 45, hjust = 1)) +
+  coord_flip()
+  
+```
+
+```{r HeatmapSCTassayG1cellsONS76integratedMonoSpherCocult, fig.height=6, fig.width=8}
+# this vignette (https://github.com/satijalab/seurat/issues/4082) is a good reminder of when to 
+# use SCT Assay versus RNA Assay
+ons76.markers.g1 <- c("DKK1", "ANKRD1", "FST", "BIRC5", "LYPD6B",
+                      "ITM2B", "TIMP1", "IGFBP4", "IGFBP5", "CD59",
+                      "NEUROD1", "DCX", "TUBB2B", "NR2F1", "KCNB2")
+o76.g1.comb.sct.scaled <- ScaleData(o76.g1.comb.sct)
+DoHeatmap(o76.g1.comb.sct.scaled, features = ons76.markers.g1, size = 10, assay = "SCT", group.by = "ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 20), legend.title = element_text(size=20), legend.text=element_text(size=20))
+```
+
+```{r HeatmapRNAassayG1cellsONS76integratedMonoSpherCocult, fig.height=6, fig.width=8}
+# when using the RNA assay make sure the object 'o76.g1.comb.sct' is freshly loaded from the saved (saveRDS)
+# object and has NOT been through PrepSCTFindMarkers otherwise the heatmap will look odd!
+
+o76.g1.comb.sct <- readRDS("outputs50K/INTEGRATE/G1cells.ons76onlyCocult.ONS76spher.ONS76mono.integrated.SCT.rds")
+Idents(o76.g1.comb.sct) <- "orig.ident"
+ons76.markers.g1 <- c("DKK1", "ANKRD1", "FST", "BIRC5", "LYPD6B",
+                      "ITM2B", "TIMP1", "IGFBP4", "IGFBP5", "CD59",
+                      "NEUROD1", "DCX", "TUBB2B", "NR2F1", "KCNB2")
+DefaultAssay(o76.g1.comb.sct) <- "RNA"
+o76.g1.comb.sct.scaled.rna <- ScaleData(o76.g1.comb.sct, features = ons76.markers.g1)
+DoHeatmap(o76.g1.comb.sct.scaled.rna, features = ons76.markers.g1, size = 10) + 
+  guides(color = "none") +
+  theme(text = element_text(size = 20), legend.title = element_text(size=20), legend.text=element_text(size=20))
+```
+
+
 
 ```
 {r}
@@ -891,7 +1153,7 @@ readRDS("outputs50K/ONS76_SPHER/phase.ons76spher.SCT.clustered.res0.4.rds")
 
 ```
 {r}
-# make Idents the 'seurat_clusters
+# make Idents the 'seurat_clusters'
 Idents(phase.ons76spher.sct.clust.res0.4) <- "seurat_clusters"
 ```
 
