@@ -324,6 +324,60 @@ table(Idents(o76spher))
 ```
 
 
+```{r}
+# load the dataset
+o76spher.res0.2 <- readRDS("outputs50K/ONS76_SPHER/ons76spheroid.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# confirm that cell cycle phase metadata is present - it is
+head(o76spher.res0.2@meta.data)
+```
+
+```{r}
+# extract the G1 only cells from o76spher (this 'o76spher' object is the already CLUSTERED object)
+# first, switch Idents to 'Phase'
+Idents(o76spher.res0.2) <- "Phase"
+o76spher.g1.cellIDs <- WhichCells(o76spher.res0.2, idents = "G1")
+length(o76spher.g1.cellIDs)
+```
+
+```{r}
+# these cell IDs look correctly formatted
+# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
+o76spher.g1cells <- subset(o76spher, cells = o76spher.g1.cellIDs)
+head(WhichCells(o76spher.g1cells))
+```
+
+```{r}
+# check the number of cells is correct in the subsetted object
+dim(o76spher.g1cells) # 668 cells in G1
+```
+
+
+```{r}
+# create an object suitable for integration (don't need to regress cell cycle!)
+
+o76spher.g1cells.input.integration <- SCTransform(o76spher.g1cells,
+                                                  method = "glmGamPoi",
+                                                  vst.flavor = "v2",
+                                                  verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+dim(o76spher.g1cells.input.integration) # object has 668 cells which is correct
+```
+
+```{r}
+# save the "o76spher.g1cells.input.integration" object
+saveRDS(o76spher.g1cells.input.integration, 
+        file = "./outputs50K/ONS76_SPHER/G1phaseCells.ONS76spheroid.inputIntegration.SCTransformed.PCA.unclustered.rds")
+```
+
+
+
+
 
 
 
