@@ -446,6 +446,67 @@ FeaturePlot(phase.ons76cbo.sct.clust, features = 'prolif.genes1', label = TRUE, 
    scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
 ```
 
+
+----------------------------------------------------------------------------------------------------------------
+***Extract the ONS76-only cells in G1 phase to use them for an integrated analysis with ONS76-2D and ONS76-SPHER cells that are in G1 phase only***
+```{r}
+# load the object
+o76only.o76cboAnnot.rescaled <- 
+  readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+```
+
+```{r}
+Idents(o76only.o76cboAnnot.rescaled) <- "Phase"
+o76onlyO76cbo.g1.cellIDs <- WhichCells(o76only.o76cboAnnot.rescaled, idents = "G1")
+length(o76onlyO76cbo.g1.cellIDs)
+```
+
+```{r}
+# load the filtered but unclustered ons76-cbo object
+o76cbo <- readRDS("outputs50K/ONS76-CBO/ons76cbo.seurat.filtCellsGenesNoRiboNoMito.rds")
+```
+
+
+```{r}
+# these cell IDs are not correctly formatted
+# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
+o76onlyO76cbo.g1cells <- subset(o76cbo, cells = o76onlyO76cbo.g1.cellIDs)
+head(WhichCells(o76onlyO76cbo.g1cells))
+```
+
+```{r}
+# format the cell IDs correctly
+# remove the prefixes from the vector cell names and save as a new object of cell IDs
+o76only.cellID.corrected <- gsub('o76cbo.data-', '', o76onlyO76cbo.g1.cellIDs)
+head(o76only.cellID.corrected) # the prefixes have been removed
+```
+
+```{r}
+# rename the cell IDs with the corrected cell names (.ccn = corrected cell names)
+# the object o76onlyO76cbo.g1cells.ccn is the one to use going forwards
+o76onlyO76cbo.g1cells.ccn <- RenameCells(o76onlyO76cbo.g1cells, new.names = o76only.cellID.corrected)
+head(WhichCells(o76onlyO76cbo.g1cells.ccn))
+```
+
+```{r}
+# create an object suitable for integration (don't need to regress cell cycle!)
+# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
+o76onlyO76cbo.g1cells.input.integration <- SCTransform(o76onlyO76cbo.g1cells.ccn,
+                                                  method = "glmGamPoi",
+                                                  vst.flavor = "v2",
+                                                  verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+# save the "o76onlyO76cbo.g1cells.input.integration" object
+saveRDS(o76onlyO76cbo.g1cells.input.integration, 
+        file = "./outputs50K/ONS76-CBO/G1phaseCells.ONS76onlyONS76cbo.inputIntegration.SCTransformed.PCA.unclustered.rds")
+```
+
+
+
+
 ```
 save.image("./RDataFiles/ONS76-CBO_Seurat_EXPLORE1_50K.RData")
 ```
