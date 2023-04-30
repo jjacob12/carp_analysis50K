@@ -76,7 +76,9 @@ dyCbo.POSmarkers <-
 ```{r}
 # look at some of the top markers of each cluster
 dyCbo.POSmarkers %>% 
-  filter(cluster == "14")
+  dplyr::filter(cluster %in% c("13", "14")) %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::slice_head(n=50)
 ```
 
 ```{r}
@@ -263,7 +265,7 @@ VlnPlot(dyCbo.annotate, features = c("SOX2", "POU3F2","FABP7", "ERBB4", "NRG3"))
 
 ```{r VlnplotsErbb4Sox2otx2, fig.height=9, fig.width=13}
 VlnPlot(dyCbo.annotate,
-        features = c("SOX2", "ERBB4", "POU3F2", "OTX2"))
+        features = c("SOX2", "ERBB4", "POU3F4", "POU3F2", "OTX2", "FGFBP3"))
 ```
 
 
