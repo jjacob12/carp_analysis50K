@@ -785,6 +785,10 @@ top20.genes <- dy.3samples.allMarkers.gene %>%
 ```
 
 ```{r}
+
+# From https://bioinformatics.stackexchange.com/questions/17501/avoiding-the-warning-the-following-features-were-omitted-as-they-were-not-found
+# Specify your genes of interest using the features parameter of the ScaleData() function. If this parameter is not specified, only "variable genes" are scaled and that makes sense, genes that do not demonstrate variability across conditions is not interesting in general. Anyhow, since the DoHeatmap() would be looking at the "scaled data slot", it will not be able to find your genes of interest unless they show variation.
+
 # switch Idents to "orig.ident"
 Idents(dy.3samples.combined.sct) <- "orig.ident"
 
@@ -811,10 +815,13 @@ DoHeatmap(dy.3samples.combined.sct.scaled,
 ```{r HeatmapSelectGenesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=8, fig.width=12}
 features <- c("ERBB4", "NES", "SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "PTCH1")
 
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+
 dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, 
                                               features = features,
                                               verbose = FALSE)
-DoHeatmap(dy.3samples.combined.sct.scaled, features = features, size = 10, assay = "RNA", group.by = "ident") + 
+DoHeatmap(dy.3samples.combined.sct.scaled, features = features, size = 10, 
+          slot = "data", assay = "RNA", group.by = "ident") + 
   guides(color = "none") +
   theme(text = element_text(size = 25), legend.title = element_text(size=20), legend.text=element_text(size=15))
 ```
