@@ -230,6 +230,20 @@ VlnPlot(o76cbo.annotate, features = c("SOX2", "POU3F2", "ERBB4", "NRG3"))
 ```
 
 
+Identify markers that uniquely identify ONS76_cluster8 cells
+```{r}
+o76cbo.POSmarkers %>% 
+  dplyr::filter(cluster == 8) %>% 
+  head(50)
+```
+
+```{r fig.height=9, fig.width=13}
+# these markers uniquely identify ONS76 cluster 8. Little or no expression in other clusters including
+# ONS76_cluster 3
+VlnPlot(o76cbo.annotate, features = c("MEIS1", "POU3F2", "HOXB2", "GRIA4"))
+```
+
+
 ***Extract the ONS76 cells/clusters that are NeuroD1+ and then all malignant clusters***. 
 There are 634 NEUROD1 positive cells - both healthy and cancerous
 ```{r}
