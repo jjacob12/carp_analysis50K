@@ -84,7 +84,7 @@ dim(dyMono) # reduced to 15,846 genes and 2633 cells
 ```
 
 ```{r}
-# save the NON-normalised, NON-clustered cbo seurat object
+# save the NON-normalised, NON-clustered seurat object
 saveRDS(dyMono, file = "./outputs50K/DAOY_2D/filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds")
 ```
 
