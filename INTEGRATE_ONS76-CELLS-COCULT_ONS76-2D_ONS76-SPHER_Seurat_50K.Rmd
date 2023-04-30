@@ -396,6 +396,11 @@ o76.3samples.combined.sct.scaled <- ScaleData(o76.3samples.combined.sct,
 
 
 ```{r HeatmapTop20genesONS76monoSpherO76onlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
+
+# From https://bioinformatics.stackexchange.com/questions/17501/avoiding-the-warning-the-following-features-were-omitted-as-they-were-not-found
+# Specify your genes of interest using the features parameter of the ScaleData() function. If this parameter is not specified, only "variable genes" are scaled and that makes sense, genes that do not demonstrate variability across conditions is not interesting in general. Anyhow, since the DoHeatmap() would be looking at the "scaled data slot", it will not be able to find your genes of interest unless they show variation.
+
+
 # Heatmap now uses all cells, no need to downsample
 DoHeatmap(o76.3samples.combined.sct.scaled, 
           features = top20.genes$gene, 
@@ -843,7 +848,7 @@ daoy.o76.cells.noDyCocult <-
   readRDS("outputs50K/INTEGRATE/daoy.ons76.Merged.6samples.o76Mono.o76Spher.o76clus3.o76clus8.dyMono.dySpher.rds")
 ```
 
-```{r VlnPlotSox2Network8samplesMergedONS762d3dAndOns76onlyCocultClustersDAOY2d3d, fig.height=9, fig.width=12}
+```{r VlnPlotSox2Network6samplesMergedONS762d3dAndOns76onlyCocultClustersDAOY2d3d, fig.height=9, fig.width=12}
 Idents(daoy.o76.cells.noDyCocult) <- "sample"
 
 VlnPlot(daoy.o76.cells.noDyCocult,
@@ -1070,8 +1075,8 @@ top20.g1.sorted
 From the list of genes 'top20.g1.sorted' I selected some from each condition to plot
 ```{r}
 DefaultAssay(o76.g1.comb.sct) <- "SCT"  # in general not the best assay for integrated data - better
-                                        # to use RNA assay, but the results for both assays are very
-                                        # similar
+                                        # to use RNA assay, but the results for both assays
+                                        # are very similar IN THIS CASE (see below code chunks)
 ```
 
 
