@@ -37,7 +37,7 @@ list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.
 ```
 
 ```{r}
-# note these are .gz files which can be directly read. n = 3838 cells
+# note these are .gz files which can be directly read. n = 2922 cells (dyMono.data)
 dyMono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
                          features = paste0(data_dir, "features.tsv.gz"), 
                          cells = paste0(data_dir, "barcodes.tsv.gz"))
@@ -55,41 +55,29 @@ mito.genes <- grep(pattern = "^MT", x = rownames(x = dyMono), value = TRUE)
 percent.mito <- 
   Matrix::colSums(dyMono[mito.genes, ])/Matrix::colSums(dyMono)
 
-# identify ribosomal genes
-ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(x = dyMono), value = TRUE)
-percent.ribo <- 
-  Matrix::colSums(dyMono[ribo.genes, ])/Matrix::colSums(dyMono)
-
-# add the ribosome and mitochondrial gene percent to the metadata
+# add the mitochondrial gene percent to the metadata
 dyMono <- 
   AddMetaData(object = dyMono, metadata = percent.mito, col.name = "percent.mito")
-
-dyMono <- 
-  AddMetaData(object = dyMono, metadata = percent.ribo, col.name = "percent.ribo")
-
-# remove ribosomal and mitochondrial genes
-# remove ribosomal genes first
-dyMono <- dyMono[ ! grepl('^RP[SL]', rownames(dyMono)), ]
 
 # remove mitochondrial genes 
 dyMono <- dyMono[ ! grepl("^MT-", rownames(dyMono)), ]
 
-dim(dyMono) # 24,846 genes and 2922 cells
+dim(dyMono) # 24,944 genes and 2922 cells
 ```
 
 ```{r}
 # remove all cells with percent.mito > 10%
 dyMono <- subset(dyMono, subset = percent.mito < 0.1)
-dim(dyMono) # reduced to 15,846 genes and 2633 cells
+dim(dyMono) # reduced to 24,944 genes and 2633 cells
 ```
 
 ```{r}
 # save the NON-normalised, NON-clustered seurat object
-saveRDS(dyMono, file = "./outputs50K/DAOY_2D/filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds")
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
 ```
 
 ```{r}
-dyMono <- readRDS("outputs50K/DAOY_2D/filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds")
+dyMono <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
 ```
 
 ```{r}
@@ -118,8 +106,8 @@ dyMono.input.integration <- SCTransform(dyMono,
 ```
 
 ```{r}
-# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
-saveRDS(dyMono.input.integration, "./outputs50K/DAOY_2D/DAOYmono.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+# saved the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(dyMono.input.integration, "./outputs50K/DAOY_2D/DAOYmono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
 ```
 
 ```{r}
@@ -132,12 +120,12 @@ dyMono <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGa
 
 ```{r}
 # save the clustered, SCTransformed object above
-saveRDS(dyMono, file = "./outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.clustered.CCdiffRegressed.rds")
 ```
 
 ```{r}
 # load the above object.
-dyMono <- readRDS("outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+dyMono <- readRDS("outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.clustered.CCdiffRegressed.rds")
 ```
 
 ```{r DimplotDAOYmonoRepUmapSCTransform, fig.height=6, fig.width=10}
@@ -150,6 +138,7 @@ dyMono.POSmarkers <-
   FindAllMarkers(object = dyMono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
+Cluster 5 is enriched for ribosome genes
 ```{r}
 dyMono.POSmarkers %>% 
   dplyr::group_by(cluster) %>% 
@@ -159,140 +148,150 @@ dyMono.POSmarkers %>%
 ```{r}
 # None of these five genes is expressed
 dyMono.POSmarkers %>%
-  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX1"))
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX"))
 ```
 
 ```{r}
 # save the positive markers of DAOY-2D (rep)
 saveRDS(dyMono.POSmarkers, 
-        file = "./outputs50K/DAOY_2D/POS.markers.DAOYmonolayerRep.SCT.clustered.rds")
+        file = "./outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.clustered.rds")
 ```
 
 ```{r}
-dyMono.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.DAOYmonolayerRep.SCT.clustered.rds")
+dyMono.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.clustered.rds")
 ```
 
-```{r HeatmapDaoyMonoTop10markers5clustersRes0.5, fig.height=6, fig.width=6}
+```{r}
 # first load dyMono seurat object above, then only run this chunk
 dyMono.POSmarkers %>% 
   group_by(cluster) %>%
     top_n(n = 10, wt = avg_log2FC) -> top10
-DoHeatmap(dyMono, features = top10$gene) + NoLegend()
 ```
 
-As can be seen from the above heatmap the res=0.5 clustering seems to generate too many clusters. For example, cluster 2 has many genes in common with cluster 1. Also cluster 3 and cluster 5 share many markers in common. Try resolution=0.2 and make anew heatmap
+```{r}
+# this step is important to avoid a warning re omission of specific genes of interest in the top 10 list of markers from the scale data slot
+# see https://github.com/satijalab/seurat/issues/1369
+dyMono <- ScaleData(object = dyMono, features = rownames(dyMono)) 
+```
+
+```{r HeatmapDaoyMonoTop10markers5clustersRes0.5, fig.height=8, fig.width=10}
+DoHeatmap(dyMono, features = top10$gene) + guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
+```
+
+As can be seen from the above heatmap the res=0.5 clustering seems to generate too many clusters. For example, cluster 2 has many genes in common with cluster 1. Also cluster 3 and cluster 5 share many markers in common. Try resolution=0.1 and make a new heatmap - res = 0.1 chosen as in the integration of DAOY-2D first sample and DAOY-2D repeat sample, there were only 2 major clusters
 
 ```{r}
-# first load "filt.RiboMitoCellsGenes.seurat.DaoyMonolayer.rds" then normalise, run CC regression,
-# then cluster the cells as per this code chunk
-dyMono.res0.2 <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+dyMono.res0.1 <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
   RunPCA(verbose = FALSE) %>% 
   RunUMAP(dims=1:30, verbose=FALSE) %>% 
   FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, resolution = 0.2) # for res=0.2, clustree shows there are 4 clusters
+  FindClusters(verbose=FALSE, resolution = 0.1)
 ```
+
+```{r DimplotDAOYmonoRepUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(dyMono.res0.1, label = TRUE)
+```
+
+```{r}
+saveRDS(dyMono.res0.1, 
+        file = "./outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.Res0.1.clustered.CCdiffRegressed.rds")
+```
+
 
 ```{r}
 # get the markers of each cluster - slow to run
-dyMono.POSmarkers.res0.2 <- 
-  FindAllMarkers(object = dyMono.res0.2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dyMono.res0.1.POSmarkers <- 
+  FindAllMarkers(object = dyMono.res0.1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
 ```{r}
-# save the POS markers at res=0.2
-saveRDS(dyMono.POSmarkers.res0.2,
-        file = "./outputs50K/DAOY_2D/POS.markers.res0.2.DAOYmonoRep.SCT.clustered.rds")
+dyMono.res0.1.POSmarkers %>%
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 20)
 ```
 
+```{r}
+# this clustering is better than res=0.5 clustering which over-clusters the sample
+saveRDS(dyMono.res0.1.POSmarkers,
+        file = "./outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.Res0.1.clustered.rds")
+```
 
-```{r HeatmapDaoyMonoTop10markers4clustersRes0.2, fig.height=5, fig.width=6}
-dyMono.POSmarkers.res0.2 %>% 
+```{r}
+dyMono.res0.1.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.Res0.1.clustered.rds")
+```
+
+```{r}
+dyMono.res0.1.POSmarkers %>% 
   group_by(cluster) %>%
-    top_n(n = 10, wt = avg_log2FC) -> top10.res.0.2
-DoHeatmap(dyMono.res0.2, features = top10.res.0.2$gene) + guides(color = "none")
+    top_n(n = 20, wt = avg_log2FC) -> top20
 ```
-
-The above clusters are better defined. Cluster 0, 1, and 3 are well separated, and cluster 2 has lower level expression of genes that are also expressed in cluster 0 and 1, but not in cluster 3. So run presto, then gProfiler on this sample to get an idea of what pathways are active in the different cell clusters.
 
 ```{r}
-saveRDS(dyMono.res0.2, 
-        file = "./outputs50K/DAOY_2D/DAOYmono.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
+# this step is important to avoid a warning re omission of specific genes of interest in the top 10 list of markers from the scale data slot
+# see https://github.com/satijalab/seurat/issues/1369
+dyMono.res0.1.scaled <- ScaleData(object = dyMono.res0.1, features = rownames(dyMono.res0.1)) 
 ```
 
+Note that cluster 2 genes visually have the least expression difference compared to cluster 0 and cluster 1
+```{r HeatmapDaoyMonoTop20markers5clustersRes0.1, fig.height=8, fig.width=10}
+DoHeatmap(dyMono.res0.1.scaled, features = top20$gene) + guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
+```
+
+Run PRESTO
 ```{r}
 # prepare the data for gProfiler (web app) input
-dyMono.res0.2.genes.presto <- wilcoxauc(dyMono.res0.2, 'seurat_clusters')
-nrow(dyMono.res0.2.genes.presto)
-dplyr::count(dyMono.res0.2.genes.presto, group)
-```
-
-```{r}
-head(dyMono.res0.2.genes.presto, 3)
+dyMono.res0.1.genes.presto <- wilcoxauc(dyMono.res0.1, 'seurat_clusters')
+nrow(dyMono.res0.1.genes.presto)
+dplyr::count(dyMono.res0.1.genes.presto, group)
 ```
 
 ```{r}
 # filter and order the gene list
-dyMono.res0.2.genes.presto.clust0 <- dyMono.res0.2.genes.presto %>% 
+dyMono.res0.1.genes.presto.clust0 <- dyMono.res0.1.genes.presto %>% 
   dplyr::filter(group == "0" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyMono.res0.2.genes.presto.clust0) # 1331 genes
+nrow(dyMono.res0.1.genes.presto.clust0) # 1131 genes
 ```
 
 ```{r}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# gPROFILER input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
-write.csv(dyMono.res0.2.genes.presto.clust0, 
-          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster0.genes.presto.gProfilerInput.csv", quote = F)
+write.csv(dyMono.res0.1.genes.presto.clust0, 
+         "./outputs50K/DAOY_2D/daoyMono.res0.1.cluster0.genes.RiboRetained.presto.gProfilerInput.csv", quote = F)
 ```
 
 ```{r}
 # filter and order the gene list
-dyMono.res0.2.genes.presto.clust1 <- dyMono.res0.2.genes.presto %>% 
+dyMono.res0.1.genes.presto.clust1 <- dyMono.res0.1.genes.presto %>% 
   dplyr::filter(group == "1" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyMono.res0.2.genes.presto.clust1) # 699 genes
+nrow(dyMono.res0.1.genes.presto.clust1) # 550 genes
 ```
 
 ```{r}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# gPROFILER input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
-write.csv(dyMono.res0.2.genes.presto.clust1, 
-          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+write.csv(dyMono.res0.1.genes.presto.clust1, 
+          "./outputs50K/DAOY_2D/daoyMono.res0.1.cluster1.genes.RiboRetained.presto.gProfilerInput.csv", quote = F)
 ```
 
 ```{r}
 # filter and order the gene list
-# AS THERE ARE ONLY 2 MARKERS, DO NOT SAVE THE LIST, AND DO NOT RUN gPROFILER FOR THIS CLUSTER
-dyMono.res0.2.genes.presto.clust2 <- dyMono.res0.2.genes.presto %>% 
+dyMono.res0.1.genes.presto.clust2 <- dyMono.res0.1.genes.presto %>% 
   dplyr::filter(group == "2" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(dyMono.res0.2.genes.presto.clust2) # 2 genes only! The reason for this is apparent on looking at the heatmap.
+nrow(dyMono.res0.1.genes.presto.clust2) # 9 genes only, WHICH ARE NOT WORTH SAVING!
 ```
-
-```{r}
-# filter and order the gene list
-dyMono.res0.2.genes.presto.clust3 <- dyMono.res0.2.genes.presto %>% 
-  dplyr::filter(group == "3" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(dyMono.res0.2.genes.presto.clust3) # 1142 genes
-```
-
-```{r}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
-# of genes into gProfiler web app
-write.csv(dyMono.res0.2.genes.presto.clust3, 
-          "./outputs50K/DAOY_2D/daoyMono.res0.2.cluster3.genes.presto.gProfilerInput.csv", quote = F)
-```
-
-
 
 
 ***Clustree***
@@ -304,7 +303,7 @@ write.csv(dyMono.res0.2.genes.presto.clust3,
 resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
 
 # Find clusters using a range of resolutions, the clustering information is in the metadata slot
-dyMono.clusters <- FindClusters(object = dyMono, 
+dyMono.clusters <- FindClusters(object = dyMono.res0.2, 
                                       resolution = resolution.range,
                                       verbose = FALSE)
 ```
