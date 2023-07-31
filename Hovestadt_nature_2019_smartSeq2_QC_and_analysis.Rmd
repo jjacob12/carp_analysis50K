@@ -33,6 +33,7 @@ library(tidyverse)
 ```
 
 
+***Cluster MUV41 patient SHH-MB***
 ```{r eval=FALSE, echo=FALSE}
 raw.counts.muv41 <- read.table(file = "./hovestadt_Nature2019/GSM3905417_MUV41.txt",
                          sep = "")
@@ -46,7 +47,7 @@ head(raw.counts.muv41)
 muv41 <- CreateSeuratObject(raw.counts.muv41,
                             min.cells = 10,
                             min.genes = 2500,
-                            project = "reanalysis_hovestadt")
+                            project = "muv41")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -61,14 +62,102 @@ muv41 <- SCTransform(muv41, vst.flavor = "v2", verbose = FALSE) %>%
   FindClusters(resolution = 0.7, verbose = FALSE)
 ```
 
+```{r}
+saveRDS(muv41,
+        file = "./outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.rds")
+```
+
 ```{r eval=FALSE, echo=FALSE}
 DimPlot(muv41, label = T, repel = T)
 ```
 
-```{r eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
-VlnPlot(muv41, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"))
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
+VlnPlot(muv41, features = c("NEUROD1", "RBFOX3", "RTN1", "SOX2"))
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# the aim is to get cell cycle phase for all cells in the below code chunks
+muv41.unclust <- CreateSeuratObject(raw.counts.muv41,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "muv41")
+```
+
+```{r}
+saveRDS(muv41.unclust,
+        file = "./outputs50K/Hovestadt_outputs/MUV41.unclustered.PatientSHHMB.rds")
+```
+
+```{r}
+# get cell cycle info
+muv41.unclust.norm <- NormalizeData(muv41.unclust)
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+muv41.unclust.norm <- CellCycleScoring(muv41.unclust.norm,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+
+muv41.phase <- SCTransform(muv41.unclust.norm, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+****Isolate NEUROD1+ cells for MUV41****
+```{r}
+# isolate all NEUROD1 expressing cells, there are 303 cells
+neurod1.muv41 <- GetAssayData(object = muv41.phase,
+                            assay = "RNA",      # choosing "SCT" assay makes very little difference!
+                            slot = "data")["NEUROD1", ]
+pos.ids.neurod1.muv41 <- names(which(neurod1.muv41 > 0))
+length(pos.ids.neurod1.muv41)
+```
+```{r}
+neurod1.pos.muv41.phase <- subset(muv41.phase, cells = pos.ids.neurod1.muv41)
+```
+
+```{r}
+saveRDS(neurod1.pos.muv41.phase,
+        file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.MUV41.PatientSHH-MB.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# transfer meta.data to a new object called metadata.dy
+metadata.neurod1.muv41.phase <- neurod1.pos.muv41.phase@meta.data %>% 
+  rownames_to_column(var = "cellID") # this step needed as when 'select' is applied later on, the rownames
+                                    # (cell names) are still retained
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset the metadata dataframe to keep just 'orig.ident' and 'Phase' columns (cc = cell cycle phase)
+metadata.cc.neurod1.muv41.phase <- metadata.neurod1.muv41.phase %>% 
+  dplyr::select(orig.ident, Phase)
+# for each orig.ident get a count for each orig.ident and for each Phase
+summ.stats.cc.neurod1.muv41.phase <- metadata.cc.neurod1.muv41.phase %>% 
+  dplyr::group_by(Phase, orig.ident) %>% 
+  dplyr::summarise(count= n())
+
+summ.stats.cc.neurod1.muv41.phase  # total is 303 cells. G1=179, G2M=48, S=76
+```
+
+```{r}
+dim(metadata.cc.neurod1Clus6cbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
+summ.stats.props.cc.neurod1.muv41.phase <- summ.stats.cc.neurod1.muv41.phase %>% 
+  dplyr::group_by(orig.ident) %>%
+  dplyr::mutate(props = count / sum(count))
+
+summ.stats.props.cc.neurod1.muv41.phase
+```
+
+
+***SJ454 SHH-MB***
 ```{r eval=FALSE, echo=FALSE}
 raw.counts.sj454 <- read.table(file = "./hovestadt_Nature2019/GSM3905423_SJ454.txt",
                          sep = "")
@@ -110,25 +199,104 @@ saveRDS(sj454,
 sj454.clust <- readRDS("outputs50K/Hovestadt_outputs/SJ454.SHH_MB.SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
 ```
 
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
+VlnPlot(sj454.clust, features = c("PROM1", "NEUROD1", "RBFOX3", "RTN1"))
+```
+
+****Isolate NEUROD1+ cells for SJ454****
 ```{r eval=FALSE, echo=FALSE}
-VlnPlot(sj454.clust, features = c("NEUROD1"))
+# the aim is to get cell cycle phase for all cells in the below code chunks
+sj454.unclust <- CreateSeuratObject(raw.counts.sj454,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "sj454")
+```
+
+```{r}
+saveRDS(sj454.unclust,
+        file = "./outputs50K/Hovestadt_outputs/SJ454.unclustered.PatientSHHMB.rds")
+```
+
+```{r}
+# get cell cycle info
+sj454.unclust.norm <- NormalizeData(sj454.unclust)
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+sj454.unclust.norm <- CellCycleScoring(sj454.unclust.norm,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+
+sj454.phase <- SCTransform(sj454.unclust.norm, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+# isolate all NEUROD1 expressing cells, there are 303 cells
+neurod1.sj454 <- GetAssayData(object = sj454.phase,
+                            assay = "RNA",      # choosing "SCT" assay makes very little difference!
+                            slot = "data")["NEUROD1", ]
+pos.ids.neurod1.sj454 <- names(which(neurod1.sj454 > 0))
+length(pos.ids.neurod1.sj454)
+```
+```{r}
+neurod1.pos.sj454.phase <- subset(sj454.phase, cells = pos.ids.neurod1.sj454)
+```
+
+```{r}
+saveRDS(neurod1.pos.sj454.phase,
+        file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.SJ454.PatientSHH-MB.rds")
 ```
 
 
-```{r VlnplotSOX2regNetworkSJ454shhMB, fig.height=17, fig.width=16}
+```{r eval=FALSE, echo=FALSE}
+# transfer meta.data to a new object called metadata.dy
+metadata.neurod1.sj454.phase <- neurod1.pos.sj454.phase@meta.data %>% 
+  rownames_to_column(var = "cellID") # this step needed as when 'select' is applied later on, the rownames
+                                    # (cell names) are still retained
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset the metadata dataframe to keep just 'orig.ident' and 'Phase' columns (cc = cell cycle phase)
+metadata.cc.neurod1.sj454.phase <- metadata.neurod1.sj454.phase %>% 
+  dplyr::select(orig.ident, Phase)
+# for each orig.ident get a count for each orig.ident and for each Phase
+summ.stats.cc.neurod1.sj454.phase <- metadata.cc.neurod1.sj454.phase %>% 
+  dplyr::group_by(Phase, orig.ident) %>% 
+  dplyr::summarise(count= n())
+
+summ.stats.cc.neurod1.sj454.phase  # total is 303 cells. G1=179, G2M=48, S=76
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
+summ.stats.props.cc.neurod1.sj454.phase <- summ.stats.cc.neurod1.sj454.phase %>% 
+  dplyr::group_by(orig.ident) %>%
+  dplyr::mutate(props = count / sum(count))
+
+summ.stats.props.cc.neurod1.sj454.phase. # total=238 cells. G1=0.69, G2M= 0.09, S=0.21
+```
+
+
+
+```{r VlnplotSOX2regNetworkSRRTgeneSJ454shhMB, fig.height=14, fig.width=22}
 # cluster 2 expresses all NSC factors except OTX2
 # VlnPlot(sj454, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "OCT4", "PAX6"))
 
-p1a <- VlnPlot(sj454.clust, 
-        features = c("SOX2")) +
-  theme(axis.text = element_text(size = 22),
+ p1a <- VlnPlot(sj454.clust, 
+        features = c("FABP7")) +
+ theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 
 p1b <- VlnPlot(sj454.clust, 
-        features = c("POU3F2")) +
+        features = c("ZIC2")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -136,7 +304,7 @@ p1b <- VlnPlot(sj454.clust,
         plot.title = element_text(size = 30))
 
 p1c <- VlnPlot(sj454.clust, 
-        features = c("FABP7")) +
+        features = c("SOX2")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -144,7 +312,7 @@ p1c <- VlnPlot(sj454.clust,
         plot.title = element_text(size = 30))
 
 p1d <- VlnPlot(sj454.clust, 
-        features = c("PAX6")) +
+        features = c("SRRT")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -152,7 +320,7 @@ p1d <- VlnPlot(sj454.clust,
         plot.title = element_text(size = 30))
 
 p1e <- VlnPlot(sj454.clust, 
-        features = c("ZIC2")) +
+        features = c("POU3F2")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -170,6 +338,8 @@ p1f <- VlnPlot(sj454.clust,
 p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
 ```
 
+
+***SJ577 SHH-MB***
 ```{r eval=FALSE, echo=FALSE}
 raw.counts.sj577 <- read.table(file = "./hovestadt_Nature2019/GSM3905425_SJ577.txt",
                          sep = "")
@@ -199,164 +369,114 @@ sj577 <- SCTransform(sj577, vst.flavor = "v2", verbose = FALSE) %>%
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+saveRDS(sj577,
+        file = "./outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
 DimPlot(sj577, label = T, repel = T)
 ```
 
-```{r eval=FALSE, echo=FALSE}
-VlnPlot(sj577, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"))
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
+VlnPlot(sj577, features = c("SOX2", "NEUROD1", "RBFOX3", "RTN1"))
 ```
 
 
-
-------------------------------------------------------------------------------------------------------
-***Integrate WNT-MB, SHH-MB, DAOY-SPHEROID, DAOY-only coculture using fastMNN***
-
-Prepare the non SHH-MB patient tumour samples for integration with the datasets in the TSNE plot above
--test: integrate 2 WNT tumours with 2 Gp 3 tumours
+****Isolate NEUROD1+ cells from SJ577****
 ```{r eval=FALSE, echo=FALSE}
-# identify the files of interest
-list.files('hovestadt_Nature2019')
-```
-
-```{r eval=FALSE, echo=FALSE}
-# merge the 3 WNT-MB and 3 SHH-MB datasets
-# load the data
-# 3 WNT-MB
-raw.counts.sj516 <- read.table(file = "./hovestadt_Nature2019/GSM3905424_SJ516.txt",
-                         sep = "")
-raw.counts.bch807 <- read.table(file = "./hovestadt_Nature2019/GSM3905406_BCH807.txt",
-                         sep = "")
-raw.counts.sj129 <- read.table(file = "./hovestadt_Nature2019/GSM3905421_SJ129.txt",
-                         sep = "")
-# 3 SHH-MB
-raw.counts.muv41 <- read.table(file = "./hovestadt_Nature2019/GSM3905417_MUV41.txt",
-                         sep = "")
-raw.counts.sj454 <- read.table(file = "./hovestadt_Nature2019/GSM3905423_SJ454.txt",
-                         sep = "")
 raw.counts.sj577 <- read.table(file = "./hovestadt_Nature2019/GSM3905425_SJ577.txt",
                          sep = "")
-
-
-# create Seurat objects for tumours
-sj516.wnt <- CreateSeuratObject(raw.counts.sj516,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntA")
-bch807.wnt <- CreateSeuratObject(raw.counts.bch807,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntB")
-sj129.wnt <- CreateSeuratObject(raw.counts.sj129,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntC")
-
-muv41.shh <- CreateSeuratObject(raw.counts.muv41,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhA")
-sj454.shh <- CreateSeuratObject(raw.counts.sj454,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhB")
-sj577.shh <- CreateSeuratObject(raw.counts.sj577,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhC")
-
-# load the DAOY spheroid data
-dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-hov.6tumours.dySpher.merged <- merge(sj516.wnt, 
-                    y = c(bch807.wnt, sj129.wnt, muv41.shh, sj454.shh, sj577.shh, dySpher),
-                    project = "hov.6tumours.dySpher.merged")
-```
-
-```{r eval=FALSE, echo=FALSE}
-table(hov.6tumours.dySpher.merged@meta.data$orig.ident)
-```
-
-```{r eval=FALSE, echo=FALSE}
-# scale data step is not necessary as RunFastMNN does its own scaling
-hov.6tumours.dySpher.merged.clust <- NormalizeData(hov.6tumours.dySpher.merged)
-hov.6tumours.dySpher.merged.clust <- FindVariableFeatures(hov.6tumours.dySpher.merged.clust)
-hov.6tumours.dySpher.merged.clust <- RunFastMNN(object.list = SplitObject(hov.6tumours.dySpher.merged.clust, split.by = "orig.ident"))
-hov.6tumours.dySpher.merged.clust <- RunUMAP(hov.6tumours.dySpher.merged.clust, reduction = "mnn", dims = 1:20)
-hov.6tumours.dySpher.merged.clust <- FindNeighbors(hov.6tumours.dySpher.merged.clust, reduction = "mnn", dims = 1:20)
-hov.6tumours.dySpher.merged.clust <- FindClusters(hov.6tumours.dySpher.merged.clust)
-```
-
-```{r eval=FALSE, echo=FALSE}
-saveRDS(hov.6tumours.dySpher.merged.clust,
-        file = "./outputs50K/Hovestadt_outputs/DAOYspher.WNTMBSHHMBHov.fastMNN.clust.rds")
+# the aim is to get cell cycle phase for all cells in the below code chunks
+sj577.unclust <- CreateSeuratObject(raw.counts.sj577,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "sj577")
 ```
 
 ```{r}
-hov.6tumours.dySpher.merged.clust <- readRDS("outputs50K/Hovestadt_outputs/DAOYspher.WNTMBSHHMBHov.fastMNN.clust.rds")
+saveRDS(sj577.unclust,
+        file = "./outputs50K/Hovestadt_outputs/SJ577.unclustered.PatientSHHMB.rds")
 ```
 
 
-```{r DimplotHOV6tumoursDAOYspheroidMNN, fig.height=4, fig.width=4}
-# p2a <- DimPlot(hov.6tumours.dySpher.merged.clust, group.by = c("orig.ident"), split.by = "orig.ident", pt.size = 3)
-p2 <- DimPlot(hov.6tumours.dySpher.merged.clust, group.by = c("orig.ident"), pt.size = 3)
-p2
+```{r}
+# get cell cycle info
+sj577.unclust.norm <- NormalizeData(sj577.unclust)
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+sj577.unclust.norm <- CellCycleScoring(sj577.unclust.norm,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+
+sj577.phase <- SCTransform(sj577.unclust.norm, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+# isolate all NEUROD1 expressing cells, there are 303 cells
+neurod1.sj577 <- GetAssayData(object = sj577.phase,
+                            assay = "RNA",      # choosing "SCT" assay makes very little difference!
+                            slot = "data")["NEUROD1", ]
+pos.ids.neurod1.sj577 <- names(which(neurod1.sj577 > 0))
+length(pos.ids.neurod1.sj577)
+```
+```{r}
+neurod1.pos.sj577.phase <- subset(sj577.phase, cells = pos.ids.neurod1.sj577)
+```
+
+```{r}
+saveRDS(neurod1.pos.sj577.phase,
+        file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.SJ577.PatientSHH-MB.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# transfer meta.data to a new object called metadata.dy
+metadata.neurod1.sj577.phase <- neurod1.pos.sj577.phase@meta.data %>% 
+  rownames_to_column(var = "cellID") # this step needed as when 'select' is applied later on, the rownames
+                                    # (cell names) are still retained
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# merge the 3 WNT-MB and 3 SHH-MB datasets with daoy-only coculture
-# load the data
-# 3 WNT-MB
-raw.counts.sj516 <- read.table(file = "./hovestadt_Nature2019/GSM3905424_SJ516.txt",
-                         sep = "")
-raw.counts.bch807 <- read.table(file = "./hovestadt_Nature2019/GSM3905406_BCH807.txt",
-                         sep = "")
-raw.counts.sj129 <- read.table(file = "./hovestadt_Nature2019/GSM3905421_SJ129.txt",
-                         sep = "")
-# 3 SHH-MB
-raw.counts.muv41 <- read.table(file = "./hovestadt_Nature2019/GSM3905417_MUV41.txt",
-                         sep = "")
-raw.counts.sj454 <- read.table(file = "./hovestadt_Nature2019/GSM3905423_SJ454.txt",
-                         sep = "")
-raw.counts.sj577 <- read.table(file = "./hovestadt_Nature2019/GSM3905425_SJ577.txt",
-                         sep = "")
+# subset the metadata dataframe to keep just 'orig.ident' and 'Phase' columns (cc = cell cycle phase)
+metadata.cc.neurod1.sj577.phase <- metadata.neurod1.sj577.phase %>% 
+  dplyr::select(orig.ident, Phase)
+# for each orig.ident get a count for each orig.ident and for each Phase
+summ.stats.cc.neurod1.sj577.phase <- metadata.cc.neurod1.sj577.phase %>% 
+  dplyr::group_by(Phase, orig.ident) %>% 
+  dplyr::summarise(count= n())
 
-
-# create Seurat objects for tumours
-sj516.wnt <- CreateSeuratObject(raw.counts.sj516,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntA")
-bch807.wnt <- CreateSeuratObject(raw.counts.bch807,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntB")
-sj129.wnt <- CreateSeuratObject(raw.counts.sj129,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "wntC")
-
-muv41.shh <- CreateSeuratObject(raw.counts.muv41,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhA")
-sj454.shh <- CreateSeuratObject(raw.counts.sj454,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhB")
-sj577.shh <- CreateSeuratObject(raw.counts.sj577,
-                            min.cells = 10,
-                            min.genes = 200,
-                            project = "shhC")
-
-# load the DAOY-only cells subsetted from DAOY-CBO data
-dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+summ.stats.cc.neurod1.sj577.phase  # total is 257 cells. G1=166, G2M=33, S=58
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
+summ.stats.props.cc.neurod1.sj577.phase <- summ.stats.cc.neurod1.sj577.phase %>% 
+  dplyr::group_by(orig.ident) %>%
+  dplyr::mutate(props = count / sum(count))
+
+summ.stats.props.cc.neurod1.sj577.phase # total=238 cells. G1=0.69, G2M= 0.09, S=0.21
+```
+
+
+------------------------------------------------------------------------------------------------------
+***Prepare DAOY-only cells in coculture for a merge with other datasets***
 ```{r eval=FALSE, echo=FALSE}
 # load the DAOY-CBO object
 dyCbo <- readRDS("outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyOnly.dyCbo <- 
+  readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -370,53 +490,136 @@ saveRDS(dyOnly,
         "./outputs50K/INTEGRATE/DAOYonly.DAOYcbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
 ```
 
+```{r eval=FALSE, echo=FALSE}
+dyOnly <- 
+  readRDS("outputs50K/INTEGRATE/DAOYonly.DAOYcbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
+```
+
+
+
+------------------------------------------------------------------------------------------------------
+***Integrate SHH-MB, DAOY-only coculture using fastMNN***
 
 ```{r eval=FALSE, echo=FALSE}
-hov.6tumours.dyOnly.merged <- merge(sj516.wnt, 
-                    y = c(bch807.wnt, sj129.wnt, muv41.shh, sj454.shh, sj577.shh, dyOnly.dyCbo),
-                    project = "hov.6tumours.dyOnly.merged")
+# identify the files of interest
+list.files('hovestadt_Nature2019')
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-table(hov.6tumours.dyOnly.merged@meta.data$orig.ident)
+# load all the datasets to be merged in different combinations
+# 3 SHH-MB
+raw.counts.muv41 <- read.table(file = "./hovestadt_Nature2019/GSM3905417_MUV41.txt",
+                         sep = "")
+raw.counts.sj454 <- read.table(file = "./hovestadt_Nature2019/GSM3905423_SJ454.txt",
+                         sep = "")
+raw.counts.sj577 <- read.table(file = "./hovestadt_Nature2019/GSM3905425_SJ577.txt",
+                         sep = "")
+
+# 2 PDX SHH-MB
+raw.counts.rmcb18 <- read.table(file = "./hovestadt_Nature2019/GSM3905439_RCMB18.txt",
+                         sep = "")
+raw.counts.rmcb24 <- read.table(file = "./hovestadt_Nature2019/GSM3905441_RCMB24.txt",
+                         sep = "")
+
+# load the DAOY spheroid data
+dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
+
+# load the DAOY-only coculture data (not been through SCT normalisation or clustering)
+dyOnly <- 
+  readRDS("outputs50K/INTEGRATE/DAOYonly.DAOYcbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
+
+
+# create Seurat objects for tumours - 3 patient SHH-MB and 2 PDX
+muv41.shh <- CreateSeuratObject(raw.counts.muv41,
+                            min.cells = 10,
+                            min.genes = 200,
+                            project = "SHH-MB1")
+sj454.shh <- CreateSeuratObject(raw.counts.sj454,
+                            min.cells = 10,
+                            min.genes = 200,
+                            project = "SHH-MB2")
+sj577.shh <- CreateSeuratObject(raw.counts.sj577,
+                            min.cells = 10,
+                            min.genes = 200,
+                            project = "SHH-MB3")
+
+rmcb18.pdx <- CreateSeuratObject(raw.counts.rmcb18,
+                            min.cells = 10,
+                            min.genes = 200,
+                            project = "PDX1")
+rmcb24.pdx <- CreateSeuratObject(raw.counts.rmcb24,
+                            min.cells = 10,
+                            min.genes = 200,
+                            project = "PDX2")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# merge 3 patient SHH-MB tumours with DAOY-only cells in DAOY-CBO coculture
+hov.3shhMbtumours.dyOnly.merged <- merge(muv41.shh, 
+                    y = c(sj454.shh, sj577.shh, dyOnly),
+                    project = "hov.3shhMbtumours.dyOnly.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- hov.3shhMbtumours.dyOnly.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "dyCbo"))] <- "DAOY_coculture"
+```
+
+```{r eval=FALSE, echo=FALSE}
+hov.3shhMbtumours.dyOnly.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(hov.3shhMbtumours.dyOnly.merged@meta.data$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# run fastMNN on DAOY-only cells in coculture and patient SHH-MB
 # scale data step is not necessary as RunFastMNN does its own scaling
-hov.6tumours.dyOnly.merged.clust <- NormalizeData(hov.6tumours.dyOnly.merged)
-hov.6tumours.dyOnly.merged.clust <- FindVariableFeatures(hov.6tumours.dyOnly.merged.clust)
-hov.6tumours.dyOnly.merged.clust <- RunFastMNN(object.list = SplitObject(hov.6tumours.dyOnly.merged.clust, split.by = "orig.ident"))
-hov.6tumours.dyOnly.merged.clust <- RunUMAP(hov.6tumours.dyOnly.merged.clust, reduction = "mnn", dims = 1:20)
-hov.6tumours.dyOnly.merged.clust <- FindNeighbors(hov.6tumours.dyOnly.merged.clust, reduction = "mnn", dims = 1:20)
-hov.6tumours.dyOnly.merged.clust <- FindClusters(hov.6tumours.dyOnly.merged.clust)
+hov.3shhMbtumours.dyOnly.merged.clust <- NormalizeData(hov.3shhMbtumours.dyOnly.merged)
+hov.3shhMbtumours.dyOnly.merged.clust <- FindVariableFeatures(hov.3shhMbtumours.dyOnly.merged.clust)
+hov.3shhMbtumours.dyOnly.merged.clust <- RunFastMNN(object.list = SplitObject(hov.3shhMbtumours.dyOnly.merged.clust, split.by = "orig.ident"))
+hov.3shhMbtumours.dyOnly.merged.clust <- RunUMAP(hov.3shhMbtumours.dyOnly.merged.clust, reduction = "mnn", dims = 1:20)
+hov.3shhMbtumours.dyOnly.merged.clust <- FindNeighbors(hov.3shhMbtumours.dyOnly.merged.clust, reduction = "mnn", dims = 1:20)
+hov.3shhMbtumours.dyOnly.merged.clust <- FindClusters(hov.3shhMbtumours.dyOnly.merged.clust)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-saveRDS(hov.6tumours.dyOnly.merged.clust,
-        file = "./outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.WNTMBSHHMBHov.fastMNN.clust.rds")
+saveRDS(hov.3shhMbtumours.dyOnly.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.SHHMBHov.fastMNN.clust.rds")
 ```
 
-```{r}
-hov.6tumours.dyOnly.merged.clust <- readRDS("outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.WNTMBSHHMBHov.fastMNN.clust.rds")
+```{r eval=FALSE, echo=FALSE}
+hov.3shhMbtumours.dyOnly.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursDaoyOnlyCocultMNN, fig.height=6, fig.width=6}
+p2 <- DimPlot(hov.3shhMbtumours.dyOnly.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p2
 ```
 
 
-```{r DimplotHOV6tumoursDAOYonlyDAOYcboMNN, fig.height=4, fig.width=4}
-p3 <- DimPlot(hov.6tumours.dyOnly.merged.clust, group.by = c("orig.ident"), pt.size = 3)
-p3
-```
-
-
-***Run fastMNN on DAOY-spheroid or DAOY-only coculture in comparison to SHH-MB's only before calculating Mixing Metric***
+***Run fastMNN on DAOY-spheroid in comparison to SHH-MB's only before calculating Mixing Metric***
 
 ```{r eval=FALSE, echo=FALSE}
 # merge daoy-spher with patient SHH-MB's only
 dySpher.hovShhMB.merged <- merge(dySpher,
                                  y = c(muv41.shh, sj454.shh, sj577.shh),
                                  project = "hov.SHHMB.dySpher.merged")
-dyOnly.hovShhMB.merged <- merge(dyOnly,
-                                 y = c(muv41.shh, sj454.shh, sj577.shh),
-                                 project = "hov.SHHMB.dyOnly.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- dySpher.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "dySpher"))] <- "DAOY_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dySpher.hovShhMB.merged@meta.data <- metadata
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -434,44 +637,19 @@ saveRDS(dySpher.hovShhMB.merged.clust,
         file = "./outputs50K/Hovestadt_outputs/DAOYspher.SHHMBHov.fastMNN.clust.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dySpher.hovShhMB.merged.clust <- 
   readRDS("outputs50K/Hovestadt_outputs/DAOYspher.SHHMBHov.fastMNN.clust.rds")
 ```
 
-
-```{r DimplotHOVSHHMBtumoursDAOYspherMNN, fig.height=4, fig.width=4}
-p4 <- DimPlot(dySpher.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3)
-p4
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursDAOYspherMNN, fig.height=6, fig.width=6}
+p3 <- DimPlot(dySpher.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p3
 ```
 
-
-```{r eval=FALSE, echo=FALSE}
-# run fastMNN on DAOY-only cells in coculture and patient SHH-MB
-# scale data step is not necessary as RunFastMNN does its own scaling
-dyOnly.hovShhMB.merged.clust <- NormalizeData(dyOnly.hovShhMB.merged)
-dyOnly.hovShhMB.merged.clust <- FindVariableFeatures(dyOnly.hovShhMB.merged.clust)
-dyOnly.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(dyOnly.hovShhMB.merged.clust, split.by = "orig.ident"))
-dyOnly.hovShhMB.merged.clust <- RunUMAP(dyOnly.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
-dyOnly.hovShhMB.merged.clust <- FindNeighbors(dyOnly.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
-dyOnly.hovShhMB.merged.clust <- FindClusters(dyOnly.hovShhMB.merged.clust)
-```
-
-```{r eval=FALSE, echo=FALSE}
-saveRDS(dyOnly.hovShhMB.merged.clust,
-        file = "./outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.SHHMBHov.fastMNN.clust.rds")
-```
-
-```{r}
-dyOnly.hovShhMB.merged.clust <- 
-  readRDS("outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.SHHMBHov.fastMNN.clust.rds")
-```
-
-
-```{r DimplotHOVSHHMBtumoursDaoyOnlyCocultMNN, fig.height=6, fig.width=6}
-p5 <- DimPlot(dyOnly.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3)
-p5
-```
+***Run fastMNN on patient SHH-MB's only***
 
 ```{r eval=FALSE, echo=FALSE}
 # only merge the three SHH-MB's
@@ -495,16 +673,99 @@ saveRDS(hovShhMB.merged.clust,
         file = "./outputs50K/Hovestadt_outputs/SHHMBHov.fastMNN.clust.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 hovShhMB.merged.clust <- 
   readRDS("outputs50K/Hovestadt_outputs/SHHMBHov.fastMNN.clust.rds")
 ```
 
 
-```{r DimplotHOVSHHMBtumoursMNN, fig.height=6, fig.width=6}
-p6 <- DimPlot(hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3)
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursMNN, fig.height=6, fig.width=6}
+p4 <- DimPlot(hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p4
+```
+
+
+***Run fastMNN integration on patient SHH-MB's and PDX-RMCB18***
+```{r eval=FALSE, echo=FALSE}
+# merge RMCB18-PDX first with patient SHH-MBs
+rmcb18.hovShhMB.merged <- merge(muv41.shh,
+                                 y = c(sj454.shh, sj577.shh, rmcb18.pdx),
+                                 project = "hov.SHHMB.rmcb18.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+rmcb18.hovShhMB.merged.clust <- NormalizeData(rmcb18.hovShhMB.merged)
+rmcb18.hovShhMB.merged.clust <- FindVariableFeatures(rmcb18.hovShhMB.merged.clust)
+rmcb18.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(rmcb18.hovShhMB.merged.clust, split.by = "orig.ident"))
+rmcb18.hovShhMB.merged.clust <- RunUMAP(rmcb18.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+rmcb18.hovShhMB.merged.clust <- FindNeighbors(rmcb18.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+rmcb18.hovShhMB.merged.clust <- FindClusters(rmcb18.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(rmcb18.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/RMCB18PDX.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb18.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/RMCB18PDX.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursRMCB18PDXfastMNN, fig.height=6, fig.width=6}
+p5 <- DimPlot(rmcb18.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p5
+```
+
+
+```{r}
+DimPlot(rmcb18.hovShhMB.merged.clust,
+        "tsne") 
+```
+
+
+***Run fastMNN integration on patient SHH-MB's and PDX-RMCB24***
+```{r eval=FALSE, echo=FALSE}
+# merge RMCB24-PDX with patient SHH-MBs
+rmcb24.hovShhMB.merged <- merge(muv41.shh,
+                                 y = c(sj454.shh, sj577.shh, rmcb24.pdx),
+                                 project = "hov.SHHMB.rmcb24.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+rmcb24.hovShhMB.merged.clust <- NormalizeData(rmcb24.hovShhMB.merged)
+rmcb24.hovShhMB.merged.clust <- FindVariableFeatures(rmcb24.hovShhMB.merged.clust)
+rmcb24.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(rmcb24.hovShhMB.merged.clust, split.by = "orig.ident"))
+rmcb24.hovShhMB.merged.clust <- RunUMAP(rmcb24.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+rmcb24.hovShhMB.merged.clust <- FindNeighbors(rmcb24.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+rmcb24.hovShhMB.merged.clust <- FindClusters(rmcb24.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(rmcb24.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/RMCB24PDX.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb24.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/RMCB24PDX.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursRMCB24PDXfastMNN, fig.height=6, fig.width=6}
+p6 <- DimPlot(rmcb24.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
 p6
 ```
+
+
+***Calculate Mixing Metric for SHH-MB patient tumours integrated with other samples***
 
 ```{r eval=FALSE, echo=FALSE}
 # calculate mixing metric for 3 SHH-MB tumours with DAOY-SPHEROID cells
@@ -524,7 +785,7 @@ dySpher.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = dySpher.hovShh
 # calculate mixing metric for 3 SHH-MB tumours with DAOY-only cells in DAOY-CBO coculture
 # MixingMetric is a numeric vector
 max.k <- 300
-dyOnly.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = dyOnly.hovShhMB.merged.clust, 
+hov.3shhMbtumours.dyOnly.merged.clust.mm <- max.k - MixingMetric(object = hov.3shhMbtumours.dyOnly.merged.clust, 
              grouping.var = "orig.ident",
              reduction = "umap",
              dims = 1:2,
@@ -534,8 +795,8 @@ dyOnly.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = dyOnly.hovShhMB
              verbose = TRUE)
 ```
 
-```{r}
-# calculate mixing metric for 6 tumours with DAOY-SPHEROID cells
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB patient tumours only
 # MixingMetric is a numeric vector
 max.k <- 300
 hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = hovShhMB.merged.clust, 
@@ -548,58 +809,449 @@ hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = hovShhMB.merged.clust,
              verbose = TRUE)
 ```
 
-Make a GGPLOT VIOLIN PLOT of all the MixingMetric scores for the different integrations
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with RMCB18-PDX
+# MixingMetric is a numeric vector
+max.k <- 300
+rmcb18.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = rmcb18.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with RMCB24-PDX
+# MixingMetric is a numeric vector
+max.k <- 300
+rmcb24.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = rmcb24.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
 ```{r eval=FALSE, echo=FALSE}
 # check the lengths of each vector to find the longest - longest vector has  values
 length(dySpher.hovShhMB.merged.clust.mm)   # spher + patient MB
-length(dyOnly.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+length(hov.3shhMbtumours.dyOnly.merged.clust.mm) # cocult-only + patient MB
 length(hovShhMB.merged.clust.mm) # patient MB only
+length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
+length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-dyOnly.hovShhMB.merged.clust.mm.na <- c(dyOnly.hovShhMB.merged.clust.mm, rep(NA, 378))
+hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, 378))
 hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 649))
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 483))
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 512))
 ```
+
 
 ```{r eval=FALSE, echo=FALSE}
 summary(dySpher.hovShhMB.merged.clust.mm) # spher + patient MB
-summary(dyOnly.hovShhMB.merged.clust.mm.na) # cocult + patient MB
+summary(hov.3shhMbtumours.dyOnly.merged.clust.mm.na) # cocult + patient MB
 summary(hovShhMB.merged.clust.mm.na) # patient MB only
+summary(rmcb18.hovShhMB.merged.clust.mm.na) # PDX1 + patient MB
+summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # create a dataframe of the MixingMetric scores for all integrations
-daoy.patientShhMB.df2 <- data.frame(DAOY_coculture_patientMB = dyOnly.hovShhMB.merged.clust.mm.na,
+daoy.pdx.patientShhMB.df <- data.frame(DAOY_coculture_patientMB = hov.3shhMbtumours.dyOnly.merged.clust.mm.na,
                                    DAOY_spheroid_patientMB = dySpher.hovShhMB.merged.clust.mm,
-                                   patientMB = hovShhMB.merged.clust.mm.na)
+                                   patientMB = hovShhMB.merged.clust.mm.na,
+                                   PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
+                                   PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na)
 
-daoy.patientShhMB.df2.long <- pivot_longer(daoy.patientShhMB.df2,
-                                       cols = c(DAOY_coculture_patientMB, DAOY_spheroid_patientMB, patientMB),
+daoy.pdx.patientShhMB.df.long <- pivot_longer(daoy.pdx.patientShhMB.df,
+                                       cols = c(DAOY_coculture_patientMB, 
+                                                DAOY_spheroid_patientMB, 
+                                                patientMB,
+                                                PDX1_patientMB,
+                                                PDX2_patientMB),
                                        names_to = "groups.fct",
                                        values_to = "mixing_metric")
 
-# daoy.patientShhMB.df2.long$groups.fct <- factor(daoy.patientShhMB.df2.long$groups.fct)
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB", "DAOY_spheroid_patientMB")
 
-levels.order <- c("patientMB", "DAOY_coculture_patientMB", "DAOY_spheroid_patientMB")
-
-daoy.patientShhMB.df2.long$groups.fct <- factor(daoy.patientShhMB.df2.long$groups.fct,
+daoy.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.pdx.patientShhMB.df.long$groups.fct,
                                             levels = levels.order)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-saveRDS(daoy.patientShhMB.df2.long,
-        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.DAOYonlyCocult.DAOYspher.rds")
+saveRDS(daoy.pdx.patientShhMB.df.long,
+        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the df in long format for ggplot plotting
+daoy.pdx.patientShhMB.df.long <- 
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxDAOY, fig.height=6, fig.width=6}
+# violin plot of the MixingMetric scores for all integrations
+ggplot(daoy.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
+  geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 20),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 20, margin = margin(r=20)),
+        axis.title.x = element_blank() )
+```
+
+
+
+------------------------------------------------------------------------------------------------------
+***Integrate SHH-MB, PDX1, PDX2, ONS76-SPHEROID, ONS76-only coculture using fastMNN***
+
+****Prepare the ONS76-only coculture cells for merge and fastMNN integration****
+```{r eval=FALSE, echo=FALSE}
+# create Seurat objects for tumours
+o76only.o76cbo <- readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76cboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(WhichCells(o76only.o76cbo))
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the DAOY only cells that have NOT been through SCT normalisation
+o76onlyIDs <- WhichCells(o76only.o76cbo)
+o76only <- subset(o76cbo, cells = o76onlyIDs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76only,
+        "./outputs50K/INTEGRATE/ONS76only.ONS76cbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load ONS76-only coculture object
+o76only <- 
+  readRDS("outputs50K/INTEGRATE/ONS76only.ONS76cbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
+```
+
+----------------------------------------------------------------------------------------------------------
+
+```{r eval=FALSE, echo=FALSE}
+# load ONS76-spheroid object
+o76spher <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+```
+
+
+***Run fastMNN on ONS76-spheroid or ONS76-only coculture in comparison to SHH-MB's only before calculating Mixing Metric***
+
+```{r eval=FALSE, echo=FALSE}
+# merge ONS76-spher with patient SHH-MB's only
+o76spher.hovShhMB.merged <- merge(o76spher,
+                                 y = c(muv41.shh, sj454.shh, sj577.shh),
+                                 project = "hov.SHHMB.o76spher.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- o76spher.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "ons76spher"))] <- "ONS76_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76spher.hovShhMB.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+o76spher.hovShhMB.merged.clust <- NormalizeData(o76spher.hovShhMB.merged)
+o76spher.hovShhMB.merged.clust <- FindVariableFeatures(o76spher.hovShhMB.merged.clust)
+o76spher.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(o76spher.hovShhMB.merged.clust, split.by = "orig.ident"))
+o76spher.hovShhMB.merged.clust <- RunUMAP(o76spher.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76spher.hovShhMB.merged.clust <- FindNeighbors(o76spher.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76spher.hovShhMB.merged.clust <- FindClusters(o76spher.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76spher.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/ONS76spheroid.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76spher.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/ONS76spheroid.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursONS76spherMNN, fig.height=6, fig.width=6}
+p7 <- DimPlot(o76spher.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p7
+```
+
+```{r eval=FALSE, echo=FALSE}
+# merge ONS76-only coculture with patient SHH-MB
+o76only.hovShhMB.merged <- merge(o76only,
+                                 y = c(muv41.shh, sj454.shh, sj577.shh),
+                                 project = "hov.SHHMB.o76only.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- o76only.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "o76cbo"))] <- "ONS76_coculture"
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76only.hovShhMB.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+o76only.hovShhMB.merged.clust <- NormalizeData(o76only.hovShhMB.merged)
+o76only.hovShhMB.merged.clust <- FindVariableFeatures(o76only.hovShhMB.merged.clust)
+o76only.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(o76only.hovShhMB.merged.clust, split.by = "orig.ident"))
+o76only.hovShhMB.merged.clust <- RunUMAP(o76only.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76only.hovShhMB.merged.clust <- FindNeighbors(o76only.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76only.hovShhMB.merged.clust <- FindClusters(o76only.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76only.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/ONS76onlyCoculture.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76only.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/ONS76onlyCoculture.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursONS76onlyCocultureMNN, fig.height=6, fig.width=6}
+p8 <- DimPlot(o76only.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p8
+```
+
+***Calculate Mixing Metrics for ONS76 samples
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-SPHEROID cells
+# MixingMetric is a numeric vector
+max.k <- 300
+o76spher.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76spher.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-only cells in ONS76-CBO coculture
+# MixingMetric is a numeric vector
+max.k <- 300
+o76only.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76only.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+START HERE - GET LENGTHS OF VECTORS
+```{r eval=FALSE, echo=FALSE}
+# check the lengths of each vector to find the longest - longest vector has  values
+length(o76spher.hovShhMB.merged.clust.mm)   # spher + patient MB
+length(o76only.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+length(hovShhMB.merged.clust.mm) # patient MB only
+length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
+length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, 815))
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 1164))
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 998))
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 1027))
+```
+
+```{r eval=FALSE, echo=FALSE}
+summary(o76spher.hovShhMB.merged.clust.mm) # spher + patient MB
+summary(o76only.hovShhMB.merged.clust.mm.na) # cocult + patient MB
+summary(hovShhMB.merged.clust.mm.na) # patient MB only
+summary(rmcb18.hovShhMB.merged.clust.mm.na) # PDX1 + patient MB
+summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
+```
+
+```{r eval=FALSE, echo=FALSE}
+# create a dataframe of the MixingMetric scores for all integrations
+o76.pdx.patientShhMB.df <- data.frame(ONS76_coculture_patientMB = o76only.hovShhMB.merged.clust.mm.na,
+                                   ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm,
+                                   patientMB = hovShhMB.merged.clust.mm.na,
+                                   PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
+                                   PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na)
+
+o76.pdx.patientShhMB.df.long <- pivot_longer(o76.pdx.patientShhMB.df,
+                                       cols = c(ONS76_coculture_patientMB, 
+                                                ONS76_spheroid_patientMB, 
+                                                patientMB,
+                                                PDX1_patientMB,
+                                                PDX2_patientMB),
+                                       names_to = "groups.fct",
+                                       values_to = "mixing_metric")
+
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "ONS76_coculture_patientMB", "ONS76_spheroid_patientMB")
+
+o76.pdx.patientShhMB.df.long$groups.fct <- factor(o76.pdx.patientShhMB.df.long$groups.fct,
+                                            levels = levels.order)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76.pdx.patientShhMB.df.long,
+        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the df in long format for ggplot plotting
+o76.pdx.patientShhMB.df.long <- 
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76, fig.height=6, fig.width=6}
+# violin plot of the MixingMetric scores for all integrations
+ggplot(o76.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
+  geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 20),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 20, margin = margin(r=20)),
+        axis.title.x = element_blank() )
+```
+
+****Create one dataframe for both cell lines****
+```{r eval=FALSE, echo=FALSE}
+# check the lengths of each vector to find the longest - longest vector has  values
+length(dySpher.hovShhMB.merged.clust.mm)   # spher + patient MB 
+length(hov.3shhMbtumours.dyOnly.merged.clust.mm) # cocult-only + patient MB
+length(hovShhMB.merged.clust.mm) # patient MB only
+length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
+length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
+length(o76spher.hovShhMB.merged.clust.mm)   # spher + patient MB
+length(o76only.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+```
+
+```{r eval=FALSE, echo=FALSE}
+hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, 893))
+dySpher.hovShhMB.merged.clust.mm.na <- c(dySpher.hovShhMB.merged.clust.mm, rep(NA, 515))
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 1164))
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 998))
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 1027))
+o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, 815))
+```
+
+```{r eval=FALSE, echo=FALSE}
+summary(hovShhMB.merged.clust.mm.na) # patient MB only
+summary(rmcb18.hovShhMB.merged.clust.mm.na) # PDX1 + patient MB
+summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
+summary(hov.3shhMbtumours.dyOnly.merged.clust.mm.na) # DAOY-cocult + patient MB
+summary(o76only.hovShhMB.merged.clust.mm.na) # ONS76-cocult + patient MB
+summary(dySpher.hovShhMB.merged.clust.mm.na) # DAOY-spher + patient MB
+summary(o76spher.hovShhMB.merged.clust.mm) # ONS76-spher + patient MB
 ```
 
 ```{r}
-# load the df in long format for ggplot plotting
-daoy.patientShhMB.df2.long <- 
-  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.DAOYonlyCocult.DAOYspher.rds")
+mixmetSumm <- rbind(summary(hovShhMB.merged.clust.mm), 
+      summary(rmcb18.hovShhMB.merged.clust.mm),
+      summary(rmcb24.hovShhMB.merged.clust.mm),
+      summary(hov.3shhMbtumours.dyOnly.merged.clust.mm),
+      summary(o76only.hovShhMB.merged.clust.mm),
+      summary(dySpher.hovShhMB.merged.clust.mm),
+      summary(o76spher.hovShhMB.merged.clust.mm))
+mixmetSumm
 ```
 
-```{r ViolinplotMixingMetricShhMb1PatientsDAOY, fig.height=4, fig.width=4}
+```{r}
+colnames(mixmetSumm)
+```
+
+```{r}
+mixmetSumm.df <- as.data.frame(mixmetSumm)
+```
+
+```{r}
+head(mixmetSumm.df)
+```
+
+
+```{r}
+# add a 'sample' column to the above df at the beginning
+Sample <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB")
+
+mixmetSumm.df2 <- cbind(Sample, mixmetSumm.df)
+
+mixmetSumm.df2
+```
+
+```{r}
+write.csv(mixmetSumm.df2,
+          file = "./outputs50K/Hovestadt_outputs/MixingMetricTableOfSummaryFunctionValues.7conditions.csv",
+          quote = FALSE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# create a dataframe of the MixingMetric scores for all integrations
+daoy.o76.pdx.patientShhMB.df <- data.frame(DAOY_coculture_patientMB = hov.3shhMbtumours.dyOnly.merged.clust.mm.na,
+                                   DAOY_spheroid_patientMB = dySpher.hovShhMB.merged.clust.mm.na,
+                                   patientMB = hovShhMB.merged.clust.mm.na,
+                                   PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
+                                   PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na,
+                                   ONS76_coculture_patientMB = o76only.hovShhMB.merged.clust.mm.na,
+                                   ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm)
+
+daoy.o76.pdx.patientShhMB.df.long <- pivot_longer(daoy.o76.pdx.patientShhMB.df,
+                                       cols = c(DAOY_coculture_patientMB, 
+                                                DAOY_spheroid_patientMB, 
+                                                patientMB,
+                                                PDX1_patientMB,
+                                                PDX2_patientMB,
+                                                ONS76_coculture_patientMB,
+                                                ONS76_spheroid_patientMB),
+                                       names_to = "groups.fct",
+                                       values_to = "mixing_metric")
+
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB")
+
+daoy.o76.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.o76.pdx.patientShhMB.df.long$groups.fct,
+                                            levels = levels.order)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the df in long format for ggplot plotting
+saveRDS(daoy.o76.pdx.patientShhMB.df.long,
+  file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the long df
+daoy.o76.pdx.patientShhMB.df.long <- 
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76andDAOY, fig.height=6, fig.width=12}
 # violin plot of the MixingMetric scores for all integrations
-ggplot(daoy.patientShhMB.df2.long, aes(x = groups.fct, y = mixing_metric)) +
+ggplot(daoy.o76.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
   geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 20),
@@ -614,6 +1266,37 @@ ggplot(daoy.patientShhMB.df2.long, aes(x = groups.fct, y = mixing_metric)) +
 ########################################################################################################
 --------------------------------------------------------------------------------------------------------
 CODE THAT WAS NOT VERY USEFUL BUT RETAINED FOR FUTURE USE
+
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(hov.6tumours.o76spher.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/ONS76spher.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+hov.6tumours.o76spher.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/ONS76spher.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# this file was prepared previously, not planning to use it!
+saveRDS(hov.6tumours.dySpher.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/DAOYspher.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+hov.6tumours.dySpher.merged.clust <- readRDS("outputs50K/Hovestadt_outputs/DAOYspher.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(hov.6tumours.dyOnly.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+hov.6tumours.dyOnly.merged.clust <- readRDS("outputs50K/Hovestadt_outputs/DAOYonlyDAOYcbo.WNTMBSHHMBHov.fastMNN.clust.rds")
+```
 
 
 SILHOUETTE ANALYSIS:
@@ -712,11 +1395,7 @@ dySpher.input.integration <-
   readRDS("outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
 ```
 
-```
-{r}
-dyOnly.dyCbo <- 
-  readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
-```
+
 
 As can be seen from the below, the dyOnly.dyCbo object has a prefix before the cell ID. This must be removed before proceeding
 ```
