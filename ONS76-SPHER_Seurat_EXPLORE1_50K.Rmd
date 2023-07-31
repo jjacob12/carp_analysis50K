@@ -30,6 +30,8 @@ library(patchwork)
 ```
 
 
+-----------------------------------------------------------------------------------------------------
+***Repeat analysis of ONS76-CBO scRNA-seq with retained ribosomal genes***
 ```{r}
 # load the data from scratch
 # load the ONS76-2D raw data (from "working_data" folder)
@@ -38,7 +40,7 @@ list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.
 ```
 
 ```{r}
-# note these are .gz files which can be directly read. n = 3838 cells
+# note these are .gz files which can be directly read. n = 1322 cells (o76spher.data)
 o76spher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
                          features = paste0(data_dir, "features.tsv.gz"), 
                          cells = paste0(data_dir, "barcodes.tsv.gz"))
@@ -51,6 +53,315 @@ dim(o76spher) # 17,677 genes and 1322 cells
 ```
 
 ```{r}
+# identify mitochondrial genes and calculate percent
+mito.genes <- grep(pattern = "^MT", x = rownames(x = o76spher), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(o76spher[mito.genes, ])/Matrix::colSums(o76spher)
+```
+
+```{r}
+# add the mitochondrial gene percent to the metadata
+o76spher <- 
+  AddMetaData(object = o76spher, metadata = percent.mito, col.name = "percent.mito")
+```
+
+```{r}
+# remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
+
+# remove mitochondrial genes 
+o76spher <- o76spher[ ! grepl("^MT-", rownames(o76spher)), ]
+dim(o76spher)  # 17,664 genes, 1322 cells
+```
+
+```{r}
+# remove all cells with percent.mito > 10%
+o76spher <- subset(o76spher, subset = percent.mito < 0.1)
+dim(o76spher) # 17,664 genes and 1164 cells
+```
+
+```{r}
+# save the above object, non-normalised, non-clustered
+saveRDS(o76spher,
+        file = "./outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+```
+
+```{r}
+# load the above object, which has only been through mito, gene and cell filtering
+o76cbo <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+```
+
+```{r}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+o76spher <- NormalizeData(o76spher)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+o76spher <- CellCycleScoring(o76spher,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+o76spher$CC.difference <- o76spher$S.Score - o76spher$G2M.Score
+```
+
+```{r}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+o76spher.input.integration <- SCTransform(o76spher, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(o76spher.input.integration, "./outputs50K/ONS76_SPHER/ONS76spher.RiboGenesRetained.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r}
+o76spher <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "glmGamPoi", 
+                        verbose = FALSE) %>%   
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r}
+# save the clustered, SCTransformed object above
+saveRDS(o76spher, 
+        file = "./outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# load the above object. This object not yet been annotated.
+o76spher <- 
+  readRDS("outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r DimplotCboUmapSCTransform, fig.height=6, fig.width=10}
+# for res = 0.5, 5 clusters are found
+DimPlot(o76spher, label = TRUE)
+```
+
+```{r}
+# get the markers of each cluster
+o76spher.POSmarkers <- FindAllMarkers(object = o76spher, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+saveRDS(o76spher.POSmarkers,
+        file = "./outputs50K/ONS76_SPHER/POS.markers.RiboRetained.ONS76spheroid.SCT.clustered.rds")
+```
+
+```{r}
+o76spher.POSmarkers <- readRDS("outputs50K/ONS76_SPHER/POS.markers.RiboRetained.ONS76spheroid.SCT.clustered.rds")
+```
+
+```{r}
+o76spher.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 10)
+```
+
+```{r}
+# MEIS1 and CNTN1 are expressed of these five, NEUROD1 is NOT expressed
+o76spher.POSmarkers %>%
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX"))
+```
+
+
+The 5 clusters look different from each other when ribosome genes are retained. Not much different than with ribosome genes removed. Cluster 2 and 3 are more similar to each other than to other clusters as noted previously with ribosome genes removed.
+```{r HeatmapONS76spherTop10markers5clustersRes0.5, fig.height=6, fig.width=10}
+# first load o76spher seurat object above and the file of positive markers, then only run this chunk
+o76spher.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(o76spher, features = top10$gene) + guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20)) 
+```
+
+Run presto
+```{r}
+# prepare the data for gProfiler (web app) input (res = 0.5)
+o76spher.genes.presto <- wilcoxauc(o76spher, 'seurat_clusters')
+nrow(o76spher.genes.presto)
+dplyr::count(o76spher.genes.presto, group)
+```
+
+```{r}
+# filter and order the gene list for cluster 0
+o76spher.genes.presto.clust0 <- o76spher.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76spher.genes.presto.clust0) # 221 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76spher.genes.presto.clust0, 
+          "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster0.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list for cluster 1
+o76spher.genes.presto.clust1 <- o76spher.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76spher.genes.presto.clust1) # 385 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76spher.genes.presto.clust1, 
+          "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list for cluster 2
+o76spher.genes.presto.clust2 <- o76spher.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76spher.genes.presto.clust2) # only 69 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76spher.genes.presto.clust2, 
+          "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster2.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list for cluster 3
+o76spher.genes.presto.clust3 <- o76spher.genes.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76spher.genes.presto.clust3) # 238 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76spher.genes.presto.clust3, 
+          "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster3.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r}
+# filter and order the gene list for cluster 4
+o76spher.genes.presto.clust4 <- o76spher.genes.presto %>% 
+  dplyr::filter(group == "4" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76spher.genes.presto.clust4) # 588 genes
+```
+
+```{r}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76spher.genes.presto.clust4, 
+          "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster4.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+
+
+***Clustree***
+```{r}
+# attempt to use Clustree package to find the right number of clusters
+# -----------------------------------------------------------------------------------------------
+
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
+
+# Find clusters using a range of resolutions, the clustering information is in the metadata slot
+ons76spher.clusters <- FindClusters(object = o76spher, 
+                                      resolution = resolution.range,
+                                      verbose = FALSE)
+```
+
+```{r ClustreeCBO, fig.height=8}
+# the clustering tree finds 2-4 major clusters initially with res = 0.5.
+# when res > 0.4 the cluster assignment becomes unstable.
+# clusters 0-2 have pct.1 ~ pct.2, whereas clusters 3 and 4 look unique 
+clustree(ons76spher.clusters)
+```
+
+```{r}
+# get the number of cells per cluster
+table(Idents(o76spher))
+```
+
+```{r}
+# load the dataset
+o76spher <- readRDS("outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# confirm that cell cycle phase metadata is present - it is
+head(o76spher@meta.data)
+```
+
+```{r}
+# extract the G1 only cells from o76spher (this 'o76spher' object is the already CLUSTERED object)
+# first, switch Idents to 'Phase'
+Idents(o76spher) <- "Phase"
+o76spher.g1.cellIDs <- WhichCells(o76spher, idents = "G1")
+length(o76spher.g1.cellIDs) # 635 cells
+```
+
+```{r}
+# these cell IDs look correctly formatted
+# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
+o76spher.g1cells <- subset(o76spher, cells = o76spher.g1.cellIDs)
+head(WhichCells(o76spher.g1cells))
+```
+
+```{r}
+# check the number of cells is correct in the subsetted object
+dim(o76spher.g1cells) # 635 cells in G1
+```
+
+
+```{r}
+# create an object suitable for integration (don't need to regress cell cycle!)
+
+o76spher.g1cells.input.integration <- SCTransform(o76spher.g1cells,
+                                                  method = "glmGamPoi",
+                                                  vst.flavor = "v2",
+                                                  verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r}
+dim(o76spher.g1cells.input.integration) # object has 635 cells which is correct
+```
+
+```{r}
+# save the "o76spher.g1cells.input.integration" object
+saveRDS(o76spher.g1cells.input.integration, 
+        file = "./outputs50K/ONS76_SPHER/G1phaseCells.RiboRetained.ONS76spheroid.inputIntegration.SCTransformed.PCA.unclustered.rds")
+```
+
+
+-------------------------------------------------------------------------------------
+CODE NOT USED BUT RETAINED IN CASE IT PROVES USEFUL LATER
+
+```
+{r}
 # identify mitochondrial genes
 mito.genes <- grep(pattern = "^MT", x = rownames(x = o76spher), value = TRUE)
 percent.mito <- 
@@ -78,305 +389,12 @@ o76spher <- o76spher[ ! grepl("^MT-", rownames(o76spher)), ]
 dim(o76spher) # 17,560 genes and 1322 cells
 ```
 
-```{r}
+```
+{r}
 # remove all cells with percent.mito > 10%
 o76spher <- subset(o76spher, subset = percent.mito < 0.1)
 dim(o76spher) # reduced to 17,569 genes and 1164 cells
 ```
-
-```{r}
-# save the NON-normalised, NON-clustered cbo seurat object
-saveRDS(o76spher, file = "./outputs50K/ONS76_SPHER/filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds")
-```
-
-```{r}
-o76spher <- readRDS("outputs50K/ONS76_SPHER/filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds")
-```
-
-```{r}
-# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
-
-# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
-o76spher <- NormalizeData(o76spher)
-
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-# calculate CC difference
-o76spher <- CellCycleScoring(o76spher,
-                g2m.features = g2m.genes,
-                s.features = s.genes)
-o76spher$CC.difference <- o76spher$S.Score - o76spher$G2M.Score
-```
-
-```{r}
-# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
-o76spher.input.integration <- SCTransform(o76spher, 
-                   vars.to.regress = "CC.difference",
-                   method = "glmGamPoi",
-                   vst.flavor = "v2",
-                   verbose = FALSE) %>% 
-  RunPCA(npcs = 30, verbose = FALSE)
-```
-
-```{r}
-# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
-saveRDS(o76spher.input.integration, "./outputs50K/ONS76_SPHER/ONS76spher.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
-```
-
-```{r}
-o76spher <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "glmGamPoi", 
-                        verbose = FALSE) %>%   
-  RunPCA(verbose = FALSE) %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, resolution = 0.5)
-```
-
-```{r}
-# save the clustered, SCTransformed object above
-saveRDS(o76spher, 
-        file = "./outputs50K/ONS76_SPHER/ons76spher.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
-```
-
-```{r}
-# load the above object. This object not yet been annotated.
-o76spher <- 
-  readRDS("outputs50K/ONS76_SPHER/ons76spher.RiboMitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
-```
-
-```{r DimplotCboUmapSCTransform, fig.height=6, fig.width=10}
-# for res = 0.5, 5 clusters are found
-DimPlot(o76spher, label = TRUE)
-```
-
-```{r}
-# get the markers of each cluster
-o76spher.POSmarkers <- FindAllMarkers(object = o76spher, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-```
-
-```{r}
-o76spher.POSmarkers %>% 
-  dplyr::group_by(cluster) %>% 
-  slice_head(n = 3)
-```
-
-```{r}
-# MEIS1 and CNTN1 are expressed of these five
-o76spher.POSmarkers %>%
-  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX1"))
-```
-
-```{r}
-saveRDS(o76spher.POSmarkers,
-        file = "./outputs50K/ONS76_SPHER/POS.markers.ONS76spheroid.SCT.clustered.rds")
-```
-
-```{r}
-o76spher.POSmarkers <- readRDS("outputs50K/ONS76_SPHER/POS.markers.ONS76spheroid.SCT.clustered.rds")
-```
-
-```{r HeatmapONS76spherTop10markers5clustersRes0.5, fig.height=6, fig.width=6}
-# first load o76spher seurat object above and the file of positive markers, then only run this chunk
-o76spher.POSmarkers %>% 
-  group_by(cluster) %>%
-    top_n(n = 10, wt = avg_log2FC) -> top10
-DoHeatmap(o76spher, features = top10$gene) + NoLegend()
-```
-
-As can be seen in the above heatmap, the markers do not do a great job of separating the 5 clusters, e.g. clusters 2 and 3 have quite similar gene expression. Also looking at clustree output, at res=0.4 one of the clusters looks unstable. Try res=0.4 nevertheless.
-```{r}
-# resolution = 0.4
-# first load "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" then normalise, run CC regression,
-# then cluster the cells as per this code chunk
-o76spher.res0.4 <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
-  RunPCA(verbose = FALSE) %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, resolution = 0.4)
-```
-
-```{r}
-# get the markers of each cluster 
-o76spher.POSmarkers.res0.4 <- 
-  FindAllMarkers(object = o76spher.res0.4, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-```
-
-```{r HeatmapONS76spherTop10markers5clustersRes0.4, fig.height=6, fig.width=6}
-# first load dyMono seurat object above, then only run this chunk
-o76spher.POSmarkers.res0.4 %>% 
-  group_by(cluster) %>%
-    top_n(n = 10, wt = avg_log2FC) -> top10
-DoHeatmap(o76spher.res0.4, features = top10$gene) + guides(color = "none")
-```
-
-The heatmap at res=0.4 shows that clusters are still not that well defined. Try resolution = 0.2
-```{r}
-# resolution = 0.2
-# first load "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" then normalise, run CC regression,
-# then cluster the cells as per this code chunk
-o76spher.res0.2 <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
-  RunPCA(verbose = FALSE) %>% 
-  RunUMAP(dims=1:30, verbose=FALSE) %>% 
-  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
-  FindClusters(verbose=FALSE, resolution = 0.2)
-```
-
-```{r}
-# get the markers of each cluster 
-o76spher.POSmarkers.res0.2 <- 
-  FindAllMarkers(object = o76spher.res0.2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-```
-
-```{r HeatmapONS76spherTop10markers2clustersRes0.2, fig.height=6, fig.width=6}
-# first load o76spher seurat object above, then only run this chunk
-o76spher.POSmarkers.res0.2 %>% 
-  group_by(cluster) %>%
-    top_n(n = 10, wt = avg_log2FC) -> top10
-DoHeatmap(o76spher.res0.2, features = top10$gene) + guides(color = "none")
-```
-
-The above heatmap with resolution = 0.2 and 2 clusters shows the best differentiation between clusters.
-
-```{r}
-saveRDS(o76spher.res0.2,
-        file = "./outputs50K/ONS76_SPHER/ons76spheroid.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
-```
-
-```{r}
-# save the POS markers at res=0.2
-saveRDS(o76spher.POSmarkers.res0.2,
-        file = "./outputs50K/ONS76_SPHER/POS.markers.res0.2.ONS76spheroid.SCT.clustered.rds")
-```
-
-Run presto
-```{r}
-# prepare the data for gProfiler (web app) input
-o76spher.res0.2.genes.presto <- wilcoxauc(o76spher.res0.2, 'seurat_clusters')
-nrow(o76spher.res0.2.genes.presto)
-dplyr::count(o76spher.res0.2.genes.presto, group)
-```
-
-```{r}
-head(o76spher.res0.2.genes.presto, 3)
-```
-
-```{r}
-# filter and order the gene list for cluster 0
-o76spher.res0.2.genes.presto.clust0 <- o76spher.res0.2.genes.presto %>% 
-  dplyr::filter(group == "0" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(o76spher.res0.2.genes.presto.clust0) # 203 genes
-```
-
-```{r}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
-# of genes into gProfiler web app
-write.csv(o76spher.res0.2.genes.presto.clust0, 
-          "./outputs50K/ONS76_SPHER/ONS76spheroid.res0.2.cluster0.genes.presto.gProfilerInput.csv", quote = F)
-```
-
-```{r}
-# filter and order the gene list for cluster 1
-o76spher.res0.2.genes.presto.clust1 <- o76spher.res0.2.genes.presto %>% 
-  dplyr::filter(group == "1" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(o76spher.res0.2.genes.presto.clust1) # 173 genes
-```
-
-```{r}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
-# of genes into gProfiler web app
-write.csv(o76spher.res0.2.genes.presto.clust1, 
-          "./outputs50K/ONS76_SPHER/ONS76spheroid.res0.2.cluster1.genes.presto.gProfilerInput.csv", quote = F)
-```
-
-
-
-***Clustree***
-```{r}
-# attempt to use Clustree package to find the right number of clusters
-# -----------------------------------------------------------------------------------------------
-
-# Select a range of resolutions
-resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
-
-# Find clusters using a range of resolutions, the clustering information is in the metadata slot
-ons76spher.clusters <- FindClusters(object = o76spher, 
-                                      resolution = resolution.range,
-                                      verbose = FALSE)
-```
-
-```{r ClustreeCBO, fig.height=8}
-# the clustering tree finds 2-4 major clusters initially with res = 0.5.
-# when res > 0.4 the cluster assignment becomes unstable.
-# clusters 0-2 have pct.1 ~ pct.2, whereas clusters 3 and 4 look unique 
-clustree(ons76spher.clusters)
-```
-
-
-```{r}
-# get the number of cells per cluster
-table(Idents(o76spher))
-```
-
-
-```{r}
-# load the dataset
-o76spher.res0.2 <- readRDS("outputs50K/ONS76_SPHER/ons76spheroid.RiboMitoCellsGenesFilt.SCT.res0.2.clustered.CCdiffRegressed.rds")
-```
-
-```{r}
-# confirm that cell cycle phase metadata is present - it is
-head(o76spher.res0.2@meta.data)
-```
-
-```{r}
-# extract the G1 only cells from o76spher (this 'o76spher' object is the already CLUSTERED object)
-# first, switch Idents to 'Phase'
-Idents(o76spher.res0.2) <- "Phase"
-o76spher.g1.cellIDs <- WhichCells(o76spher.res0.2, idents = "G1")
-length(o76spher.g1.cellIDs)
-```
-
-```{r}
-# these cell IDs look correctly formatted
-# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
-o76spher.g1cells <- subset(o76spher, cells = o76spher.g1.cellIDs)
-head(WhichCells(o76spher.g1cells))
-```
-
-```{r}
-# check the number of cells is correct in the subsetted object
-dim(o76spher.g1cells) # 668 cells in G1
-```
-
-
-```{r}
-# create an object suitable for integration (don't need to regress cell cycle!)
-
-o76spher.g1cells.input.integration <- SCTransform(o76spher.g1cells,
-                                                  method = "glmGamPoi",
-                                                  vst.flavor = "v2",
-                                                  verbose = FALSE) %>% 
-  RunPCA(npcs = 30, verbose = FALSE)
-```
-
-```{r}
-dim(o76spher.g1cells.input.integration) # object has 668 cells which is correct
-```
-
-```{r}
-# save the "o76spher.g1cells.input.integration" object
-saveRDS(o76spher.g1cells.input.integration, 
-        file = "./outputs50K/ONS76_SPHER/G1phaseCells.ONS76spheroid.inputIntegration.SCTransformed.PCA.unclustered.rds")
-```
-
-
-
 
 
 
