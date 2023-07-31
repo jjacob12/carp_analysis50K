@@ -22,15 +22,22 @@ knitr::opts_chunk$set(dev = "png",
 suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
+library(magrittr)
 library(RColorBrewer)
-library(fgsea)
-library(msigdbr)
-library(presto)
-library(Matrix)
-library(heatmap3)
 library(patchwork)
+library(monocle3)
+library(ReactomePA)
+library(msigdbr)
+library(fgsea)
+library(enrichplot)
+library(presto)
+library(org.Hs.eg.db)
+library(DOSE)
+library(heatmap3)
+library(reshape2)
+library(Matrix)
+library(qlcMatrix)
 library(tidyverse)
-library(plyr)
 })
 ```
 
@@ -40,133 +47,245 @@ library(plyr)
 load("RDataFiles/ONS76-CBO_Seurat_EXPLORE1_50K.RData")
 ```
 
+---------------------------------------------------------------------------------------------------------
+***Repeat analysis of ONS76-CBO scRNA-seq with retained ribosomal genes***
 
-------------------------------------------------------------------------------------------
-***Load the clusterMap object of ONS76-CBO sample and the annotated sample***
-Although this file/object was part of the clusterMap workflow (Feb 2023) a clustered object that has undergone mitochondrial, ribosomal, cell and gene filtering, cell cycle difference regressed has been saved. Normalisation method = SCTransform. This file avoids the error of a normalisation step before SCT which was performed inappropriately for all samples in the QC files.
+Not possible to use FindAllMarkers to exclude ribosomal genes, as it throws an error message. On further inspection there was a cluster, cluster 5 that was enriched for ribosome gene expression. This cell state was not present in ONS76-spher sample, and it was present in the control CBO, so I assume the ribosome-rich cluster is associated with the non-malignant organoid
+```{r eval=FALSE, echo=FALSE}
+# load the ONS76-CBO raw data
+data_dir <- "./working_data/ONS76-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+o76cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76cbo <- CreateSeuratObject(counts = o76cbo.data,
+                          min.cells = 10, min.genes=200, # note min.cells = 10
+                          project = "o76cbo")
+
+dim(o76cbo) # 21,213 genes and 3456 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes and calculate percent
+mito.genes <- grep(pattern = "^MT", x = rownames(x = o76cbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(o76cbo[mito.genes, ])/Matrix::colSums(o76cbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add the mitochondrial gene percent to the metadata
 o76cbo <- 
-  readRDS("outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
+  AddMetaData(object = o76cbo, metadata = percent.mito, col.name = "percent.mito")
 ```
 
-```{r DimplotONS76cboSCTphaseCCdiffRegressed, fig.height=6, fig.width=10}
-DimPlot(o76cbo, label = TRUE) # '+ NoLegend()' is an option to insert here
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
+
+# remove mitochondrial genes 
+o76cbo <- o76cbo[ ! grepl("^MT-", rownames(o76cbo)), ]
+dim(o76cbo)  # 21,200 genes, 3456 cells
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+o76cbo <- subset(o76cbo, subset = percent.mito < 0.1)
+dim(o76cbo) # 21,200 genes and 2529 cells
+```
 
-```{r ElbowPlotONS76cboPhaseSCTclust}
+```{r eval=FALSE, echo=FALSE}
+# save the above object
+saveRDS(o76cbo,
+        file = "./outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object, which has only been through gene and cell filtering
+o76cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+o76cbo <- NormalizeData(o76cbo)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+o76cbo <- CellCycleScoring(o76cbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+o76cbo$CC.difference <- o76cbo$S.Score - o76cbo$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# regressing out nUMI, percent.mito, percent.ribo in addition to CC.difference made cluster assignment
+# harder so stick to only regressing CC.difference!!
+# this object as input for SCTransform integration, UN-clustered
+o76cbo.input.integration <- SCTransform(o76cbo, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(o76cbo.input.integration, "./outputs50K/ONS76-CBO/ONS76cbo.inputIntegration.RiboGenesNotRemoved.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object is fully SCTransformed and clustered
+o76cbo.clust <- SCTransform(o76cbo, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(o76cbo.clust, file = "./outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object
+o76cbo.clust <- readRDS("outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, ElbowPlotONS76cboPhaseSCTclust}
 # elbow plot shows that there is an elbow at PC ~10.
 # The input object is the CLUSTERED saved seurat object
 
-ElbowPlot(o76cbo, ndims = 50, reduction = "pca")
+ElbowPlot(o76cbo.clust, ndims = 50, reduction = "pca")
 ```
 
-There are 2545 cells and the breakdown by cluster is shown
-```{r}
-# cluster 10, 11, 12 have < 100 cells each.
-# ONS76 clusters = 5 (215 cells), 9 (116 cells), 10 (74 cells), 11 (60 cells)
-cell.num <- table(o76cbo@active.ident)
-cell.num
-sum(cell.num)
+```{r eval=FALSE, echo=FALSE, DimplotUMAPONS76cboSCTclust, fig.height=6, fig.width=10}
+DimPlot(o76cbo.clust, label = TRUE, repel = TRUE)
 ```
 
-```{r}
-o76cbo.POSmarkers <- read.csv("outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.ONS76-CBO.csv",
-                           header = TRUE,
-                           stringsAsFactors = FALSE)
+```{r eval=FALSE, echo=FALSE}
+table(o76cbo.clust$seurat_clusters)
 ```
 
 
-```{r}
-dim(o76cbo.POSmarkers)
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster - does not run if ribosomal genes are excluded!
+o76cbo.markers <- FindAllMarkers(object = o76cbo.clust,
+                                only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
-Check out the first few DEGs by group (cluster_ID) of 'markers.pos'
-```{r}
-# In clusterMap, cluster 1 in ONS76-CBO has no counterpart in CBO. However, manual inspection by comparing
-# markers of cluster 1 in ONS76-CBO and cluster 1 in CBO suggest these cluster 1 ONS76-CBO cells 
-# are in fact most similar to CBO 'RP-choroid plexus_1'
-
-o76cbo.POSmarkers %>% 
-  dplyr::filter(gene %in% c("NACA", "FOXO1", "ATP5F1E", "S100A11"))
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in ONS76-CBO folder also as RDS file for downstream use
+saveRDS(o76cbo.markers, file = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRetained.ONS76cbo.rds")
 ```
 
-```{r}
-# load the cbo markers to compare with the above
-cbo.markers <- read.csv("outputs50K/CBO/ClusterMapInput.FindAllMarkers.CBO.csv",
-                        header = TRUE,
-                        stringsAsFactors = FALSE)
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in ONS76-CBO folder as csv file also
+write.csv(o76cbo.markers, file = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRetained.ONS76cbo.csv")
 ```
 
-```{r}
-cbo.markers %>% 
-  filter(cluster == "8") %>% 
-  head()
+```{r eval=FALSE, echo=FALSE}
+# load the list of ONS76-CBO cluster markers
+o76cbo.markers <- read.csv("outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRetained.ONS76cbo.csv",
+                          stringsAsFactors = FALSE,
+                          header = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# look at the top markers of DAOY-CBO clusters
+o76cbo.markers %>% 
+  dplyr::filter(gene %in% c("SOX10", "LAMA4"))
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76cbo.markers %>% 
+  dplyr::filter(cluster == 3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(o76cbo.annotate@meta.data, 20)
 ```
 
 
 ***CLUSTER ANNOTATION*** 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # continue to replace the cluster numbers with the identity of each cluster
-new.cluster.ids <- c("roof plate", "Purkinje_1-3", "granule neurons", 
-                     "ONS76_cluster_3", "4th vent/choroid plexus", "GABA-ergic neurons", "uncertain",
-                     "oligodendrocytes", "ONS76_cluster_8", "uncertain", "RL/roof plate")
+new.cluster.ids <- c("Roof Plate_1", "Purkinje cells_1", "Granule neurons", 
+                     "ONS76_cluster_3", "RL-derived_1", "Ribosome cluster", "Roof plate_2",
+                     "Glia", "IVth ventricle/CP", "Oligodendrocytes", "ONS76_cluster_10",
+                     "Granule precursors")
 
-names(new.cluster.ids) <- levels(o76cbo)
-o76cbo.annotate <- RenameIdents(o76cbo, new.cluster.ids)
+names(new.cluster.ids) <- levels(o76cbo.clust)
+o76cbo.annotate <- RenameIdents(o76cbo.clust, new.cluster.ids)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Create metadata dataframe
 metadata <- o76cbo.annotate@meta.data
 # Add cell IDs to metadata
 metadata$cells <- rownames(metadata)
 # Create sample column
 metadata$celltype <- NA
-metadata$celltype[which(metadata$seurat_clusters == "0")] <- "roof plate"
-metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje_1-3"
-metadata$celltype[which(metadata$seurat_clusters == "2")] <- "granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof Plate_1"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Granule neurons"
 metadata$celltype[which(metadata$seurat_clusters == "3")] <- "ONS76_cluster_3"
-metadata$celltype[which(metadata$seurat_clusters == "4")] <- "4th vent/choroid plexus"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "GABA-ergic neurons"
-metadata$celltype[which(metadata$seurat_clusters == "6")] <- "uncertain"
-metadata$celltype[which(metadata$seurat_clusters == "7")] <- "oligodendrocytes"
-metadata$celltype[which(metadata$seurat_clusters == "8")] <- "ONS76_cluster_8"
-metadata$celltype[which(metadata$seurat_clusters == "9")] <- "uncertain"
-metadata$celltype[which(metadata$seurat_clusters == "10")] <- "RL/roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Ribosome cluster"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Roof plate_2"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Glia"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "IVth ventricle/CP"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "ONS76_cluster_10"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Granule precursors"
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 o76cbo.annotate@meta.data <- metadata
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(o76cbo.annotate@meta.data)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(o76cbo.annotate, 
-  file = "./outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtRiboMito.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+  file = "./outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the 'cbo.annotate' object
 cbo.annotate <- 
-  readRDS("outputs50K/CBO/cbo.filtRiboMito.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+  readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds.rds")
 ```
-
 
 ```{r}
 # load the stored annotated ons76-cbo seurat object
-o76cbo.annotate <- readRDS("outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtRiboMito.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+o76cbo.annotate <- readRDS("outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
 
-```{r DimplotONS76cboAnnotated, fig.height=6, fig.width=10}
-DimPlot(o76cbo.annotate, label = TRUE, repel = TRUE)
+```{r eval=FALSE, echo=FALSE, DimplotONS76cboAnnotated, fig.height=6, fig.width=10}
+DimPlot(o76cbo.annotate, label = TRUE, repel = TRUE, pt.size = 1,
+        label.size = 4) +
+  theme(legend.position = "none")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=5, fig.width=5}
+# PCA plot shows ONS76_cluster_3 is closest transcriptionally to Granule neurons cluster. Glia and oligodendrocytes are also close, which is reassuring
+DimPlot(o76cbo.annotate, reduction = "pca", label = TRUE, repel = TRUE)
 ```
 
 
@@ -176,36 +295,36 @@ code from: https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/
 using Spearman correlation
 KNITTING THESE CODE CHUNKS FAILS!!
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 av.exp.cbo <- sapply(sort(unique(cbo.annotate$celltype)), function(ct) rowMeans(cbo.annotate$RNA@data[,which(cbo.annotate$celltype == ct)] ))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 avg.exp.ons76Cbo <- sapply(levels(o76cbo.annotate@active.ident), function(ct) rowMeans(o76cbo.annotate$RNA@data[,which(o76cbo.annotate@active.ident == ct)]))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 genes2cor <- intersect(VariableFeatures(cbo.annotate), 
                        rownames(o76cbo.annotate))
 corr2ons76.cbo.cl <- cor(avg.exp.ons76Cbo[genes2cor,], av.exp.cbo[genes2cor,], method = "spearman")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 corr2ons76.cbo.cl
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the correlation matrix corr2cbo.cl
 saveRDS(corr2ons76.cbo.cl, file = "./outputs50K/ONS76-CBO/CorrelnSpearmanONS76-CBOvsCBOclusters.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 corr2ons76.cbo.cl <- readRDS("outputs50K/ONS76-CBO/CorrelnSpearmanONS76-CBOvsCBOclusters.rds")
 ```
 
 
 My cell annotations based on the positive DEGs in each cluster turned out to be accurate
-```{r HeatmapONS76CboVSCboClusterCorrelations, fig.height=6, fig.width=6}
+```{r eval=FALSE, echo=FALSE, HeatmapONS76CboVSCboClusterCorrelations, fig.height=6, fig.width=6}
 
 heatmap3(corr2ons76.cbo.cl, scale="none", margins=c(15,17),
           labRow = colnames(avg.exp.ons76Cbo), labCol = colnames(av.exp.cbo), cexRow=0.8, cexCol=0.8,
@@ -218,110 +337,382 @@ heatmap3(corr2ons76.cbo.cl, scale="none", margins=c(15,17),
 ***Identification of healthy and cancerous NEUROD1 clusters in ONS76-CBO sample generated by SCTransform***
 The Violin Plot shows that the NEUROD1 clustering using SCTransform() is consistent with the results of conventional normalisation and identifies clusters 4,5,9,12 as the NEUROD1 clusters. Also the other markers allow us to distinguish the healthy from cancerous cells. There are four NEUROD1 clusters in the ONS76-CBO sample, but only one in the CBO sample. The ONS76-CBO sample should contain both healthy and cancerous NEUROD1 cells.
 Which ones are the NEUROD1 clusters? In the CBO sample, clustering shows there is only 1 NEUROD1 cluster and this cluster also expresses RBFOX3 and RTN1 (derived from  https://doi.org/10.7554/eLife.37551). We can see that the only cluster that expresses all three genes, as in the NEUROD1 cluster in CBO sample, is cluster 4/'granule precursors'. So cluster 4 NEUROD1+ cells must be the healthy cells and the other three clusters are medulloblastoma clusters that have differentiated. The SCTransform better distinguishes the healthy from the cancerous NEUROD1+ clusters than conventional normalisation
-```{r ViolinPlotNeurod1clustersONS76cboSCT, fig.height=9, fig.width=12}
-# there are 4 NEUROD1+ clusters
-# only cluster 4 expresses NEUROD1, RBFOX3 and RTN1 and must be wild type cells
+```{r eval=FALSE, echo=FALSE, ViolinPlotNeurod1clustersONS76cboSCT, fig.height=17, fig.width=22}
+# there are 2 NEUROD1+ clusters
+# only Granule neuron cluster expresses NEUROD1, RBFOX3 and RTN1 and must be wild type cells
+p1a <- VlnPlot(o76cbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
 
-VlnPlot(o76cbo.annotate, features = c("NEUROD1", "RBFOX3", "RTN1", "NES", "NRG3"))
+p1b <- VlnPlot(o76cbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(o76cbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(o76cbo.annotate, 
+        features = c("NES")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(o76cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(o76cbo.annotate, 
+        features = c("HOXB2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+
 ```
 
-```{r ViolinPlotSox2Pou3f2Erbb4Nrg3ONS76cboSCT, fig.height=9, fig.width=12}
-VlnPlot(o76cbo.annotate, features = c("SOX2", "POU3F2", "ERBB4", "NRG3"))
+```{r eval=FALSE, echo=FALSE, ViolinPlotSox2Pou3f2Erbb4Nrg3Meis1HoxB2ONS76cboSCT, fig.height=9, fig.width=12}
+VlnPlot(o76cbo.annotate, features = c("POU3F2", "HOXB2", "ERBB4", "NRG3", "MEIS1", "HOXB-AS1"))
+```
+
+```{r eval=FALSE, echo=FALSE, MDM2expression, fig.height=9, fig.width=12}
+VlnPlot(o76cbo.annotate, features = c("POU3F2", "HOXB2", "ERBB4", "NRG3", "MEIS1", "MDM2"))
 ```
 
 
-Identify markers that uniquely identify ONS76_cluster8 cells
-```{r}
-o76cbo.POSmarkers %>% 
-  dplyr::filter(cluster == 8) %>% 
-  head(50)
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotPou3f2Meis1HoxB2HoxBAS1ONS76cboSCT, fig.height=17, fig.width=22}
+p4a <- VlnPlot(o76cbo.annotate, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4b <- VlnPlot(o76cbo.annotate, 
+        features = c("HOXB2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4c <- VlnPlot(o76cbo.annotate, 
+        features = c("HOXB-AS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4d <- VlnPlot(o76cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4e <- VlnPlot(o76cbo.annotate, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4f <- VlnPlot(o76cbo.annotate, 
+        features = c("NRG3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4a + p4b + p4c + p4d + p4e + p4f + plot_layout(ncol = 2)
+
 ```
 
-```{r fig.height=9, fig.width=13}
-# these markers uniquely identify ONS76 cluster 8. Little or no expression in other clusters including
-# ONS76_cluster 3
-VlnPlot(o76cbo.annotate, features = c("MEIS1", "POU3F2", "HOXB2", "GRIA4"))
+```{r ViolinPlotMDM2Pou3f2Meis1HoxB2HoxBAS1ONS76cboSCT, fig.height=17, fig.width=22}
+# repeat violin plots for most of the same genes, so MDM2 can be added
+p5a <- VlnPlot(o76cbo.annotate, 
+        features = c("MDM2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5b <- VlnPlot(o76cbo.annotate, 
+        features = c("HOXB2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5c <- VlnPlot(o76cbo.annotate, 
+        features = c("HOXB-AS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5d <- VlnPlot(o76cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5e <- VlnPlot(o76cbo.annotate, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5f <- VlnPlot(o76cbo.annotate, 
+        features = c("NRG3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p5a + p5b + p5c + p5d + p5e + p5f + plot_layout(ncol = 2)
+
 ```
 
 
-***Extract the ONS76 cells/clusters that are NeuroD1+ and then all malignant clusters***. 
+Identify markers that uniquely identify ONS76_cluster_10 cells
+```{r eval=FALSE, echo=FALSE}
+o76cbo.markers %>% 
+  dplyr::filter(cluster == 10) %>% 
+  head(10)
+```
+
+
+
+***Extract the ONS76 cells that are NeuroD1+***. 
 There are 634 NEUROD1 positive cells - both healthy and cancerous
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-# 281 NEUROD1+ cancer cells
-neurod1.ons76cbo <- subset(o76cbo, idents = c("3"))
+# 272 NEUROD1+ cancer cells
+neurod1.ons76cbo <- subset(o76cbo.clust, idents = c("3"))
 dim(neurod1.ons76cbo)
 ```
 
-
-```{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-
-# save the malignant neurod1.ons76cbo clusters 5,9,12 above - this was generated from o76cbo
+```{r eval=FALSE, echo=FALSE}
+# save the malignant neurod1.ons76cbo clusters 3, 10 above - this was generated from o76cbo
 # regressed SCTransformed seurat object
 
-saveRDS(neurod1.ons76cbo, file = "./outputs50K/ONS76-CBO/neurod1ClustsCancer.CCDiffRegress.noMitoNoRiboSCT.ons76cbo.rds")
+saveRDS(neurod1.ons76cbo, file = "./outputs50K/ONS76-CBO/neurod1ClustCancer.CCDiffRegress.noMito.RiboRetained.SCT.ONS76cbo.rds")
 ```
 
-```{r}
-# subset o76cbo.annotate for ALL the malignant clusters 3, 8
+
+***Extract all the ONS76 cells from coculture***
+```{r eval=FALSE, echo=FALSE}
+Idents(o76cbo.clust) <- "seurat_clusters"
+o76only.ons76cbo <- subset(o76cbo.clust, idents = c("3", "10"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
+o76only.ons76cbo.rescaled <- ScaleData(o76only.ons76cbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save all the malignant clusters 3, 10 - with ribosome genes retained, UNannotated
+saveRDS(o76only.ons76cbo, 
+        file = "./outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76cboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset o76cbo.annotate for ALL the malignant clusters 3, 10 (ANNotated)
 o76only.o76cboAnnot <- 
   subset(o76cbo.annotate, 
-         idents = c("ONS76_cluster_3", "ONS76_cluster_8"))
+         idents = c("ONS76_cluster_3", "ONS76_cluster_10"))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
 o76only.o76cboAnnot.rescaled <- ScaleData(o76only.o76cboAnnot)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # change the 'Identity' on x-axis of VlnPlot from numbers only to something more meaningful
 
-new.cluster.ids.subset <- c("ONS76_cluster_3", "ONS76_cluster_8")
+new.cluster.ids.subset <- c("ONS76_cluster_3", "ONS76_cluster_10")
 names(new.cluster.ids.subset) <- levels(o76only.o76cboAnnot.rescaled)
 o76only.o76cboAnnot.rescaled <- RenameIdents(o76only.o76cboAnnot.rescaled, new.cluster.ids.subset)
 ```
 
-```{r}
-# ONS76-CBO, cancer cell numbers: clust 3 = 281 cells, clust 8 = 80 cells
+```{r eval=FALSE, echo=FALSE}
+# ONS76-CBO, cancer cell numbers: clust 3 = 272 cells, clust 10 = 77 cells
 table(o76only.o76cboAnnot.rescaled$seurat_clusters)
 ```
 
-```{r}
-# save all the malignant clusters 3 and 8
+```{r eval=FALSE, echo=FALSE}
+# save all the malignant clusters 3 and 10
 saveRDS(o76only.o76cboAnnot.rescaled, 
-        file = "./outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+        file = "./outputs50K/ONS76-CBO/ONS76onlyCells.Annotated.SubsetONS76cboSample.Rescaled.SCT.RiboRetained.NoMito.CCdiffRegressed.rds")
 ```
 
 
 ------------------------------------------------------------------------------------------
-***Gene expression in ONS76 cancer clusters 3 and 8***
+***Gene expression in ONS76 cancer clusters 3 and 10***
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the object
 o76only.o76cboAnnot.rescaled <- 
-  readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+  readRDS("outputs50K/ONS76-CBO/ONS76onlyCells.Annotated.SubsetONS76cboSample.Rescaled.SCT.RiboRetained.NoMito.CCdiffRegressed.rds")
 ```
 
-```{r ViolinPlotSox2networkONS76onlyONS76cbo, fig.height=7, fig.width=10}
-# plot of the clusters containing granule/RL lineage - clusters 2, 4, 6, 9 and 10 contain RL/granule
-# lineage.
-# CDH1 is expressed (in WT cells and ONS76 cells), but CDH5 (marker of ONS76 cells) is not expressed.
-# CD44 is not expressed or expressed very little.
-# ITGB1 is also not good at discriminating WT CBO from ONS76-CBO samples
+```{r eval=FALSE, echo=FALSE, ViolinPlotSox2networkONS76onlyONS76cbo, fig.height=17, fig.width=22}
+p2a <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("FABP7")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
 
-VlnPlot(o76only.o76cboAnnot.rescaled, 
-        features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2"))
-  
+p2b <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
 ```
 
-```{r ViolinPlotERRB4nrg3Meis1ZicONS76onlyONS76cbo, fig.height=7, fig.width=10}
-VlnPlot(o76only.o76cboAnnot.rescaled, 
-        features = c("ERBB4", "NRG3", "NES", "MEIS1", "OLIG2"))
+```{r eval=FALSE, echo=FALSE}
+# SRRT = ARS2(stem cell SOX2 network gene)
+p2g <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("SRRT")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p2g
 ```
 
-```{r ViolinPlotSHHgenesMycONS76cbo, fig.width=14}
+
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotERRB4nrg3NesMeis1Olig2ONS76onlyONS76cbo, fig.height=17, fig.width=16}
+p3a <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3b <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("NES")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3c <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("HOXB2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3d <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3e <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3f <- VlnPlot(o76only.o76cboAnnot.rescaled, 
+        features = c("DCX")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotSHHgenesMycONS76cbo, fig.width=14}
 VlnPlot(o76only.o76cboAnnot.rescaled, 
         features = c("GLI2", "GLI3", "PTCH1", "MYC", "MYCN"))
 ```
@@ -336,78 +727,241 @@ The first website uses the output of Seurat FindMarkers() to generate the gene l
 
 Get the genes for control CBO sample cluster 5, which I have called granule precursors first and compare the ONS76-CBO sample to the cells in cluster 5 CBO.
 
-```{r}
-# load the clusterMap cell, gene, ribo, mito, CC.difference regressed, SCTransformed seurat object
-cbo <- 
-  readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoRiboNoMito.SCT.clustered.CCdiffRegressed.rds")
-```
 
-```{r}
-# apply presto to CBO control
-cbo.presto <- wilcoxauc(cbo, 'seurat_clusters')
-head(cbo.presto)
-```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # apply presto to ONS76-CBO sample
-o76cbo.presto <- wilcoxauc(o76cbo, 'seurat_clusters')
+o76cbo.presto <- wilcoxauc(o76cbo.clust, 'seurat_clusters')
 head(o76cbo.presto)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # we have all the genes for each cluster
 dplyr::count(cbo.presto, group)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # we have all the genes for each cluster
 dplyr::count(o76cbo.presto, group)
 ```
 
 
+****Cluster 6 (wild type cerebellar organoid) FSEA****
+```{r eval=FALSE, echo=FALSE}
+# load the clusterMap cell, gene, ribo, mito, CC.difference regressed, SCTransformed seurat object
+cbo <- 
+  readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
 
-****Cluster 5 CBO control (granule precursors) including input for gProfiler and Cytoscape****
+```{r eval=FALSE, echo=FALSE}
+# apply presto to CBO control
+cbo.presto <- wilcoxauc(cbo, 'seurat_clusters')
+head(cbo.presto)
+```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter gene expression for cluster 2, the ONS76 NEUROD1+ cluster
+# the presto gene list puts EYA2 and NEUROD1 near the top which is reassuring
+cbo.presto %>%
+  dplyr::filter(group == "6") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(10)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+clust6.genes.cbo.presto <- cbo.presto %>%
+  dplyr::filter(group == "6" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(clust6.genes.cbo.presto) # 962 genes
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus6 <- deframe(clust6.genes.cbo.presto)
+head(ranks.clus6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus6.cbo.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus6, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus6.cbo.GOBP <- fgseaRes.clus6.cbo.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus6.cbo.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# gene sets are all associated with neuronal differentiation
+saveRDS(fgseaResTidy.clus6.cbo.GOBP, 
+        file = "./outputs50K/CBO/cluster6.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus6.cbo.GOBP <- 
+  readRDS("outputs50K/CBO/cluster6.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust6cbo, fig.height=10, fig.width=15}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus6.cbo.GOBP %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+```
+
+
+
+****Cluster 2 (ONS76-cbo, non-malignant granule neurons as control) FGSEA****
+
+```{r eval=FALSE, echo=FALSE}
 # this code used to generate sorted gene list as input for gProfiler (web app)
-cbo.cl5.UPgenes.presto <- cbo.presto %>% 
-  dplyr::filter(group == "5" & logFC > 0.25) %>%
+clust2.genes.presto <- o76cbo.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(cbo.cl5.UPgenes.presto) # genes=952
+nrow(clust2.genes.presto) # genes=957
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save as csv for input to g:Profiler (web app)
-write.csv(cbo.cl5.UPgenes.presto, 
-          "./outputs50K/CBO/CBO.cluster5.UPgenes.PRESTO.gProfilerInput.csv", 
-          quote = F)
+# write.csv(cbo.cl6.UPgenes.presto, 
+ #         "./outputs50K/CBO/CBO.cluster6.UPgenes.PRESTO.gProfilerInput.csv", 
+ #         quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(clust2.genes.presto)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus2.GOBP <- fgseaRes.clus2.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus2.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# no significant gene sets!
+saveRDS(fgseaResTidy.clus2.GOBP, 
+        file = "./outputs50K/ONS76-CBO/cluster2.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus2.GOBP <- 
+  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster2.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust2ONS76cbo, fig.height=10, fig.width=15}
+# only plot the top 20 pathways - no enriched gene sets!
+ggplot(fgseaResTidy.clus2.GOBP %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title = element_text(size = 30)) # can change bar colours using ggplot
 ```
 
 
 
 ****Cluster 3 ONS76-CBO - geneset enrichment (FGSEA) including input for g:Profiler and Cytoscape****
-```{r}
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
 # filter gene expression for cluster 3, the ONS76 NEUROD1+ cluster
 # the presto gene list puts EYA2 and NEUROD1 near the top which is reassuring
 o76cbo.presto %>%
   dplyr::filter(group == "3") %>%
   arrange(desc(logFC), desc(auc)) %>%
-  head()
+  head(10)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+clust3.genes.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "3") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- deframe(clust3.genes.presto)
+head(ranks.clus3)
+```
+
+
+
+```{r eval=FALSE, echo=FALSE}
 # this code used to generate sorted gene list as input for gProfiler (web app)
 ons76cbo.cl3.UPgenes.presto <- o76cbo.presto %>% 
   dplyr::filter(group == "3" & logFC > 0.25) %>%
   dplyr::arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 
-nrow(ons76cbo.cl3.UPgenes.presto) # genes=960
+nrow(ons76cbo.cl3.UPgenes.presto)
+ # genes=809
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 # save as csv for input to g:Profiler (web app)
 write.csv(ons76cbo.cl3.UPgenes.presto, 
@@ -415,340 +969,13 @@ write.csv(ons76cbo.cl3.UPgenes.presto,
           quote = F)
 ```
 
-
-****ONS76-CBO Cluster 8****
-```{r}
-o76cbo.presto %>%
-  dplyr::filter(group == "8") %>%
-  arrange(desc(logFC), desc(auc)) %>%
-  head()
-```
-
-```{r}
-# this code used to generate sorted gene list as input for gProfiler (web app).
-ons76cbo.cl8.UPgenes.presto <- o76cbo.presto %>% 
-  dplyr::filter(group == "8" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(ons76cbo.cl8.UPgenes.presto) # genes = 463 only
-```
-
-
-```{r}
-# save as csv for input to g:Profiler (web app)
-write.csv(ons76cbo.cl8.UPgenes.presto, 
-          "./outputs50K/ONS76-CBO/ONS76cbo.cluster8.UPgenes.PRESTO.gProfilerInput.csv", 
-          quote = F)
-```
-
-
---------------------------------------------------------------------------------------------------
-***Examine cell cycle and proliferating cells using AddModuleScore()***
-Find the cells that are actively proliferating in this sample
-```{r}
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-prolif.genes <- list(c(s.genes, g2m.genes))
-```
-
-```{r AddModuleScoreProlifernONS76cbo, fig.height=4}
-phase.ons76cbo.sct.clust <- AddModuleScore(phase.ons76cbo.sct.clust,
-                        features = prolif.genes,
-                        name = "prolif.genes")
-FeaturePlot(phase.ons76cbo.sct.clust, features = 'prolif.genes1', label = TRUE, repel = TRUE) +
-   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
-```
-
-
-----------------------------------------------------------------------------------------------------------------
-***Extract the ONS76-only cells in G1 phase to use them for an integrated analysis with ONS76-2D and ONS76-SPHER cells that are in G1 phase only***
-```{r}
-# load the object
-o76only.o76cboAnnot.rescaled <- 
-  readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76CboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
-```
-
-```{r}
-Idents(o76only.o76cboAnnot.rescaled) <- "Phase"
-o76onlyO76cbo.g1.cellIDs <- WhichCells(o76only.o76cboAnnot.rescaled, idents = "G1")
-length(o76onlyO76cbo.g1.cellIDs)
-```
-
-```{r}
-# load the filtered but unclustered ons76-cbo object
-o76cbo <- readRDS("outputs50K/ONS76-CBO/ons76cbo.seurat.filtCellsGenesNoRiboNoMito.rds")
-```
-
-
-```{r}
-# these cell IDs are not correctly formatted
-# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
-o76onlyO76cbo.g1cells <- subset(o76cbo, cells = o76onlyO76cbo.g1.cellIDs)
-head(WhichCells(o76onlyO76cbo.g1cells))
-```
-
-```{r}
-# format the cell IDs correctly
-# remove the prefixes from the vector cell names and save as a new object of cell IDs
-o76only.cellID.corrected <- gsub('o76cbo.data-', '', o76onlyO76cbo.g1.cellIDs)
-head(o76only.cellID.corrected) # the prefixes have been removed
-```
-
-```{r}
-# rename the cell IDs with the corrected cell names (.ccn = corrected cell names)
-# the object o76onlyO76cbo.g1cells.ccn is the one to use going forwards
-o76onlyO76cbo.g1cells.ccn <- RenameCells(o76onlyO76cbo.g1cells, new.names = o76only.cellID.corrected)
-head(WhichCells(o76onlyO76cbo.g1cells.ccn))
-```
-
-```{r}
-# create an object suitable for integration (don't need to regress cell cycle!)
-# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
-o76onlyO76cbo.g1cells.input.integration <- SCTransform(o76onlyO76cbo.g1cells.ccn,
-                                                  method = "glmGamPoi",
-                                                  vst.flavor = "v2",
-                                                  verbose = FALSE) %>% 
-  RunPCA(npcs = 30, verbose = FALSE)
-```
-
-```{r}
-# save the "o76onlyO76cbo.g1cells.input.integration" object
-saveRDS(o76onlyO76cbo.g1cells.input.integration, 
-        file = "./outputs50K/ONS76-CBO/G1phaseCells.ONS76onlyONS76cbo.inputIntegration.SCTransformed.PCA.unclustered.rds")
-```
-
-
-
-
-```
-save.image("./RDataFiles/ONS76-CBO_Seurat_EXPLORE1_50K.RData")
-```
-
-
--------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------
-UNUSED CODE RETAINED IN CASE IT TURNS OUT TO BE USEFUL
-****Cluster 8 GO:BP genesets****
-
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```
-{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus8.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus8, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# tidy up the data
-fgseaResTidy.clus8.GOBP <- fgseaRes.clus8.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus8.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```
-{r}
-# no significant gene sets!
-saveRDS(fgseaResTidy.clus8.GOBP, 
-        file = "./outputs50K/ONS76-CBO/cluster9.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus8.GOBP <- 
-  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster8.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAgoBPclust8DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus8.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-```
-{r}
-# continue with preparing data for input to fgsea and getting bar charts of gene set 
-# enrichment analysis
-clust8.genes.presto <- o76cbo.presto %>%
-  dplyr::filter(group == "8") %>%
-  arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```
-{r}
-ranks.clus8 <- deframe(clust8.genes.presto)
-head(ranks.clus8)
-```
-
-```
-{r}
-H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
-head(H.geneset)
-```
-
-```
-{r}
-fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus8.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# there are no significant gene sets with padj<0.05
-fgseaResTidy.clus8.hallmark <- fgseaRes.clus8.hallmark %>%
-  as_tibble() %>%
-  dplyr::arrange(desc(NES))
-
-fgseaResTidy.clus8.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  dplyr::arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus9.hallmark,
-        file = "./outputs50K/ONS76-CBO/cluster9.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus8.hallmark <- 
-  readRDS("outputs50K/ONS76-CBO/cluster8.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAgoBPclust8ons76Cbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways - NO ENRICHED PATHWAYS!!!
-ggplot(fgseaResTidy.clus8.hallmark %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-****Cluster 5 - HALLMARK genesets****
-The Hallmark genesets are enriched for 'mitotic spindle', MYC targets, E2F targets - i.e. all cell cycle related - and this is quite similar to the healthy granule cluster, cluster 4 which could explain why the correlation heatmap and the UMAP plots show cluster 4 next to cluster 3.
-```
-{r}
-H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
-head(H.geneset)
-```
-
-```
-{r}
-fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values
-fgseaRes.clus3.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus3, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus3.hallmark <- fgseaRes.clus3.hallmark %>%
-  as_tibble() %>%
-  dplyr::arrange(desc(NES))
-
-fgseaResTidy.clus3.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  dplyr::arrange(padj) %>% 
-  head(5)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus3.hallmark,
-        file = "./outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus3.hallmark <- 
-  readRDS("outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAmsigdbHallmarkClust5ons76cbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few
-
-ggplot(fgseaResTidy.clus3.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark Pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-****Cluster 3 - GO:BP genesets****
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```
-{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
 fgseaRes.clus3.GOBP <- 
   fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # tidy up the data
 fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
   as_tibble() %>%
@@ -760,24 +987,262 @@ fgseaResTidy.clus3.GOBP %>%
   head(20)
 ```
 
-
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
+# no significant gene sets!
 saveRDS(fgseaResTidy.clus3.GOBP, 
         file = "./outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
-```
-{r}
-fgseaResTidy.clus5.GOBP <- 
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus3.GOBP <- 
   readRDS("outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 
-```
-{r BarplotFGSEAgoBPclust3ONS76Cbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust3ONS76cbo, fig.height=20, fig.width=15}
+# only plot the top 20 pathways - no enriched gene sets!
 ggplot(fgseaResTidy.clus3.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+```
+
+
+****Cluster 10 ONS76-CBO - geneset enrichment (FGSEA) including input for g:Profiler and Cytoscape****
+```{r eval=FALSE, echo=FALSE}
+o76cbo.presto %>%
+  dplyr::filter(group == "10") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head()
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save as csv for input to g:Profiler (web app)
+write.csv(ons76cbo.cl10.UPgenes.presto, 
+          "./outputs50K/ONS76-CBO/ONS76cbo.cluster10.UPgenes.PRESTO.gProfilerInput.csv", 
+          quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this code used to generate sorted gene list as input for gProfiler (web app).
+ons76cbo.cl10.UPgenes.presto <- o76cbo.presto %>% 
+  dplyr::filter(group == "10" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(ons76cbo.cl10.UPgenes.presto) # genes = 438 only
+```
+
+```{r eval=FALSE, echo=FALSE}
+clust10.genes.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "10") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus10 <- deframe(clust10.genes.presto)
+head(ranks.clus10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+
+fgseaRes.clus10.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus10, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus10.GOBP <- fgseaRes.clus10.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus10.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.clus10.GOBP, 
+        file = "./outputs50K/ONS76-CBO/cluster10.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus10.GOBP <- 
+  readRDS("outputs50K/ONS76-CBO/cluster10.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust10ons76Cbo, fig.height=20, fig.width=15}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus10.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+```
+
+
+
+
+
+
+----------------------------------------------------------------------------------------------------------------
+***Extract the ONS76-only cells in G1 phase to use them for an integrated analysis with ONS76-2D and ONS76-SPHER cells that are in G1 phase only***
+```{r eval=FALSE, echo=FALSE}
+# load the object
+o76only.o76cboAnnot.rescaled <- 
+  readRDS("outputs50K/ONS76-CBO/ONS76onlyCells.Annotated.SubsetONS76cboSample.Rescaled.SCT.RiboRetained.NoMito.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(o76only.o76cboAnnot.rescaled) <- "Phase"
+o76onlyO76cbo.g1.cellIDs <- WhichCells(o76only.o76cboAnnot.rescaled, idents = "G1")
+length(o76onlyO76cbo.g1.cellIDs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the filtered but unclustered ons76-cbo object
+o76cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# these cell IDs are not correctly formatted
+# object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
+o76onlyO76cbo.g1cells <- subset(o76cbo, cells = o76onlyO76cbo.g1.cellIDs)
+head(WhichCells(o76onlyO76cbo.g1cells))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# create an object suitable for integration (don't need to regress cell cycle!)
+o76onlyO76cbo.g1cells.input.integration <- SCTransform(o76onlyO76cbo.g1cells,
+                                                  method = "glmGamPoi",
+                                                  vst.flavor = "v2",
+                                                  verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the "o76onlyO76cbo.g1cells.input.integration" object
+saveRDS(o76onlyO76cbo.g1cells.input.integration, 
+        file = "./outputs50K/ONS76-CBO/G1phaseCells.ONS76onlyONS76cbo.inputIntegration.SCTransformed.PCA.unclustered.rds")
+```
+
+
+--------------------------------------------------------------------------------------------------
+***Examine cell cycle and proliferating cells using AddModuleScore()***
+Find the cells that are actively proliferating in this sample
+```{r eval=FALSE, echo=FALSE}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+prolif.genes <- list(c(s.genes, g2m.genes))
+```
+
+```{r eval=FALSE, echo=FALSE, AddModuleScoreProlifernONS76cbo, fig.height=4}
+phase.ons76cbo.sct.clust <- AddModuleScore(phase.ons76cbo.sct.clust,
+                        features = prolif.genes,
+                        name = "prolif.genes")
+FeaturePlot(phase.ons76cbo.sct.clust, features = 'prolif.genes1', label = TRUE, repel = TRUE) +
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+```
+
+
+```
+save.image("./RDataFiles/ONS76-CBO_Seurat_EXPLORE1_50K.RData")
+```
+
+
+
+--------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------
+***UNUSED CODE RETAINED IN CASE IT TURNS OUT TO BE USEFUL***
+
+```{r eval=FALSE, echo=FALSE}
+# format the cell IDs correctly
+# remove the prefixes from the vector cell names and save as a new object of cell IDs
+o76only.cellID.corrected <- gsub('o76cbo.data-', '', o76onlyO76cbo.g1.cellIDs)
+head(o76only.cellID.corrected) # the prefixes have been removed
+```
+
+```{r eval=FALSE, echo=FALSE}
+# rename the cell IDs with the corrected cell names (.ccn = corrected cell names)
+# the object o76onlyO76cbo.g1cells.ccn is the one to use going forwards
+o76onlyO76cbo.g1cells.ccn <- RenameCells(o76onlyO76cbo.g1cells, new.names = o76only.cellID.corrected)
+head(WhichCells(o76onlyO76cbo.g1cells.ccn))
+```
+
+
+
+
+
+
+
+
+
+```{r eval=FALSE, echo=FALSE}
+# continue with preparing data for input to fgsea and getting bar charts of gene set 
+# enrichment analysis
+clust8.genes.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "8") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus8 <- deframe(clust8.genes.presto)
+head(ranks.clus8)
+```
+
+```{r eval=FALSE, echo=FALSE}
+H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
+head(H.geneset)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# set eps to zero to get lower p-values
+fgseaRes.clus8.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# there are no significant gene sets with padj<0.05
+fgseaResTidy.clus8.hallmark <- fgseaRes.clus8.hallmark %>%
+  as_tibble() %>%
+  dplyr::arrange(desc(NES))
+
+fgseaResTidy.clus8.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  dplyr::arrange(padj) %>% 
+  head(10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.clus9.hallmark,
+        file = "./outputs50K/ONS76-CBO/cluster9.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus8.hallmark <- 
+  readRDS("outputs50K/ONS76-CBO/cluster8.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust8ons76Cbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways - NO ENRICHED PATHWAYS!!!
+ggplot(fgseaResTidy.clus8.hallmark %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
   geom_col(fill = "blue") +
   coord_flip() +
   labs(x="Pathway", y="Normalized Enrichment Score",
@@ -785,8 +1250,65 @@ ggplot(fgseaResTidy.clus3.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reor
   theme_minimal() # can change bar colours using ggplot
 ```
 
+****Cluster 5 - HALLMARK genesets****
+The Hallmark genesets are enriched for 'mitotic spindle', MYC targets, E2F targets - i.e. all cell cycle related - and this is quite similar to the healthy granule cluster, cluster 4 which could explain why the correlation heatmap and the UMAP plots show cluster 4 next to cluster 3.
+```{r eval=FALSE, echo=FALSE}
+H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
+head(H.geneset)
 ```
-{r}
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# set eps to zero to get lower p-values
+fgseaRes.clus3.hallmark <- 
+  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus3, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus3.hallmark <- fgseaRes.clus3.hallmark %>%
+  as_tibble() %>%
+  dplyr::arrange(desc(NES))
+
+fgseaResTidy.clus3.hallmark %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  dplyr::arrange(padj) %>% 
+  head(5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.clus3.hallmark,
+        file = "./outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus3.hallmark <- 
+  readRDS("outputs50K/ONS76-CBO/cluster3.ons76cbo.multifgsea.presto.HallmarkGenes.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAmsigdbHallmarkClust5ons76cbo, fig.height=5, fig.width=6}
+# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
+# genesets to the top few
+
+ggplot(fgseaResTidy.clus3.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill = NES > 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark Pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+****Cluster 10 - GO:BP genesets****
+
+
+
+
+
+
+```{r eval=FALSE, echo=FALSE}
 # continue with preparing data for input to fgsea and getting bar charts of gene set 
 # enrichment analysis
 clust3.genes.presto <- o76cbo.presto %>%
@@ -795,15 +1317,13 @@ clust3.genes.presto <- o76cbo.presto %>%
   dplyr::select(feature, auc)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 ranks.clus5 <- deframe(clust5.genes.presto)
 head(ranks.clus3)
 ```
 
 Test the gene set enrichment of cluster 5 in CBO, the granule cell cluster
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # continue with preparing data for input to fgsea and getting bar charts of gene set 
 # enrichment analysis
 clust5.cbo.genes.presto <- cbo.presto %>%
@@ -812,32 +1332,27 @@ clust5.cbo.genes.presto <- cbo.presto %>%
   dplyr::select(feature, auc)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 ranks.clus5 <- deframe(clust5.cbo.genes.presto)
 head(ranks.clus5)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 H.geneset <- msigdbr(species = "Homo sapiens", category = "H")
 head(H.geneset)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 fgsea_sets <- H.geneset %>% split(x = .$gene_symbol, f = .$gs_name)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # set eps to zero to get lower p-values
 fgseaRes.clus5.hallmark <- 
   fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus5, minSize = 15, scoreType = "pos", maxSize = 200)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # top GO terms are related to proliferation not neuronal differentiation! Consistent with this
 # granule cluster being composed of granule precursors
 fgseaResTidy.clus5.hallmark <- fgseaRes.clus5.hallmark %>%
@@ -850,14 +1365,12 @@ fgseaResTidy.clus5.hallmark %>%
   head(10)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(fgseaResTidy.clus5.hallmark,
         file = "./outputs50K/CBO/granule.cluster5.cbo.multifgsea.presto.HallmarkGenes.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 fgseaResTidy.clus5.hallmark <- 
   readRDS("outputs50K/CBO/granule.cluster5.cbo.multifgsea.presto.HallmarkGenes.rds")
 ```
@@ -865,8 +1378,7 @@ fgseaResTidy.clus5.hallmark <-
 
 The GO:BP enrichments clearly show these granule 'neurons' are unlikely to be terminally differentiated and are still proliferative. This is why cluster 5,9,11 in ONS76-CBO  have a gene expression profile of proliferative cells and that is correlated (Spearman correlation) with the gene expression profile of cluster 6 granule cells in the CBO control.
 
-```
-{r BarplotFGSEAmsigdbHALLMARKclust4granuleCbo, fig.height=2, fig.width=3}
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAmsigdbHALLMARKclust4granuleCbo, fig.height=2, fig.width=3}
 # only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
 # genesets to the top few
 
@@ -879,11 +1391,29 @@ ggplot(fgseaResTidy.clus5.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(
 ```
 
 -------------------------------------------------------------------------------------------
+
+***Identify ribosome genes***
+```{r eval=FALSE, echo=FALSE}
+# Identify ribosomal genes: I have checked that there are ribosomal gene names beginning with RP, RPL and RPS
+ribosomal_genes <- grep("^RP|^RPL|^RPS", x = rownames(x = o76cbo), value = TRUE)
+gene_list <- setdiff(rownames(x = o76cbo), ribosomal_genes)
+```
+
+
+-------------------------------------------------------------------------------------------
+Cell breakdown by cluster:
+```{r eval=FALSE, echo=FALSE}
+# cluster 10, 11, 12 have < 100 cells each.
+# ONS76 clusters = 5 (215 cells), 9 (116 cells), 10 (74 cells), 11 (60 cells)
+cell.num <- table(o76cbo@active.ident)
+cell.num
+sum(cell.num)
+```
+
 -------------------------------------------------------------------------------------------
 ***Get the differentially expressed genes in the 11 ONS76-CBO clusters using a FOR loop***
 Getting cluster markers this way is less efficient than using FindAllMarkers() command!
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 
 Idents(phase.ons76cbo.sct.clust) <- "seurat_clusters"
@@ -904,8 +1434,7 @@ head(markers.pos)
 -----------------------------------------------------------------------------------
 ***Expression of specific marker genes of each cluster in phase SCTransformed ONS76-CBO seurat object***
 This type of plot was not that useful
-```
-{r DotplotAllSeppMarkersAndCiliaONS76cbo, fig.height=10}
+```{r eval=FALSE, echo=FALSE, DotplotAllSeppMarkersAndCiliaONS76cbo, fig.height=10}
 # from the Sepp paper repeat Dotplot with TF and some key non-TF markers
 # added markers of ciliated cells from cluster10 above.
 # used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
@@ -935,33 +1464,33 @@ DotPlot(object = phase.ons76cbo.sct.clust, features = seppAll.cilia.stem.markers
 ```
 
 
-# code below is in case I need to check expression of specific gene(s) in certain clusters.
-```
+code below is in case I need to check expression of specific gene(s) in certain clusters.
+
 # CHECK ABOVE CANDIDATE GENES WHICH ARE UPREGULATED IN ONS76 CELLS VS WT CELLS IN CO-CULTURE
 #----------------------------------------------------------------------------------------------------
 
 cntn2.clusters.2.10 <- ons76cbo.cluster.markers.noRiboMito[((ons76cbo.cluster.markers.noRiboMito$cluster == 2 | ons76cbo.cluster.markers.noRiboMito$cluster == 10) & ons76cbo.cluster.markers.noRiboMito$gene == "CNTN2"), ]
 
 cntn2.clusters.2.10
-```
+
 # code below is not needed as Venn diagrams are not the correct way to compare gene expression in cells from different clusters. However, it is retained in case Venn Diagrams of expressed genes are useful in future.
 ***Venn diagrams for overlap of upregulated genes***
 
-```
+```{r eval=FALSE, echo=FALSE}
 cluster2.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 2, ]
 cluster6.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 6, ]
 cluster9.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 9, ]
 cluster10.markers <- ons76cbo.cluster.markers.noRiboMito[ons76cbo.cluster.markers.noRiboMito$cluster == 10, ]
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 write.csv(cluster2.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster2.csv")
 write.csv(cluster6.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster6.csv")
 write.csv(cluster9.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster9.csv")
 write.csv(cluster10.markers, file = "./outputs50K/DEG_VennDiag/ONS76cbo_cluster10.csv")
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 ONS76cbo_clus2 <- read.csv("outputs50K/DEG_VennDiag/ONS76cbo_cluster2.csv",
                            header = TRUE,
                            stringsAsFactors = FALSE)
@@ -979,13 +1508,13 @@ cbo_clus6_granule <- read.csv("outputs50K/DEG_VennDiag/cbo_cluster6_granule.csv"
                            stringsAsFactors = FALSE)
 ```
 
-``` VennDiagClus6CBOvsClus6ONS76CBO
+```{r eval=FALSE, echo=FALSE, VennDiagClus6CBOvsClus6ONS76CBO}
 gene_list1 <- list(cbo_clus6_granule$gene, ONS76cbo_clus6$gene)
 cbo.clus6.granule_ons76cbo.clus6 <- ggVennDiagram(gene_list1, category.names = c("cbo_clus6_granule", "ONS76cbo_clus6"))
 cbo.clus6.granule_ons76cbo.clus6
 ```
 
-```VennDiagClus6CBOvsClus2ONS76CBO
+```{r eval=FALSE, echo=FALSE, VennDiagClus6CBOvsClus2ONS76CBO}
 # cluster 2 in ONS76-CBO and cluster 6 in CBO seem to share the greatest percentage of genes,
 # so it is likely that CBO cluster 6 and ONS76-CBO cluster 2 are the most similar
 
@@ -994,13 +1523,13 @@ cbo.clus6.granule_ons76cbo.clus2 <- ggVennDiagram(gene_list2, category.names = c
 cbo.clus6.granule_ons76cbo.clus2
 ```
 
-```VennDiagClus6CBOvsClus9ONS76CBO
+```{r eval=FALSE, echo=FALSE, VennDiagClus6CBOvsClus9ONS76CBO}
 gene_list3 <- list(cbo_clus6_granule$gene, ONS76cbo_clus9$gene)
 cbo.clus6.granule_ons76cbo.clus9 <- ggVennDiagram(gene_list3, category.names = c("cbo_clus6_granule", "ONS76cbo_clus9"))
 cbo.clus6.granule_ons76cbo.clus9
 ```
 
-```VennDiagClus6CBOvsClus10ONS76CBO
+```{r eval=FALSE, echo=FALSE, VennDiagClus6CBOvsClus10ONS76CBO}
 gene_list4 <- list(cbo_clus6_granule$gene, ONS76cbo_clus10$gene)
 cbo.clus6.granule_ons76cbo.clus10 <- ggVennDiagram(gene_list4, category.names = c("cbo_clus6_granule", "ONS76cbo_clus10"))
 cbo.clus6.granule_ons76cbo.clus10
@@ -1009,28 +1538,24 @@ cbo.clus6.granule_ons76cbo.clus10
 ----------------------------------------------------------------------------------------------------
 ***Generate correlation matrix of gene expression in each of the NEUROD1+ clusters of ONS76-CBO and CBO control***
 Find AverageExpression() of each of the NEUROD1+ clusters, and eventually construct a dataframe of the Average Expression of all 4 NEUROD1+ clusters. The aim is to generate a correlation matrix, first using all the genes, and then using the top 500 DEGs of each cluster.
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 av.exp.cl5.cbo <- AverageExpression(nd1.clus5.cbo)$RNA
 head(av.exp.cl5.cbo)
 ```
 
 Is the above result the same as if I do AverageExpression on all the seurat clusters? YES!!
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # converted to a dataframe (original data structure is matrix)
 av.exp.all <- as.data.frame(AverageExpression(phase.cbo.sct.clust)$RNA)
 head(av.exp.all)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 class(av.exp.all)
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # subset each NEUROD1 cluster in the ONS76-CBO sample (cluster 9 is NOT a NeuroD1 cluster!)
 nd1.cl3.ons76cbo <- subset(phase.ons76cbo.sct.clust, idents = c("3"))
 
@@ -1042,8 +1567,7 @@ cl9.ons76cbo <- subset(phase.ons76cbo.sct.clust, idents = c("9"))
 
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # compute AverageExpression of each of the ONS76-CBO NEUROD1+ clusters
 av.exp.cl3.ons76cbo <- AverageExpression(nd1.cl3.ons76cbo)$RNA
 av.exp.cl4.ons76cbo <- AverageExpression(nd1.cl4.ons76cbo)$RNA
@@ -1052,8 +1576,7 @@ av.exp.cl9.ons76cbo <- AverageExpression(cl9.ons76cbo)$RNA
 ```
 
 Check lengths of the objects. They are different. Cluster 5 from the CBO control has the largest number of genes 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 length(av.exp.cl5.cbo)
 length(av.exp.cl3.ons76cbo)
 length(av.exp.cl4.ons76cbo)
@@ -1061,8 +1584,7 @@ length(av.exp.cl8.ons76cbo)
 length(av.exp.cl9.ons76cbo)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # change colnames of objects (clusters)
 colnames(av.exp.cl5.cbo) <- "cl5_cbo"
 colnames(av.exp.cl3.ons76cbo) <- "cl3_ons76cbo"
@@ -1072,8 +1594,7 @@ colnames(av.exp.cl9.ons76cbo) <- "cl9_ons76cbo"
 ```
 
 Make the rownames (which are gene symbols) of each of the "av.exp..." objects into a new column  with rownames_to_column(). First convert the object to a dataframe.
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 av.exp.cl5.cbo.2cols <- as.data.frame(av.exp.cl5.cbo) %>% 
   rownames_to_column("genes")
 av.exp.cl3.ons76cbo.2cols <- as.data.frame(av.exp.cl3.ons76cbo) %>% 
@@ -1087,49 +1608,42 @@ av.exp.cl9.ons76cbo.2cols <- as.data.frame(av.exp.cl9.ons76cbo) %>%
 ```
 
 This worked, as shown by below example
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 head(av.exp.cl5.cbo.2cols)
 ```
 
 Are there any duplicate genes in the ONS76-CBO sample? No
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 sum(duplicated(av.exp.cl3.ons76cbo.2cols))
 sum(duplicated(av.exp.cl4.ons76cbo.2cols))
 sum(duplicated(av.exp.cl8.ons76cbo.2cols))
 ```
 
 Are there any duplicated genes in the CBO sample? No
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 sum(duplicated(av.exp.cl5.cbo.2cols))
 ```
 
 Are the genes in 'av.exp.cl5.cbo.2cols' the same as the genes in 'av.exp.cl4.ons76cbo.2cols$genes'. NO!!
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # compare the genes in Cluster 5 of CBO and Cluster 4 of ONS76-CBO sample - they are NOT identical
 identical(av.exp.cl5.cbo.2cols$genes, av.exp.cl4.ons76cbo.2cols$genes)
 ```
 
 Are the genes in NeuroD1 cluster 3, 4, 8 of the ONS76-CBO sample identical - they are.
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # compare the genes in Cluster 3 and Cluster 4 of ONS76-CBO sample - they are identical
 identical(av.exp.cl3.ons76cbo.2cols$genes, av.exp.cl4.ons76cbo.2cols$genes)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # compare the genes in Cluster 4 of ONS76-CBO and Cluster 8 of ONS76-CBO samples - they are identical
 identical(av.exp.cl4.ons76cbo.2cols$genes, av.exp.cl8.ons76cbo.2cols$genes)
 ```
 
 Join the 'av.exp..' dataframes by "genes" so that all the 'genes' in the smaller dfs are kept and the genes that are in the longer df that are not also present in the shorter dfs are removed
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 merge3 <- join_all(list(av.exp.cl3.ons76cbo.2cols, 
                         av.exp.cl4.ons76cbo.2cols, 
                         av.exp.cl8.ons76cbo.2cols,
@@ -1139,35 +1653,30 @@ merge3 <- join_all(list(av.exp.cl3.ons76cbo.2cols,
 head(merge3)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 colSums(is.na(merge3))
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # Replace all the NA values with zeros
 merge3[is.na(merge3)] <- 0
 colSums(is.na(merge3))
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # check expression of NEUROD1, RBFOX3 and RTN1
 merge3 %>% 
   filter(genes %in% c("NEUROD1", "RBFOX3", "RTN1", "MEIS1", "CNTN2"))
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # save the 'merge3' object which is the Average Expression of all the clusters (NA values removed)
 saveRDS(merge3, 
         file = "./outputs50K/ONS76-CBO/neurod1ClustsANDons76CboClus9.ons76cbo.cbo.allGenes.AvgExpressn.dataframe.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the AverageExpression dataframe containing ALL genes
 merge3 <- 
   readRDS("outputs50K/ONS76-CBO/neurod1ClustsANDons76CboClus9.ons76cbo.cbo.allGenes.AvgExpressn.dataframe.rds")
@@ -1175,8 +1684,7 @@ merge3 <-
 
 ****Correlation matrix using ALL genes****
 The correlation matrix below shows the correlation strength when comparing Average Expression of ALL genes in the matrix. However, plotting the correlation matrix in this form will not look good!
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # use dplyr to select only the columns with numeric values (the RNA counts)
 RNAcounts <- merge3 %>% 
   select(-genes)
@@ -1186,15 +1694,13 @@ ons76cbo.cor
 ```
 
 Get the full correlation matrix - correlation between all clusters
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 corr.ons76sbo.cbo <- cor(RNAcounts)
 corr.ons76sbo.cbo
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 upper.ons76cbo.cbo <- corr.ons76sbo.cbo
 
 # Make upper triangular matrix by setting NA to lower triangular part:
@@ -1202,8 +1708,7 @@ upper.ons76cbo.cbo[lower.tri(upper.ons76cbo.cbo)] <- NA
 upper.ons76cbo.cbo
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.ons76cbo.cbo <- melt(upper.ons76cbo.cbo, na.rm = TRUE)
 head(up.m.ons76cbo.cbo)
@@ -1211,8 +1716,7 @@ nrow(up.m.ons76cbo.cbo)
 ```
 
 This is a much nicer looking plot - the CORRELATION HEATMAP FOR ALL GENES
-```
-{r CorrAllGenesNeurod1ClustsONS76cboVScbo}
+```{r eval=FALSE, echo=FALSE, CorrAllGenesNeurod1ClustsONS76cboVScbo}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.ons76cbo.cbo, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
@@ -1243,7 +1747,7 @@ ggplot(data = up.m.ons76cbo.cbo, aes(x = Var1, y = Var2, fill = value)) +
 It is NOT better to select the top DEGs than useing all genes
 Note I am using the SCTransformed, CC difference regressed 'phase' object
 
-```
+```{r eval=FALSE, echo=FALSE}
 # NO NEED TO RE-RUN THESE CODE CHUNKS
 
 # choose top 500 DEGs of cluster 5 of CBO sample
@@ -1255,7 +1759,7 @@ head(cl5.cbo.top500DEG, n=10)
 ```
 
 Find the top 500 DEGs in each of the 3 clusters in ONS76-CBO sample, generated after applying SCTransform
-```
+```{r eval=FALSE, echo=FALSE}
 # choose top 500 DEGs of cluster 3 of ONS76-CBO sample
 cl3.ons76cbo.sct.DEG <- FindMarkers(object = phase.ons76cbo.sct.clust,
                                     ident.1 = 3,
@@ -1263,7 +1767,8 @@ cl3.ons76cbo.sct.DEG <- FindMarkers(object = phase.ons76cbo.sct.clust,
 cl3.ons76cbo.top500DEG <- head(cl3.ons76cbo.sct.DEG, n = 500)
 head(cl3.ons76cbo.top500DEG, n=10)
 ```
-```
+
+```{r eval=FALSE, echo=FALSE}
 # choose top 500 DEGs of cluster 4 of ONS76-CBO sample
 cl4.ons76cbo.sct.DEG <- FindMarkers(object = phase.ons76cbo.sct.clust,
                                     ident.1 = 4,
@@ -1272,7 +1777,7 @@ cl4.ons76cbo.top500DEG <- head(cl4.ons76cbo.sct.DEG, n = 500)
 head(cl4.ons76cbo.top500DEG, n=10)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # choose top 500 DEGs of cluster 8 of ONS76-CBO sample
 cl8.ons76cbo.sct.DEG <- FindMarkers(object = phase.ons76cbo.sct.clust,
                                     ident.1 = 8,
@@ -1282,7 +1787,7 @@ head(cl8.ons76cbo.top500DEG, n=10)
 ```
 
 So, now we have 500 DEGs for each of our 4 clusters, we need to extract the RNA counts for each DEG for each cluster from merge3 which already has all counts for all genes, including these.
-```
+```{r eval=FALSE, echo=FALSE}
 cl5.cbo.top500DEG.2 <- cl5.cbo.top500DEG %>% 
   rownames_to_column(var = "gene")
 
@@ -1306,47 +1811,45 @@ genes.deg <- allcl.deg %>%
 str(genes.deg)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # convert gene.vec to a vector
 gene.vec <- genes.deg$gene
 str(gene.vec)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # count the number of duplicates
 sum(duplicated(gene.vec))
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # get rid of duplicates in the vector 'gene.vect'
 gene.vec.uniq <- gene.vec %>% 
   unique()
 length(gene.vec.uniq)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # subset merge3 dataframe so we only keep these 1196 genes
 merge3.deg <- merge3 %>% 
   filter(genes %in% gene.vec.uniq)
 dim(merge3.deg)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save merge3.deg which only contains a subset of genes of merge3, corresponding to DEG genes of all
 # the NeuroD1+ clusters from ONS76-CBO and CBO control samples
 saveRDS(merge3.deg, file = "outputs50K/ONS76-CBO/neurod1Clusts.ons76cbo.cbo.DEGgenes.AvgExpressn.dataframe.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the AverageExpression dataframe containing only DEGs
 merge3.deg <- readRDS("outputs50K/ONS76-CBO/neurod1Clusts.ons76cbo.cbo.DEGgenes.AvgExpressn.dataframe.rds")
 ```
 
 
 The correlation is maximal for cluster 4 in the ON76-CBO sample with cluster 5 of the CBO sample. This means, cluster 4 in ONS76-CBO is the healthy cluster. After repeating the correlation using just (top 500) DEGs, the result is pretty similar to using the entire gene set of ~20K genes
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # use dplyr to select only the columns with numeric values (the RNA counts)
 RNAcounts.degs <- merge3.deg %>% 
   select(-genes)
@@ -1355,28 +1858,24 @@ ons76cbo.cor.degs <- cor(RNAcounts.degs[, colnames(RNAcounts.degs)], RNAcounts.d
 ons76cbo.cor.degs
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # convert to dataframe
 ons76cbo.cor.degs.df <- as.data.frame(ons76cbo.cor.degs) %>% 
   rownames_to_column(var = "cluster")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # overview of object
 str(ons76cbo.cor.degs.df)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 ons76cbo.cor.degs.df$V2 <- "cl5_cbo"
 str(ons76cbo.cor.degs.df)
 ```
 
 This heatmap shows that the correlation plot works and that cluster 4 of ONS76-CBO has the greatest similarity to cluster 5 CBO, which was the expected result. However, using a subset of genes of merge 3, that are DEGs of each cluster is no better than using the full list of genes. The findings are consistent using either the full list of genes or just the DEGs of each cluster. This heatmap appearance is just shown as an example as this plot is not of publication quality!
-```
-{r CorrlnPlotHealthyNeuroD1VsHealthyAndONS76cocultNeuroD1}
+```{r eval=FALSE, echo=FALSE, CorrlnPlotHealthyNeuroD1VsHealthyAndONS76cocultNeuroD1}
 ggplot(data = ons76cbo.cor.degs.df, aes(x = cluster, y = V2, fill = V1)) +
   geom_tile() +
   coord_fixed() +
@@ -1384,15 +1883,13 @@ ggplot(data = ons76cbo.cor.degs.df, aes(x = cluster, y = V2, fill = V1)) +
 ```
 
 A better way to show the correlation using just DEGs is with the upper triangular matrix plot. Start by generating the correlation matrix as before
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # generate correlation matrix
 corr.ons76sbo.cbo.degs <- cor(RNAcounts.degs)
 corr.ons76sbo.cbo.degs
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 upper.ons76cbo.cbo.degs <- corr.ons76sbo.cbo.degs
 
 # Make upper triangular matrix by setting NA to lower triangular part:
@@ -1400,15 +1897,13 @@ upper.ons76cbo.cbo.degs[lower.tri(upper.ons76cbo.cbo.degs)] <- NA
 upper.ons76cbo.cbo.degs
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # 'Melt' this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.ons76cbo.cbo.degs <- melt(upper.ons76cbo.cbo.degs, na.rm = TRUE)
 head(up.m.ons76cbo.cbo.degs)
 ```
 
-```
-{r CorrlnPlotNeuroD1ons76cocultCboSampleAllgenes}
+```{r eval=FALSE, echo=FALSE, CorrlnPlotNeuroD1ons76cocultCboSampleAllgenes}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.ons76cbo.cbo.degs, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
