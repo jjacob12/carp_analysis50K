@@ -41,24 +41,24 @@ load("RDataFiles/INTEGRATE_DAOY-CBO_DAOY-SPHER_DAOY-2D_50K.Rmd.RData")
 ***Look for batch effects in DAOY-2D 1st run and DAOY-RD repeat run***
 this code is from https://broadinstitute.github.io/2020_scWorkshop/batch-correction-lab.html
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load DAOY-2D (original) and DAOY-2D (repeat) samples
-dy2d.first <- readRDS("outputs50K/DAOY_2D/filtCellsGenesRiboMito.daoy.2d.seurat.FIRST.10Xrun.rds")
-dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
+dy2d.first <- readRDS("outputs50K/DAOY_2D/filt.CellsGenes.RiboRetained.seurat.daoy.2d.seurat.FIRST.10Xrun.rds")
+dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
 ```
 
-```{r}
-dim(dy2d.first) # 13,093 genes, 187 cells
-dim(dy2d.rep) # 24,615 genes, 1935 cells
+```{r eval=FALSE, echo=FALSE}
+dim(dy2d.first) # 13,269 genes, 186 cells
+dim(dy2d.rep) # 24,944 genes, 2633 cells
 ```
 
-```{r VlnPlotGenesDistributionDaoy2dFirstAndRepeat10XRuns, fig.height=3, fig.width=2}
+```{r eval=FALSE, echo=FALSE, VlnPlotGenesDistributionDaoy2dFirstAndRepeat10XRuns, fig.height=3, fig.width=2}
 p1a <- VlnPlot(dy2d.first, "nFeature_RNA")
 p2a <- VlnPlot(dy2d.rep, "nFeature_RNA")
 p1a / p2a
 ```
 
-```{r VlnPlotGenesGreaterThan1750Daoy2dFirstAndRepeat10XRuns, fig.height=3, fig.width=2}
+```{r eval=FALSE, echo=FALSE, VlnPlotGenesGreaterThan1750Daoy2dFirstAndRepeat10XRuns, fig.height=3, fig.width=2}
 # In subset, use low.thresholds = 1750
 
 dy2d.first <- subset(dy2d.first, subset = nFeature_RNA > 1750)
@@ -70,7 +70,7 @@ p1b / p2b
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # normalize, find variable genes, scale
 # first 10X run
 dy2d.first <- NormalizeData(dy2d.first, 
@@ -87,33 +87,33 @@ dy2d.rep <- NormalizeData(dy2d.rep,
   ScaleData()
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # update metadata slot with run info.
 dy2d.first[["run"]] <- "first"
 dy2d.rep[["run"]] <- "rep"
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # downsample the repeat 10X run only
 Idents(dy2d.rep) <- "run"
 dy2d.rep <- subset(dy2d.rep, downsample = 187, seed = 1)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the seurat objects
 saveRDS(dy2d.first, 
-        file = "./outputs50K/DAOY_2D/Daoy2DFirst10XRunNormalisedFindVarFeaturesScaled.rds")
+        file = "./outputs50K/DAOY_2D/Daoy2D.First10XRunNormalisedFindVarFeaturesScaled.rds")
 saveRDS(dy2d.rep,
         file = "./outputs50K/DAOY_2D/Daoy2DRepeat10XRunNormalisedFindVarFeaturesScaledDownsamp.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy2d.first <- readRDS("outputs50K/DAOY_2D/Daoy2DFirst10XRunNormalisedFindVarFeaturesScaled.rds")
 dy2d.rep <- readRDS("outputs50K/DAOY_2D/Daoy2DRepeat10XRunNormalisedFindVarFeaturesScaledDownsamp.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Merge Seurat objects. Original sample identities are stored in object metadata ('run')
 # Cell names will now have the format, run_cellID (first_cell1...)
 
@@ -125,17 +125,17 @@ dy2d.both <- merge(x = dy2d.first,
 Idents(dy2d.both) <- "run"  # use identity based on sample identity
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the object that was saved lower down
 dy2d.both <- readRDS("outputs50K/INTEGRATE/daoy2D.FirstAndRepeat10Xruns.Merge.clustered.rds")
 ```
 
-```{r VlnPlotGeneDistribMergeDaoy2dFirstAndRepeat10Xruns, fig.height=1.5, fig.width=2}
+```{r eval=FALSE, echo=FALSE, VlnPlotGeneDistribMergeDaoy2dFirstAndRepeat10Xruns, fig.height=1.5, fig.width=2}
 # Look at how the number of genes per cell varies across the different 10X runs
 VlnPlot(dy2d.both, "nFeature_RNA", group.by = "run") + theme(legend.position = 'none')
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # The merged data must be normalized and scaled (but you only need to scale the variable genes). 
 # Let us also find the variable genes again this time using all the data
 dy2d.both <- NormalizeData(dy2d.both, 
@@ -147,12 +147,12 @@ var.genes <- SelectIntegrationFeatures(SplitObject(dy2d.both, split.by = "run"),
                                        selection.method = "vst")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 VariableFeatures(dy2d.both) <- var.genes
 dy2d.both <- ScaleData(dy2d.both, features = VariableFeatures(dy2d.both))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Do PCA on data including only the variable genes.
 dy2d.both <- RunPCA(dy2d.both, 
                  features = VariableFeatures(dy2d.both), 
@@ -161,13 +161,7 @@ dy2d.both <- RunPCA(dy2d.both,
                  nfeatures.print = 5)
 ```
 
-As can be seen there is a batch effect, with most of the 'rep' sample separated from the "first" sample. However there is some mixing of 'first' and 'rep' cells
-```{r DimPlotPCAFirst10XRunRep10XRun, fig.height=8, fig.width=8}
-# Color the PC biplot by the 10X run
-DimPlot(dy2d.both, reduction = "pca", dims = c(1, 2), group.by = "run")
-```
-
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # cluster the cells
 dy2d.both <- FindNeighbors(dy2d.both, 
                            reduction = "pca", dims = 1:20,
@@ -181,35 +175,103 @@ dy2d.both <- FindNeighbors(dy2d.both,
           seed.use = 1)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(dy2d.both, 
         file = "./outputs50K/INTEGRATE/daoy2D.FirstAndRepeat10Xruns.Merge.clustered.rds")
 ```
 
-
-
-```{r DimplotUMAPFirst10XrunRep10XrunDAOY2D, fig.height=8, fig.width=8}
+As can be seen there is a batch effect, with most of the 'rep' sample separated from the "first" sample.
+```{r eval=FALSE, echo=FALSE, DimplotUMAPFirst10XrunRep10XrunDAOY2D, fig.height=6, fig.width=10}
 DimPlot(dy2d.both, reduction = "umap", group.by = "run")
 ```
+
+
+
+-----------------------------------------------------------------------------------------------
+***Integrate DAOY-2D original and DAOY-2D repeat samples***
+```{r eval=FALSE, echo=FALSE}
+# load the objects
+dy2d.first <- readRDS("outputs50K/DAOY_2D/filt.CellsGenes.RiboRetained.seurat.daoy.2d.seurat.FIRST.10Xrun.rds")
+dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- dy2d.first@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+metadata$sample <- NA
+metadata$sample <- "dy_first"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy2d.first@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- dy2d.rep@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+metadata$sample <- NA
+metadata$sample <- "dy_rep"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy2d.rep@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# perform conventional integration
+# create a list first
+dy.mono.list <- list(dy2d.first, dy2d.rep)
+
+# run the integration workflow
+for (i in 1:length(dy.mono.list)) {
+  dy.mono.list[[i]] <- NormalizeData(dy.mono.list[[i]], verbose = FALSE)
+  dy.mono.list[[i]] <- FindVariableFeatures(dy.mono.list[[i]], 
+                                            selection.method = "vst", nfeatures = 2000,
+                                            verbose = FALSE)
+}
+dy.mono.anch <- FindIntegrationAnchors(object.list = dy.mono.list, dims = 1:30)
+dy.mono.combined <- IntegrateData(anchorset = dy.mono.anch, dims = 1:30)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# run the rest of the integration workflow
+#DefaultAssay(dy.mono.combined) <- "integrated"
+dy.mono.combined <- ScaleData(dy.mono.combined, verbose = FALSE) %>%
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.mono.combined) <- "sample"
+```
+
+This shows there are two major clusters, and that cells from the original sample and the repeat sample are found in both clusters. So the integration has worked well
+```{r eval=FALSE, echo=FALSE}
+DimPlot(dy.mono.combined, reduction = "umap")
+```
+
 
 
 -----------------------------------------------------------------------------------------------
 ***Compare DAOY-2D FIRST 10X run with DAOY2d-SPHEROID***
 Both runs were on the same day, so there should be no effect only a true biological difference
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load DAOY-2D (original) and DAOY-3D samples
-dy2d.first <- readRDS("outputs50K/DAOY_2D/filtCellsGenesRiboMito.daoy.2d.seurat.FIRST.10Xrun.rds")
-dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.seurat.DAOYspher.rds")
+dy2d.first <- readRDS("outputs50K/DAOY_2D/filt.CellsGenes.RiboRetained.seurat.daoy.2d.seurat.FIRST.10Xrun.rds")
+dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy2d.first <- subset(dy2d.first, subset = nFeature_RNA > 1750)
 dy3d <- subset(dy3d, subset = nFeature_RNA > 1750)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # normalize, find variable genes, scale
 # first 10X run
 dy2d.first <- NormalizeData(dy2d.first, 
@@ -226,19 +288,19 @@ dy3d <- NormalizeData(dy3d,
   ScaleData()
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # update metadata slot with run info.
 dy2d.first[["condition"]] <- "2Dorig"
 dy3d[["condition"]] <- "spher"
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # downsample the repeat 10X run only
 Idents(dy3d) <- "condition"
 dy3d <- subset(dy3d, downsample = 187, seed = 1)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Merge Seurat objects. Original sample identities are stored in object metadata ('run')
 # Cell names will now have the format, run_cellID (first_cell1...)
 
@@ -250,12 +312,12 @@ dy.2d.3d <- merge(x = dy2d.first,
 Idents(dy.2d.3d) <- "condition"  # use identity based on sample identity
 ```
 
-```{r VlnPlotGeneDistribMergeDaoy2dFirstAndDaoy3d, fig.height=1.5, fig.width=2}
+```{r eval=FALSE, echo=FALSE, VlnPlotGeneDistribMergeDaoy2dFirstAndDaoy3d, fig.height=1.5, fig.width=2}
 # Look at how the number of genes per cell varies across the different 10X runs
 VlnPlot(dy.2d.3d, "nFeature_RNA", group.by = "condition") + theme(legend.position = 'none')
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # The merged data must be normalized and scaled (but you only need to scale the variable genes). 
 # Let us also find the variable genes again this time using all the data
 dy.2d.3d <- NormalizeData(dy.2d.3d, 
@@ -267,30 +329,24 @@ var.genes <- SelectIntegrationFeatures(SplitObject(dy.2d.3d, split.by = "conditi
                                        selection.method = "vst")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 VariableFeatures(dy.2d.3d) <- var.genes
 dy.2d.3d <- ScaleData(dy.2d.3d, features = VariableFeatures(dy.2d.3d))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Do PCA on data including only the variable genes.
 dy.2d.3d <- RunPCA(dy.2d.3d, 
                  features = VariableFeatures(dy.2d.3d), 
                  npcs = 40)
 ```
 
-```{r}
-# load saved object
-dy.2d.3d <- readRDS("outputs50K/INTEGRATE/Daoy2D.first10Xrun.DaoySpheroid.clustered.rds")
-```
-
-
-```{r DimPlotPCAFirst10XRunAndSpherDAOY, fig.height=8, fig.width=8}
+```{r  eval=FALSE, echo=FALSE, DimPlotPCAFirst10XRunAndSpherDAOY, fig.height=6, fig.width=10}
 # Color the PC biplot by the 10X run
 DimPlot(dy.2d.3d, reduction = "pca", dims = c(1, 2), group.by = "condition")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # cluster the cells
 dy.2d.3d <- FindNeighbors(dy.2d.3d, 
                            reduction = "pca", dims = 1:20,
@@ -305,11 +361,11 @@ dy.2d.3d <- FindNeighbors(dy.2d.3d,
 ```
 
 There is much greater separation of the DAOY-2D first 10X run sample and DAOY-spher sample on the UMAP plot - note the x-axis scale from -10 to +10 and y-axis scale from -6 to +3, both of which are much greater than the UMAP axis scales for the DAOY-2D original and repeat 10X runs. So, it is fine to use the DAOY-2Drep sample when making comparisons with spheroid and co-culture conditions
-```{r DimplotUMAPdaoy2DFirstRunAndDaoySpher, fig.height=8, fig.width=8}
+```{r eval=FALSE, echo=FALSE, DimplotUMAPdaoy2DFirstRunAndDaoySpher, fig.height=6, fig.width=10}
 DimPlot(dy.2d.3d, reduction = "umap", group.by = "condition")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(dy.2d.3d,
         file = "./outputs50K/INTEGRATE/Daoy2D.first10Xrun.DaoySpheroid.clustered.rds")
 ```
@@ -319,18 +375,18 @@ saveRDS(dy.2d.3d,
 ***Merge the DAOY-2D repeat sample, the DAOY-SPHER, DAOY-CBO samples and CBO control***
 Get a DimPlot to check how close the different samples are in UMAP space - the DAOY spheroid sample is closer to the DAOY-CBO sample than to the DAOY-2Drep sample. No longer need the original DAOY-2D sample in this merge
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load datasets
 # repeat DAOY-2D dataset which was sequenced at much greater depth
-dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
+dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
 # DAOY-SPHER dataset
-dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.seurat.DAOYspher.rds")
+dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
 # DAOY-CBO and CBO datasets
-dyCbo <- readRDS("outputs50K/DAOY-CBO/daoyCbo.seurat.filtCellsGenesNoRiboNoMito.rds")
-cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
+dyCbo <- readRDS("outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+cbo <- readRDS("outputs50K/CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.cbo.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.4samples <- merge(dy2d.rep, 
                   y = c(dy3d, dyCbo, cbo), 
                   add.cell.ids = c("dy2drep", "dy3d", "dyCBO", "cbo"), 
@@ -338,15 +394,15 @@ dy.4samples <- merge(dy2d.rep,
 dy.4samples
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 unique(sapply(X = strsplit(colnames(dy.4samples), split = "_"), FUN = "[", 1))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 table(dy.4samples$orig.ident)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # Create metadata dataframe
 metadata <- dy.4samples@meta.data
 # Add cell IDs to metadata
@@ -359,17 +415,17 @@ metadata$sample[which(str_detect(metadata$cells, "^dyCBO_"))] <- "coculture"
 metadata$sample[which(str_detect(metadata$cells, "^cbo_"))] <- "organoid"
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.4samples@meta.data <- metadata
 ```
 
-```{r BarPlotMergedCellCountsDaoyAll}
+```{r eval=FALSE, echo=FALSE}
 dy4samples.df <- metadata 
 dy4samples.df$sample <- factor(dy4samples.df$sample, 
                                levels = c("spheroid", "monolayer", "coculture", "organoid"))
 ```
 
-```{r fig.height=7, fig.width=5}
+```{r eval=FALSE, echo=FALSE, BarPlotMergedCellCountsDaoyAll, fig.height=7, fig.width=5}
 dy4samples.df.barChart <- ggplot(dy4samples.df, aes(x=sample, fill=sample)) +
   	geom_bar(fill = "grey") +
   	theme_classic() +
@@ -379,20 +435,20 @@ dy4samples.df.barChart <- ggplot(dy4samples.df, aes(x=sample, fill=sample)) +
    NoLegend()
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the bar chart of cell counts
 saveRDS(dy4samples.df.barChart, 
         file = "./outputs50K/INTEGRATE/BarChartDaoyCellCounts4conditionsMerged.rds")
 ```
 
 
-```{r BarChartDaoyCellCounts4conditions, fig.height=7, fig.width=5}
+```{r eval=FALSE, echo=FALSE, BarChartDaoyCellCounts4conditions, fig.height=7, fig.width=5}
 dy4samples.df.barChart <- readRDS("outputs50K/INTEGRATE/BarChartDaoyCellCounts4conditionsMerged.rds")
 dy4samples.df.barChart
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.4samples <- NormalizeData(dy.4samples)
 dy.4samples <- FindVariableFeatures(dy.4samples)
 dy.4samples <- ScaleData(dy.4samples)
@@ -400,37 +456,51 @@ dy.4samples <- RunPCA(dy.4samples, features = VariableFeatures(object = dy.4samp
 dy.4samples <- RunUMAP(dy.4samples, dims = 1:5, reduction = "pca")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(dy.4samples,
         file = "./outputs50K/INTEGRATE/Daoy4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.4samples <- readRDS("outputs50K/INTEGRATE/Daoy4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
 ```
 
 
 This result makes sense. Spheroid is more closely related to coculture and organoid than monolayer
-```{r DimPlotMergedDyCboSpherCboCNTRL, fig.height=6, fig.width=10}
-DimPlot(dy.4samples, reduction = "umap", group.by = "sample") +
-  labs(title = "")
+```{r eval=FALSE, echo=FALSE, DimPlotMergedDyCboSpherCboCNTRL, fig.height=6, fig.width=10}
+DimPlot(dy.4samples, reduction = "umap", group.by = "sample", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
 ```
 
-```{r}
-# Set Idents to 'sample'
-Idents(dy.4samples) <- "sample"
-```
 
 The DAOY-CBO and control CBO have the most NRG2, NRG3 and NRG4 ligands
-```{r VlnPlotNRGLigandsMergedDaoy2DVs3dVsDaoyCBOvsCbo4samples, fig.height=7, fig.width=10}
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
 VlnPlot(dy.4samples, features = c("NRG1", "NRG2", "NRG3", "NRG4", "CD4"),
         assay = "RNA",
         slot = "data")
 ```
 
+```{r eval=FALSE, echo=FALSE, VlnPlotNRGLigandsMergedDaoy2DVs3dVsDaoyCBOvsCbo4samples, fig.height=5, fig.width=7}
+# Set Idents to 'sample'
+Idents(dy.4samples) <- "sample"
+
+p1a <- VlnPlot(dy.4samples, features = c("NRG3"),
+        assay = "RNA",
+        slot = "data") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a
+```
+
+
 Here I am plotting the expression of notch ligands in DAOY-2D, DAOY-spher, DAOY-CBO and CBO samples. The increased expression of notch ligands in the DAOY-CBO and CBO samples is consistent with the upregulated expression of Notch readouts, HES5 and HES6 in the extracted DAOY-only coculture cells. This supports the view that increased ligand stimulation of notch signaling in the co-culture condition is what drives notch signalling in the DAOY cells in coculture
 
-```{r VlnPlotNotchLigandsMergedDoyy2dVs3dVsDaoyCboVsCbo, fig.height=7, fig.width=10}
+```{r eval=FALSE, echo=FALSE, VlnPlotNotchLigandsMergedDoyy2dVs3dVsDaoyCboVsCbo, fig.height=7, fig.width=10}
 VlnPlot(dy.4samples, features = c("DLL1", "DLL3", "DLL4", "JAG1", "JAG2"),
         slot = "data",
         assay = "RNA")
@@ -443,111 +513,109 @@ VlnPlot(dy.4samples, features = c("DLL1", "DLL3", "DLL4", "JAG1", "JAG2"),
 The problem with the above merge is I cannot tell which are the DAOY cells in the DAOY-CBO sample. So, integrate the extracted DAOY cells from the co-culture with DAOY-SPHER cells - go back to phase object, find the cells that are cancerous, and use those cell IDs to subset the earlier seurat object.
 IMPORTANT NOTE - if the objects being integrated are already SCTransformed, DO NOT run SCTransform again on the integrated objects. Order of SCTransform, Integration, and cell cycle regression. See this Seurat issue comment from Satija "..first thought to suggest calculating scores and regressing directly on each dataset pre-integration..." from issue https://github.com/satijalab/seurat/issues/5879. I have done just that and saved each condition as a SCTransformed, cell cycle regressed object ready for integration.
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # each object already SCTransformed and cell cycle regressed
-dy2d <- readRDS("outputs50K/DAOY_2D/DAOYmono.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
-dySpher <- readRDS("outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
-dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+dy2d <- readRDS("outputs50K/DAOY_2D/DAOYmono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+dySpher <- readRDS("outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dim(dy2d)
 dim(dySpher)
 dim(dyOnly.dyCbo)
 ```
 
-```{r}
-table(dyOnly.dyCbo@meta.data$orig.ident) # 265 cells
-```
-
 As can be seen from the below, the dyOnly.dyCbo object has a prefix before the cell ID. This must be removed before proceeding
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(WhichCells(dyOnly.dyCbo))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # store the above cell IDs as a vector
 dyOnly.cellID <- WhichCells(dyOnly.dyCbo)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # remove the prefixes from the vector cell names and save as a new object of cell IDs
 dyOnly.cellID.corrected <- gsub('dyCbo.data-', '', dyOnly.cellID)
 head(dyOnly.cellID.corrected) # the prefixes have been removed
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # rename the cell IDs with the corrected cell names (.ccn = corrected cell names)
 # the object dyOnly.dyCbo.ccn is the one to use going forwards
 dyOnly.dyCbo.ccn <- RenameCells(dyOnly.dyCbo, new.names = dyOnly.cellID.corrected)
 head(WhichCells(dyOnly.dyCbo.ccn))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(WhichCells(dySpher))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(WhichCells(dy2d))
 ```
 
+
 ****Perform the integration using Pearson residuals of the prepared datasets****
 as per this Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
-```{r}
-dy.list <- list(dy2d, dySpher, dyOnly.dyCbo.ccn)
+```{r eval=FALSE, echo=FALSE}
+dy.list <- list(dy2d, dySpher, dyOnly.dyCbo)
 features <- SelectIntegrationFeatures(object.list = dy.list, nfeatures = 3000)
 dy.list <- PrepSCTIntegration(object.list = dy.list, anchor.features = features)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.anchors <- FindIntegrationAnchors(object.list = dy.list, normalization.method = "SCT",
     anchor.features = features)
 dy.combined.sct <- IntegrateData(anchorset = dy.anchors, normalization.method = "SCT")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.3samples.combined.sct <- RunPCA(dy.combined.sct, verbose = FALSE) %>% 
   RunUMAP(reduction = "pca", dims = 1:30) %>% 
   FindNeighbors(reduction = "pca", dims = 1:30) %>% 
   FindClusters(resolution = 0.3)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 table(dy.3samples.combined.sct$orig.ident)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # change the orig.ident notation for future plots
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dyMono"] <- "DAOY_monolayer"
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dySpher"] <- "DAOY_spheroid"
 dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dyCbo"] <- "DAOY_coculture"
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # DAOY_2Drep = 1935; DAOY-CBO = 269; DAOY-spher = 660 cells
 table(dy.3samples.combined.sct$orig.ident)
 ```
 
-```{r}
+
+```{r eval=FALSE, echo=FALSE}
 # save the integrated object
 saveRDS(dy.3samples.combined.sct,
         file = "./outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dy.3samples.combined.sct <- readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
 ```
 
 ------------------------------------------------------------------------------------------------------
 ***Find differentially expressed genes in DAOY-spheroid vs DAOY-monolayer and produce a Volcano Plot***
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 Idents(dy.3samples.combined.sct) <- "orig.ident"
 ```
 
-```{r}
-# from Suerat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+```{r eval=FALSE, echo=FALSE}
+# from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
 dy.3samples.combined.sct <- PrepSCTFindMarkers(dy.3samples.combined.sct)
 
 dy.3samples.combined.sct.subset <- 
@@ -562,42 +630,42 @@ dySpherV2d.allMarkers <- FindMarkers(dy.3samples.combined.sct.subset,
                                     logfc.threshold = 0.25 )
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(dy.3samples.combined.sct,
         file = "./outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 nrow(dySpherV2d.allMarkers)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dySpherV2d.allMarkers.gene <- dySpherV2d.allMarkers %>% 
   rownames_to_column(var = "gene")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the PrepSCTmarkers object above
 write.csv(dySpherV2d.allMarkers.gene,
         file = "./outputs50K/INTEGRATE/DEgenesAll.DaoySpherVSMono.Integrated.Doay2drep.DaoySpherDaoyCocolture.csv",
         quote = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the differential expressed gene list
 dySpherV2d.allMarkers.gene <- 
   read.csv("outputs50K/INTEGRATE/DEgenesAll.DaoySpherVSMono.Integrated.Doay2drep.DaoySpherDaoyCocolture.csv")
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dySpherV2d.allMarkers.gene %>% 
   dplyr::arrange(desc(avg_log2FC)) %>% 
   head(30)
 ```
 
 
-```{r VolcanoPlotDAOYSpheroidVSmonoDEGsIntegratedObject, fig.height=10, fig.width=15}
+```{r eval=FALSE, echo=FALSE, VolcanoPlotDAOYSpheroidVSmonoDEGsIntegratedObject, fig.height=10, fig.width=15}
 genes.to.label.daoySpherVsMono <- c("MDK", "CRIP1", "IFI27", "PPDPF", "GPC3", "WFDC2", "PTN", "WFCD2",
                                     "VCAN", "TUBB2B", "COL14A1")
 
@@ -609,10 +677,10 @@ EnhancedVolcano(dySpherV2d.allMarkers.gene,
                 title = NULL,
                 subtitle = NULL,
                 pointSize = 5.0,
-                labSize = 6.0,
+                labSize = 10.0,
                 cutoffLineWidth = 1.0,
                 axisLabSize = 30,
-                legendLabSize = 25,
+                legendLabSize = 40,
                 legendIconSize = 10,
                 legendPosition = "right",
                 legendLabels = c("NS", "log2FC", "p-value", "p-value and Log2FC"),
@@ -626,7 +694,7 @@ EnhancedVolcano(dySpherV2d.allMarkers.gene,
 -------------------------------------------------------------------------------------------------------
 ***Find Genes differentially upregulated in DAOY-only cocultures vs DAOY-spher***
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the PrepSCTFindMarkers object
 dy.3samples.combined.sct.prepSct <- 
   readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
@@ -642,49 +710,54 @@ dyCocultVspher.allMarkers <- FindMarkers(dy.3samples.combined.sct.subset,
                                     logfc.threshold = 0.25 )
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 nrow(dyCocultVspher.allMarkers)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dyCocultVspher.allMarkers.gene <- dyCocultVspher.allMarkers %>% 
   rownames_to_column(var = "gene")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+head(dyCocultVspher.allMarkers.gene)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # save the DEGs which are both UP and DOWN regulated
 write.csv(dyCocultVspher.allMarkers.gene, 
           file = "./outputs50K/INTEGRATE/DEgenesAll.DaoyCocultVSspher.Integrated.Doay2drep.DaoySpher.DaoyCocolture.csv",        quote = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the markers csv file
 dyCocultVspher.allMarkers.gene <- 
   read.csv("outputs50K/INTEGRATE/DEgenesAll.DaoyCocultVSspher.Integrated.Doay2drep.DaoySpher.DaoyCocolture.csv")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dyCocultVspher.allMarkers.gene %>% 
-  dplyr::arrange(desc(avg_log2FC)) %>% 
-  head(10)
+  dplyr::arrange(p_val_adj) %>% 
+  head(20)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dyCocultVspher.allMarkers.gene.sorted <- dyCocultVspher.allMarkers.gene %>% 
-  dplyr::arrange(desc(avg_log2FC))
+  dplyr::arrange(p_val_adj)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # look at specific genes
 # these genes all upregulated in DAOY cells in coculture except for ZIC2
 dyCocultVspher.allMarkers.gene %>% 
   dplyr::filter(gene %in% c("OTX2", "SOX2", "NES", "POU3F2", "FABP7", "GLI2", "ZIC2", "ERBB4"))
 ```
 
-```{r VolcanoPlotDAOYcocultVSspheroidDEGsIntegratedObject, fig.height=10,fig.width=15}
+```{r eval=FALSE, echo=FALSE, VolcanoPlotDAOYcocultVSspheroidDEGsIntegratedObject, fig.height=10,fig.width=15}
 genes.to.label.daoyCocultVsSpher <- 
-  c("ERBB4", "CRABP1", "NES", "NR2F1", "DCX", "NRG3", "SOX2", "FABP7", "POU3F2", "GLI2", "OTX2")
+  c("NES", "SOX2")
 
 EnhancedVolcano(dyCocultVspher.allMarkers.gene,
                 lab = dyCocultVspher.allMarkers.gene$gene,
@@ -694,10 +767,10 @@ EnhancedVolcano(dyCocultVspher.allMarkers.gene,
                 title = NULL,
                 subtitle = NULL,
                 pointSize = 5.0,
-                labSize = 6.0,
+                labSize = 10.0,
                 cutoffLineWidth = 1.0,
                 axisLabSize = 30,
-                legendLabSize = 25,
+                legendLabSize = 40,
                 legendIconSize = 10,
                 legendPosition = "right",
                 legendLabels = c("NS", "log2FC", "p-value", "p-value and Log2FC"),
@@ -708,74 +781,83 @@ EnhancedVolcano(dyCocultVspher.allMarkers.gene,
 
 ```
 
-
 --------------------------------------------------------------------------------------------------------
 ***UMAP Plot of DAOY-spheroid, DAOY-monolayer and DAOY-only cells from DAOY-CBO sample after integration***
 
 ```{r}
-# load the above object
+# load the object
 dy.3samples.combined.sct <- 
    readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 table(dy.3samples.combined.sct@meta.data$orig.ident)
 ```
 
 Nice overlap of DAOY cells grown in different conditions.The clustering of the different samples shows little/no separation between cells originating from different samples, which is fine, and what is expected after integration.
-```{r DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dRep, fig.height=6, fig.width=10}
-DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "orig.ident") +
-  labs(title = "")
+```{r eval=FALSE, echo=FALSE, DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dRep, fig.height=6, fig.width=10}
+DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "orig.ident", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
 ```
 
 -------------------------------------------------------------------------------------------------------
-***Heatmap of genes expressed in integrated ONS76 monolayer, spheroid and extracted coculture cells***
+***Heatmap of genes expressed in integrated DAOY monolayer, spheroid and extracted coculture cells***
 
-```{r}
-# load the PrepSCTFindMarkers object
-dy.3samples.combined.sct.prepSct <- 
-  readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
+```{r eval=FALSE, echo=FALSE}
+table(dy.3samples.combined.sct@meta.data$orig.ident)
+```
 
-dy.3samples.allMarkers <- FindAllMarkers(dy.3samples.combined.sct.prepSct,
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples.allMarkers <- FindAllMarkers(dy.3samples.combined.sct,
                                      assay = "SCT",
                                     verbose = FALSE,
                                     only.pos = TRUE,
                                     logfc.threshold = 0.25)
 ```
 
-```{r}
-nrow(dy.3samples.allMarkers) # 4847 markers
+```{r eval=FALSE, echo=FALSE}
+nrow(dy.3samples.allMarkers) # 4723 markers
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(dy.3samples.allMarkers) # there is already a 'gene' column and rownames are also genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # remove rownames
 dy.3samples.allMarkers.gene <- dy.3samples.allMarkers %>% 
   rownames_to_column(var = "gene_name") %>% 
   select(-"gene_name")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(dy.3samples.allMarkers.gene, 5)
 ```
 
-```{r}
-# save the DEGs which are UP regulated
-write.csv(dy.3samples.allMarkers.gene, 
-          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.csv", 
-          quote = FALSE)
+```{r eval=FALSE, echo=FALSE}
+# save the DEGs which are UP regulated as RDS files (not csv as causes problems in DoHeatmap)
+saveRDS(dy.3samples.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.rds")
 ```
 
-```{r}
-# load the markers csv file
+```{r eval=FALSE, echo=FALSE}
+# load the markers file
 dy.3samples.allMarkers.gene <- 
-  read.csv("outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.csv")
+  readRDS("outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+head(dy.3samples.allMarkers.gene)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # this takes the top 20 genes in each cluster (mono, spher, coculture) sorted by avg_Log2FC.
 # ERBB4 is at the top of the list in coculture condition!
 top20.genes <- dy.3samples.allMarkers.gene %>% 
@@ -784,12 +866,16 @@ top20.genes <- dy.3samples.allMarkers.gene %>%
   slice_head(n = 20)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+top20.genes %>% 
+  slice_head(n = 2)
+```
 
+
+```{r eval=FALSE, echo=FALSE}
 # From https://bioinformatics.stackexchange.com/questions/17501/avoiding-the-warning-the-following-features-were-omitted-as-they-were-not-found
 # Specify your genes of interest using the features parameter of the ScaleData() function. If this parameter is not specified, only "variable genes" are scaled and that makes sense, genes that do not demonstrate variability across conditions is not interesting in general. Anyhow, since the DoHeatmap() would be looking at the "scaled data slot", it will not be able to find your genes of interest unless they show variation.
 
-# switch Idents to "orig.ident"
 Idents(dy.3samples.combined.sct) <- "orig.ident"
 
 # set DefaultAssay to RNA before running DoHeatmap, as this is integrated object
@@ -801,18 +887,18 @@ dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct,
                                               verbose = FALSE)
 ```
 
-```{r HeatmapTop20genesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=10, fig.width=12}
+```{r eval=FALSE, echo=FALSE, HeatmapTop20genesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=22, fig.width=16}
 # Heatmap now uses all cells, no need to downsample
 DoHeatmap(dy.3samples.combined.sct.scaled, 
           features = top20.genes$gene, 
           size = 10, assay = "RNA", group.by = "ident") + 
   guides(color = "none") +
-  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+  theme(text = element_text(size = 30), legend.title = element_text(size=20), 
         legend.text=element_text(size=20))
 ```
 
 
-```{r HeatmapSelectGenesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=8, fig.width=12}
+```{r eval=FALSE, echo=FALSE, HeatmapSelectGenesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=8, fig.width=12}
 features <- c("ERBB4", "NES", "SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "PTCH1")
 
 Idents(dy.3samples.combined.sct) <- "orig.ident"
@@ -835,32 +921,101 @@ Check the expression of various genes including stemness genes in ALL cells in e
 See the Github issue (https://github.com/satijalab/seurat/issues/3334) for guidance on RNA assay and the importance of normalization of the data before VlnPlot, FeaturePlot (but not DoHeatMap())
 
 THE VIOLIN PLOTS BELOW (NOT SHOWN) ARE THE SAME AS THE VIOLIN PLOTS IN THE LATER SECTION OF THIS FILE, SO THERE IS NO NEED TO PLOT THE SAME GENES SHOWING SIMILAR RESULTS TWICE!
-```{r VlnPlotSOX2NetworkDaoy2dVs3dVsdyCocultAllCells, fig.height=9, fig.width=12}
+```{r eval=FALSE, echo=FALSE, VlnPlotSOX2NetworkDaoy2dVs3dVsdyCocultAllCells, fig.height=6, fig.width=12}
 # check the RNA slot is used when plotting integrated data!!! In this case I made the default assay = RNA
 
 VlnPlot(dy.3samples.combined.sct, 
-        features = c("SOX2", "POU3F2","FABP7", "OTX2", "ZIC2", "GLI2"),
+        features = c("SOX2", "POU3F2", "OTX2", "ZIC2", "GLI2", "FABP7"),
        slot = 'data',
        assay = 'RNA')
 ```
 
-```{r VlnPlotVariousOtherGenes, fig.height=14, fig.width=12}
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
+VlnPlot(dy.3samples.combined.sct, 
+        features = c("ERBB4", "SRRT", "TBX6", "EMX2", "TUNAR", "PROM1"),
+       slot = 'data',
+       assay = 'RNA')
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotVariousOtherGenes, fig.height=14, fig.width=12}
 VlnPlot(dy.3samples.combined.sct, 
         features = c("IRX5", "TTYH1", "NRG3", "NNAT","MIR124-2HG", "DCX", "CTNNA2", "MEIS1", "CD4"),
        slot = 'data',
        assay = 'RNA')
 ```
 
-```{r VlnPlotNesNeuregulinsIntegratedDaoyOnlyCocultVs3dVs2dAllCells, fig.height=9, fig.width=12}
+```{r eval=FALSE, echo=FALSE, VlnPlotNesNeuregulinsIntegratedDaoyOnlyCocultVs3dVs2dAllCells, fig.height=9, fig.width=12}
 VlnPlot(dy.3samples.combined.sct, features = c("SOX2", "NES", "ERBB4", "NRG1", "NRG2", "NRG3"),
         slot = "data",
         assay = "RNA")
 ```
 
+```{r ViolinPlotNSCmarkersDAOYmonoSpherCocultIntegrated, fig.height=17, fig.width=22}
+
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+
+p1a <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("SOX2"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("NES"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("FABP7"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("MSI1"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("MSI2"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("POU5F1"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+
 Below are other interesting genes, but these do not show increased expressed in the DAOY-only coculture. There is not much evidence of increased SHH signalling. SMAD signalling is overall less than in ONS76 cells, with the possible exception of SMAD3 in DAOY-monolayer cells. Hypothesis is that the different level of SMAD signalling in ONS76 cells vs DAOY cells is responsible for the higher expression of SOX2 in ONS76 monolayer and spheroid cells. The targets of SMAD signalling, SERPINE1 and ID1 are expressed overall at lower level in DAOY cells vs ONS76 cells. Note however the expression of these targets is context-dependent (https://doi.org/10.1038/onc.2012.191)
 
 
-```{r VlnPlotShhHoxB2GenesIntegratedDy2dVs3dVsDycocultAllCells, fig.height=9, fig.width=12}
+```{r eval=FALSE, echo=FALSE, VlnPlotShhHoxB2GenesIntegratedDy2dVs3dVsDycocultAllCells, fig.height=9, fig.width=12}
 VlnPlot(dy.3samples.combined.sct, 
         features = c("HOXB2","IRX3", "TWIST1",
                     "PTCH1", "GLI1", "GLI2"),
@@ -870,15 +1025,14 @@ VlnPlot(dy.3samples.combined.sct,
 
 
 
-```{r VlnPlotShhMycOtx2Zic1IntegratedDy2dVs3dVsDycocultAllCells, fig.height=9, fig.width=12}
+```{r eval=FALSE, echo=FALSE, VlnPlotShhMycOtx2Zic1IntegratedDy2dVs3dVsDycocultAllCells, fig.height=9, fig.width=12}
 VlnPlot(dy.3samples.combined.sct, 
         features = c("GLI3", "HHIP", "MYC", "MYCN", "ZIC1", "OTX2"),
         slot = "data",
         assay = "RNA")
 ```
 
-```
-{r VlnPlotMapkSmadIntegratedDy2dVs3dVsDycocultAllCells, fig.height=6, fig.width=10}
+```{r eval=FALSE, echo=FALSE, VlnPlotMapkSmadIntegratedDy2dVs3dVsDycocultAllCells, fig.height=6, fig.width=10}
 VlnPlot(dy.3samples.combined.clust.sct, 
         features = c("MAPK3","PROX1", "SMAD1", "SMAD2",
                       "SMAD3", "SMAD4"),
@@ -886,8 +1040,7 @@ VlnPlot(dy.3samples.combined.clust.sct,
         assay = "RNA")
 ```
 
-```
-{r VlnPlotNESId1SmadGenesIntegratedDy2dVs3dVsDycocultAllCells, fig.height=7, fig.width=10}
+```{r eval=FALSE, echo=FALSE, VlnPlotNESId1SmadGenesIntegratedDy2dVs3dVsDycocultAllCells, fig.height=7, fig.width=10}
 VlnPlot(dy.3samples.combined.clust.sct, 
         features = c("NES", "SMAD6", "SMAD7", "SERPINE1", "ID1"),
         slot = "data",
@@ -899,7 +1052,7 @@ Check whether SOX2 upregulation in DAOY-only coculture is also due to increased 
 SOX2 and notch-delta signalling:
 Sox2 is activated by Notch signalling and this relationship is well-recognised in multiple different cellular/tissue contexts (e.g.  https://doi.org/10.18632/oncotarget.10954 , doi: 10.1016/j.cellsig.2020.109537 , DOI: https://doi.org/10.1523/JNEUROSCI.3150-12.2013 , https://doi.org/10.1073/pnas.100308910). Readouts of Notch signalling are shown and HES5/6 are strongly expressed in the DAOY-coculture cells, while the Notch ligand DLL1 is expressed in the DAOY-only cells in coculture and DLL3 and JAG1 are expressed in the CBO control (same as Violin plots above).
 
-```{r VlnPlotIntegratedNotchDeltaDaoyOnlyCocultVsSpherVs2dAllCells, fig.height=9, fig.width=12}
+```{r VlnPlotIntegratedNotchDeltaDaoyOnlyCocultVsSpherVs2dAllCells, eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
 # notch signalling readout genes and notch ligands
 VlnPlot(dy.3samples.combined.sct, 
         features = c("HES5", "HES6", "DEC1", "DLL1"),
@@ -907,7 +1060,7 @@ VlnPlot(dy.3samples.combined.sct,
         assay = "RNA")
 ```
 
-```{r VlnPlotIntegratedOtherNotchDeltaDaoyOnlyCocultVsSpherVs2dAllCells, fig.height=7, fig.width=10}
+```{r  eval=FALSE, echo=FALSE, VlnPlotIntegratedOtherNotchDeltaDaoyOnlyCocultVsSpherVs2dAllCells, fig.height=7, fig.width=10}
 # notch signalling readout genes and notch ligands
 VlnPlot(dy.3samples.combined.sct, features = c("DLL3", "DLL4", "JAG1", "JAG2"),
         slot = "data",
@@ -917,7 +1070,7 @@ VlnPlot(dy.3samples.combined.sct, features = c("DLL3", "DLL4", "JAG1", "JAG2"),
 
 ***Find the proportions of cells in different phases of the cell cycle per sample***
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the saved object, "dy.3samples.combined.sct" first - contains cell cycle phase information in metadata
 
 # transfer meta.data to a new object called metadata.dy
@@ -926,7 +1079,7 @@ metadata.dy <- dy.3samples.combined.sct@meta.data %>%
                                     # (cell names) are still retained
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # subset the metadata dataframe to keep just 'orig.ident' and 'Phase' columns (cc = cell cycle phase)
 metadata.cc.dy <- metadata.dy %>% 
   dplyr::select(orig.ident, Phase)
@@ -938,18 +1091,18 @@ summ.stats.cc.1 <- metadata.cc.dy %>%
 head(summ.stats.cc.1)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(metadata.cc.dy,
         file = "./outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 metadata.cc.o76 <- 
   readRDS("outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
 summ.stats.cc.2 <- summ.stats.cc.1 %>% 
   dplyr::group_by(orig.ident) %>% 
@@ -958,16 +1111,16 @@ summ.stats.cc.2 <- summ.stats.cc.1 %>%
 summ.stats.cc.2
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # re-order the levels for plotting in ggplot
 summ.stats.cc.2$orig.ident <- factor(summ.stats.cc.2$orig.ident, levels = c("DAOY_monolayer", "DAOY_spheroid", "DAOY_coculture"))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 levels(summ.stats.cc.2$orig.ident)
 ```
 
-```{r BarchartCellCyclePhaseProportionsDaoyMonoSpherCoculture, fig.height=4, fig.width=3}
+```{r eval=FALSE, echo=FALSE, BarchartCellCyclePhaseProportionsDaoyMonoSpherCoculture, fig.height=8, fig.width=6}
 # create a stacked barchart of the result
 ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = format(round(props, digits = 2), nsmall = 2))) +
   geom_bar(position = "stack", stat = "identity") +
@@ -980,18 +1133,18 @@ ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = fo
 A STATISTICAL TEST IS NEEDED FOR THE ABOVE BARCHART - Chi-squared test goodness of fit
 This confirms the difference in proportions of cells in G1 and other phases of the cell cycle is highly significant
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # is there a statistically significant difference in the proportion of cells (of whatever orig.ident)
 # that are in G1, G2M and S? Null hypothesis is that proportion of cells that are in G1, G2M and S are equal
 table(metadata.cc.dy)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # check the proportions (or numbers of cells) of each phase
 table(metadata.cc.dy$Phase)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # run the chi squared test (base R) Goodness of Fit test - highly significant! 
 # X-squared = 15.33, df = 2, p-value = 0.0004691, so reject the null hypothesis
 metadata.cc.dy %>% 
@@ -1000,7 +1153,7 @@ metadata.cc.dy %>%
   chisq.test()
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # null hypothesis is that Phase and orig.ident (i.e. growth conditions) are independent.
 # now do a chi-squared test on the whole table, i.e. both orig.ident and Phase
 metadata.cc.dy %>%
@@ -1008,7 +1161,7 @@ metadata.cc.dy %>%
   chisq.test()    # X-squared = 452.96, df = 4, p-value < 2.2e-16. Highly significant.
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # find expected values
 metadata.cc.dy %>%
   table() %>% 
@@ -1017,12 +1170,14 @@ metadata.cc.dy %>%
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 sessionInfo()
 ```
 
 
 
+####################################################################################################
+----------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 CODE RETAINED IN CASE IT PROVES USEFUL LATER
 ***Get AverageExpression of genes in the downsampled integrated object with 269 cells in each sample*** 
@@ -1032,8 +1187,7 @@ The samples are DaoyOnly-coculture, Daoy2D(rep) and DaoySpher
 ***Downsampling of DAOY-2D and DAOY-spher cells to generate Heatmap of DEGs in integrated DAOY-2D, spheroid and DAOY-only coculture samples***
 The above heatmap has used all the cells in each sample. To get around the odd appearance of the heatmap, downsample the cells from each of the 'Idents' in the integrated seurat object so that DoHeatmap only shows n = 265 cells for each sample. 265 cells is the number of DAOY cells in the co-culture.
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 dyOnly <- 
   readRDS("outputs50K/DAOY-CBO/DaoyOnlyCells.SubsetDaoyCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 
@@ -1044,8 +1198,7 @@ dyCbo <- readRDS("outputs50K/DAOY-CBO/daoyCbo.seurat.filtCellsGenesNoRiboNoMito.
 dyOnly.cocult <- subset(dyCbo, cells = dyOnlyIDs.cocult)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 dyMono <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 
 dyIDs.mono <- WhichCells(dyMono)
@@ -1056,8 +1209,7 @@ dyIDs350.mono <- sample(dyIDs.mono, size = 350, replace = FALSE)
 dy.350cells.mono <- subset(dyMono, cells = dyIDs350.mono)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
 
 dyIDs.spher <- WhichCells(dySpher)
@@ -1068,10 +1220,9 @@ dyIDs350.spher <- sample(dyIDs.spher, size = 350, replace = FALSE)
 dy.350cells.spher <- subset(dySpher, cells = dyIDs350.spher)
 ```
 
-```
 
-```
-{r}
+
+```{r eval=FALSE, echo=FALSE}
 # load the above seurat object
 dy.3samples.small <- readRDS("outputs50K/INTEGRATE/daoyOnlyCocult.daoy2D.daoySpher.downsampled.integrated.SCT.rds")
 
@@ -1079,20 +1230,17 @@ dy.3samples.small <- readRDS("outputs50K/INTEGRATE/daoyOnlyCocult.daoy2D.daoySph
 dy.3samples.small <- NormalizeData(dy.3samples.small) 
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 class(dy.3samples.small)
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 table(dy.3samples.small$orig.ident)
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # set the DefaultAssay to RNA and subset the integrated object
 DefaultAssay(dy.3samples.small) <- "RNA"
 dy2d <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_monolayer"))
@@ -1100,23 +1248,20 @@ dy3d <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_spheroid"))
 dyCocult <- subset(dy.3samples.small, subset = (orig.ident == "DAOY_coculture"))
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 av.dy2d <- AverageExpression(dy2d)$RNA
 av.dy3d <- AverageExpression(dy3d)$RNA
 av.dyCocult <- AverageExpression(dyCocult)$RNA
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # make the column names of the matrix objects meaningful
 colnames(av.dy2d) <- "DAOY_monolayer"
 colnames(av.dy3d) <- "DAOY_spheroid"
 colnames(av.dyCocult) <- "DAOY_coculture"
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # convert the matrices of Average Expression to dataframes
 # df = dataframe
 av.dy2d.df <- as.data.frame(av.dy2d) %>% 
@@ -1127,49 +1272,43 @@ av.dyCocult.df <- as.data.frame(av.dyCocult) %>%
   rownames_to_column("genes")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # left join all three dataframes in one go
 dy.3dfs <- join_all(list(av.dyCocult.df, av.dy3d.df, av.dy2d.df), 
                        by = "genes", type = "left")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # identify any NA values - there are none
 colSums(is.na(dy.3dfs))
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the combined dataframe of Average Expression in subsets of the 
 # integrated object (dy.3dfs)
 saveRDS(dy.3dfs, file = "outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the above integrated seurat object
 dy.3dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 dy.3dfs[dy.3dfs$genes %in% c("ERBB4", "MEIS1", "IRX3", "IRX5", "SOX2", "POU3F2","FABP7",
                                         "MIR124-2HG", "PTCH1", "GLI2", "DCX", "CTNNA2", "ZIC1"), ]
 
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 genes.ord <- dy.3dfs[dy.3dfs$genes %in% c("ERBB4", "MEIS1", "IRX3", "IRX5", "SOX2", "POU3F2","FABP7",
                                         "MIR124-2HG", "PTCH1", "GLI2", "DCX", "CTNNA2", "ZIC1"), ]
 genes.ord %>% 
    arrange(DAOY_coculture)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # plot the changes in gene expression for different samples.
 # change the format of the data to long format for ggplot
 
@@ -1183,14 +1322,12 @@ diff.stem.long.df <- diff.stem.genes %>%
 diff.stem.long.df
 ``` 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 diff.stem.long.df$genes <- as.factor(diff.stem.long.df$genes)
 levels(diff.stem.long.df$genes)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # reorder the legend by specifying the correct order of the genes
 diff.stem.long.df$genes <- factor(diff.stem.long.df$genes, 
                                   levels = c("ERBB4", "CTNNA2", "DCX", "SOX2", "POU3F2", "MEIS1",
@@ -1199,8 +1336,7 @@ diff.stem.long.df$genes <- factor(diff.stem.long.df$genes,
 levels(diff.stem.long.df$genes)
 ```
 
-```
-{r LineplotGenesOfInterestAvgExpressnDaoyOnlyCocultVsSpherVsMono, fig.height = 5}
+```{r LineplotGenesOfInterestAvgExpressnDaoyOnlyCocultVsSpherVsMono, eval=FALSE, echo=FALSE, fig.height = 5}
 # plot the genes as a line graph
 diff.stem.long.df %>% 
   ggplot(aes(x = sample, y = expression, group = genes, colour = genes)) +
@@ -1215,16 +1351,14 @@ diff.stem.long.df %>%
 ```
 
 To plot just the low expression values, exclude ERBB4, CTNNA2, DCX and SOX2
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # subset the dataframe excluding high expressing genes
 small.genes <- diff.stem.long.df[diff.stem.long.df$genes %in% c("POU3F2", "MEIS1", "ZIC1", "MIR124-2HG",
                                                                 "FABP7", "IRX5", "GLI2", "IRX3", "PTCH1"), ]
 ```
 
 Maybe show this graph as an inset in the bigger graph above
-```
-{r LineplotGenesOfInterestLowExpressnGenesAvgExpressnOns76cocultSpherMono}
+```{r LineplotGenesOfInterestLowExpressnGenesAvgExpressnOns76cocultSpherMono, eval=FALSE, echo=FALSE}
 # plot only the genes in 'small.genes'
 small.genes %>% 
   ggplot(aes(x = sample, y = expression, group = genes, colour = genes)) +
@@ -1238,14 +1372,12 @@ small.genes %>%
         axis.text.x = element_text(angle = 45, hjust = 1)) 
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the above dataframe of combined Average Expression of the three samples
 av.dy.3dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.daoy.2d.3d.Cocult.df.downsampled.SCT.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # run correlation function
 # select the columns with numeric values only
 RNAcounts <- av.dy.3dfs %>% 
@@ -1255,8 +1387,7 @@ corr.dy.3samples
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # prepare data for an upper triangular plot
 upper.dy.3samples <- corr.dy.3samples
 
@@ -1265,26 +1396,23 @@ upper.dy.3samples[lower.tri(upper.dy.3samples)] <- NA
 upper.dy.3samples
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.dy.3samples <- melt(upper.dy.3samples, na.rm = TRUE)
 head(up.m.dy.3samples)
 nrow(up.m.dy.3samples)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the above correlation dataframe
 saveRDS(up.m.dy.3samples, file = "outputs50K/INTEGRATE/CorrTableAllgenesDAOYCocultSpherMono.downsampled.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 up.m.dy.3samples <- readRDS("outputs50K/INTEGRATE/CorrTableAllgenesDAOYCocultSpherMono.downsampled.rds")
 ```
 
-```
-{r PlotCorrAllGenesDaoyOnlyCocultVsSpherVsMono}
+```{r PlotCorrAllGenesDaoyOnlyCocultVsSpherVsMono, eval=FALSE, echo=FALSE}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.dy.3samples, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
@@ -1311,7 +1439,7 @@ ggplot(data = up.m.dy.3samples, aes(x = Var1, y = Var2, fill = value)) +
 ***Get a correlation matrix of all 7 samples, for DAOY and ONS76 cells***
 Here each sample was used without extracting MB cells from the coculture condition
 
-```
+```{r eval=FALSE, echo=FALSE}
 # NO NEED TO RE-RUN THIS CODE CHUNK
 
 # load datasets
@@ -1327,7 +1455,7 @@ o76Cbo <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.ons76cbo.rds")
 cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 all.samples <- merge(dy2d.rep, 
                   y = c(dy3d, o76.2d, o76.3d, dyCbo, o76Cbo, cbo), 
                   add.cell.ids = c("dy2d", "dy3d", "ons2d", "ons3d", "dyCbo", "onsCbo", "Cbo"), 
@@ -1335,31 +1463,27 @@ all.samples <- merge(dy2d.rep,
 all.samples
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the 'all.samples' object
 saveRDS(all.samples, file = "./outputs50K/INTEGRATE/SevenSamplesMerged.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the 'all.samples' object
 
 all.samples <- readRDS("outputs50K/INTEGRATE/SevenSamplesMerged.rds")
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 unique(sapply(X = strsplit(colnames(all.samples), split = "_"), FUN = "[", 1))
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 table(all.samples$orig.ident)
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # Create metadata dataframe
 metadata <- all.samples@meta.data
 # Add cell IDs to metadata
@@ -1375,13 +1499,11 @@ metadata$sample[which(str_detect(metadata$cells, "^onsCbo_"))] <- "ONS76_organoi
 metadata$sample[which(str_detect(metadata$cells, "^Cbo_"))] <- "organoid"
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 all.samples@meta.data <- metadata
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 all.samples.df <- metadata 
 all.samples.df$sample <- factor(all.samples.df$sample, 
                                 levels = c("ONS76_monolayer", "DAOY_spheroid",
@@ -1389,8 +1511,7 @@ all.samples.df$sample <- factor(all.samples.df$sample,
                                            "ONS76_organoid", "DAOY_organoid", "organoid"))
 ```
 
-```
-{r BarChartCellCounts7samples, fig.height=6, fig.width=5}
+```{r BarChartCellCounts7samples, eval=FALSE, echo=FALSE, fig.height=6, fig.width=5}
 ggplot(all.samples.df, aes(x=sample)) + 
   	geom_bar(color = "black", fill = "white") +
   	theme_classic() +
@@ -1399,7 +1520,7 @@ ggplot(all.samples.df, aes(x=sample)) +
    NoLegend()
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # NO NEED TO RE-RUN THIS CODE CHUNK
 
 all.samples <- NormalizeData(all.samples)
@@ -1409,24 +1530,22 @@ all.samples <- RunPCA(all.samples, features = VariableFeatures(object = all.samp
 all.samples <- RunUMAP(all.samples, dims = 1:5, reduction = "pca")
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the CLUSTERED 'all.samples' merged object
 saveRDS(all.samples, file = "./outputs50K/INTEGRATE/SevenSamplesMergedClustered.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 all.samples <- readRDS("outputs50K/INTEGRATE/SevenSamplesMergedClustered.rds")
 ```
 
-```
-{r DimPlot7samplesMerged, fig.height=3}
+```{r DimPlot7samplesMerged, eval=FALSE, echo=FALSE, fig.height=3}
 DimPlot(all.samples, reduction = "umap", group.by = "sample")
 ```
 
 
 Get the AverageExpression with a view to correlation plot in ggplot
-```
+```{r eval=FALSE, echo=FALSE}
 # NO NEED TO RE-RUN BELOW CODE CHUNKS
 
 dy.2d <- subset(all.samples, subset = (sample == "DAOY_monolayer"))
@@ -1438,11 +1557,11 @@ ons76Cbo <- subset(all.samples, subset = (sample == "ONS76_organoid"))
 Cbo <- subset(all.samples, subset = (sample == "organoid"))
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 DefaultAssay(all.samples) <- "RNA"
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 av.dy.2d <- AverageExpression(dy.2d)$RNA
 av.dy.3d <- AverageExpression(dy.3d)$RNA
 av.ons76.2d <- AverageExpression(ons76.2d)$RNA
@@ -1452,12 +1571,12 @@ av.ons76Cbo <- AverageExpression(ons76Cbo)$RNA
 av.Cbo <- AverageExpression(Cbo)$RNA
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 colnames(av.dy.2d)
 ```
 
 
-```
+```{r eval=FALSE, echo=FALSE}
 # make the column names of the matrix objects meaningful
 colnames(av.dy.2d) <- "DAOY_monolayer"
 colnames(av.dy.3d) <- "DAOY_spheroid"
@@ -1468,7 +1587,7 @@ colnames(av.ons76Cbo) <- "ONS76_organoid"
 colnames(av.Cbo) <- "organoid"
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # convert the matrices of Average Expression to dataframes
 # df = dataframe
 av.dy.2d.df <- as.data.frame(av.dy.2d) %>% 
@@ -1488,7 +1607,7 @@ av.Cbo.df <- as.data.frame(av.Cbo) %>%
 ```
 
 
-```
+```{r eval=FALSE, echo=FALSE}
 # left join all 7 dataframes in one go
 av.7dfs <- join_all(list(av.dyCbo.df, av.ons76Cbo.df, av.Cbo.df, av.ons76.3d.df,
                          av.dy.3d.df, av.ons76.2d.df, av.dy.2d.df), 
@@ -1496,25 +1615,23 @@ av.7dfs <- join_all(list(av.dyCbo.df, av.ons76Cbo.df, av.Cbo.df, av.ons76.3d.df,
 dim(av.7dfs)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 head(av.7dfs)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the above correlation dataframe
 saveRDS(av.7dfs, 
         file = "outputs50K/INTEGRATE/AvgExpressn.All7Samples.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # load the above dataframe of combined Average Expression of all 7 samples
 av.7dfs <- readRDS("outputs50K/INTEGRATE/AvgExpressn.All7Samples.rds")
 ```
 
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # run correlation function
 # select the columns with numeric values only
 RNAcounts <- av.7dfs %>% 
@@ -1524,8 +1641,7 @@ corr.7samples
 ```
 
 Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # prepare data for an upper triangular plot
 upper.7samples <- corr.7samples
 
@@ -1534,26 +1650,23 @@ upper.7samples[lower.tri(upper.7samples)] <- NA
 upper.7samples
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 # Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
 up.m.7samples <- melt(upper.7samples, na.rm = TRUE)
 head(up.m.7samples)
 nrow(up.m.7samples)
 ```
 
-```
+```{r eval=FALSE, echo=FALSE}
 # save the above correlation dataframe
 saveRDS(up.m.7samples, file = "outputs50K/INTEGRATE/CorrTableAllgenes.7samples.rds")
 ```
 
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 up.m.7samples <- readRDS("outputs50K/INTEGRATE/CorrTableAllgenes.7samples.rds")
 ```
 
-```
-{r PlotCorrAllGenes7samples, fig.height=6}
+```{r PlotCorrAllGenes7samples, eval=FALSE, echo=FALSE, fig.height=6}
 # ggplot upper triangular correlation matrix:
 ggplot(data = up.m.7samples, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
@@ -1580,11 +1693,7 @@ ggplot(data = up.m.7samples, aes(x = Var1, y = Var2, fill = value)) +
   coord_fixed()
 ```
 
-
-
-
-```
-{r}
+```{r eval=FALSE, echo=FALSE}
 save.image("./RDataFiles/INTEGRATE_DAOY-CBO_DAOY-SPHER_DAOY-2D_50K.Rmd.RData")
 ```
 
