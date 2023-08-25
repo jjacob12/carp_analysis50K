@@ -62,17 +62,22 @@ muv41 <- SCTransform(muv41, vst.flavor = "v2", verbose = FALSE) %>%
   FindClusters(resolution = 0.7, verbose = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(muv41,
         file = "./outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.rds")
 ```
+
+```{r}
+muv41 <- readRDS("outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.rds")
+```
+
 
 ```{r eval=FALSE, echo=FALSE}
 DimPlot(muv41, label = T, repel = T)
 ```
 
-```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
-VlnPlot(muv41, features = c("NEUROD1", "RBFOX3", "RTN1", "SOX2"))
+```{r ViolinPlotMUV41shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
+VlnPlot(muv41, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -83,12 +88,12 @@ muv41.unclust <- CreateSeuratObject(raw.counts.muv41,
                             project = "muv41")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(muv41.unclust,
         file = "./outputs50K/Hovestadt_outputs/MUV41.unclustered.PatientSHHMB.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # get cell cycle info
 muv41.unclust.norm <- NormalizeData(muv41.unclust)
 # include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
@@ -106,7 +111,7 @@ muv41.phase <- SCTransform(muv41.unclust.norm, vst.flavor = "v2", verbose = FALS
   FindClusters(resolution = 0.7, verbose = FALSE)
 ```
 ****Isolate NEUROD1+ cells for MUV41****
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # isolate all NEUROD1 expressing cells, there are 303 cells
 neurod1.muv41 <- GetAssayData(object = muv41.phase,
                             assay = "RNA",      # choosing "SCT" assay makes very little difference!
@@ -114,11 +119,11 @@ neurod1.muv41 <- GetAssayData(object = muv41.phase,
 pos.ids.neurod1.muv41 <- names(which(neurod1.muv41 > 0))
 length(pos.ids.neurod1.muv41)
 ```
-```{r}
+```{r eval=FALSE, echo=FALSE}
 neurod1.pos.muv41.phase <- subset(muv41.phase, cells = pos.ids.neurod1.muv41)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(neurod1.pos.muv41.phase,
         file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.MUV41.PatientSHH-MB.rds")
 ```
@@ -143,7 +148,7 @@ summ.stats.cc.neurod1.muv41.phase <- metadata.cc.neurod1.muv41.phase %>%
 summ.stats.cc.neurod1.muv41.phase  # total is 303 cells. G1=179, G2M=48, S=76
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dim(metadata.cc.neurod1Clus6cbo)
 ```
 
@@ -199,8 +204,8 @@ saveRDS(sj454,
 sj454.clust <- readRDS("outputs50K/Hovestadt_outputs/SJ454.SHH_MB.SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
 ```
 
-```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
-VlnPlot(sj454.clust, features = c("PROM1", "NEUROD1", "RBFOX3", "RTN1"))
+```{r ViolinPlotSJ454shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
+VlnPlot(sj454.clust, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
 
 ****Isolate NEUROD1+ cells for SJ454****
@@ -212,12 +217,12 @@ sj454.unclust <- CreateSeuratObject(raw.counts.sj454,
                             project = "sj454")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(sj454.unclust,
         file = "./outputs50K/Hovestadt_outputs/SJ454.unclustered.PatientSHHMB.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # get cell cycle info
 sj454.unclust.norm <- NormalizeData(sj454.unclust)
 # include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
@@ -235,7 +240,7 @@ sj454.phase <- SCTransform(sj454.unclust.norm, vst.flavor = "v2", verbose = FALS
   FindClusters(resolution = 0.7, verbose = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # isolate all NEUROD1 expressing cells, there are 303 cells
 neurod1.sj454 <- GetAssayData(object = sj454.phase,
                             assay = "RNA",      # choosing "SCT" assay makes very little difference!
@@ -243,11 +248,11 @@ neurod1.sj454 <- GetAssayData(object = sj454.phase,
 pos.ids.neurod1.sj454 <- names(which(neurod1.sj454 > 0))
 length(pos.ids.neurod1.sj454)
 ```
-```{r}
+```{r eval=FALSE, echo=FALSE}
 neurod1.pos.sj454.phase <- subset(sj454.phase, cells = pos.ids.neurod1.sj454)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(neurod1.pos.sj454.phase,
         file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.SJ454.PatientSHH-MB.rds")
 ```
@@ -283,7 +288,7 @@ summ.stats.props.cc.neurod1.sj454.phase. # total=238 cells. G1=0.69, G2M= 0.09, 
 
 
 
-```{r VlnplotSOX2regNetworkSRRTgeneSJ454shhMB, fig.height=14, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnplotSOX2regNetworkSRRTgeneSJ454shhMB, fig.height=14, fig.width=22}
 # cluster 2 expresses all NSC factors except OTX2
 # VlnPlot(sj454, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "OCT4", "PAX6"))
 
@@ -373,12 +378,17 @@ saveRDS(sj577,
         file = "./outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered.rds")
 ```
 
+```{r}
+sj577 <- readRDS("outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered.rds")
+```
+
+
 ```{r eval=FALSE, echo=FALSE}
 DimPlot(sj577, label = T, repel = T)
 ```
 
-```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=12}
-VlnPlot(sj577, features = c("SOX2", "NEUROD1", "RBFOX3", "RTN1"))
+```{r ViolinPlotSJ577shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
+VlnPlot(sj577, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
 
 
@@ -396,13 +406,13 @@ sj577.unclust <- CreateSeuratObject(raw.counts.sj577,
                             project = "sj577")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(sj577.unclust,
         file = "./outputs50K/Hovestadt_outputs/SJ577.unclustered.PatientSHHMB.rds")
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # get cell cycle info
 sj577.unclust.norm <- NormalizeData(sj577.unclust)
 # include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
@@ -420,7 +430,7 @@ sj577.phase <- SCTransform(sj577.unclust.norm, vst.flavor = "v2", verbose = FALS
   FindClusters(resolution = 0.7, verbose = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # isolate all NEUROD1 expressing cells, there are 303 cells
 neurod1.sj577 <- GetAssayData(object = sj577.phase,
                             assay = "RNA",      # choosing "SCT" assay makes very little difference!
@@ -428,11 +438,11 @@ neurod1.sj577 <- GetAssayData(object = sj577.phase,
 pos.ids.neurod1.sj577 <- names(which(neurod1.sj577 > 0))
 length(pos.ids.neurod1.sj577)
 ```
-```{r}
+```{r eval=FALSE, echo=FALSE}
 neurod1.pos.sj577.phase <- subset(sj577.phase, cells = pos.ids.neurod1.sj577)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(neurod1.pos.sj577.phase,
         file = "./outputs50K/Hovestadt_outputs/NeuroD1positiveCells.SJ577.PatientSHH-MB.rds")
 ```
@@ -723,7 +733,7 @@ p5
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 DimPlot(rmcb18.hovShhMB.merged.clust,
         "tsne") 
 ```
@@ -1170,7 +1180,7 @@ summary(dySpher.hovShhMB.merged.clust.mm.na) # DAOY-spher + patient MB
 summary(o76spher.hovShhMB.merged.clust.mm) # ONS76-spher + patient MB
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 mixmetSumm <- rbind(summary(hovShhMB.merged.clust.mm), 
       summary(rmcb18.hovShhMB.merged.clust.mm),
       summary(rmcb24.hovShhMB.merged.clust.mm),
@@ -1181,20 +1191,20 @@ mixmetSumm <- rbind(summary(hovShhMB.merged.clust.mm),
 mixmetSumm
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 colnames(mixmetSumm)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 mixmetSumm.df <- as.data.frame(mixmetSumm)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(mixmetSumm.df)
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # add a 'sample' column to the above df at the beginning
 Sample <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB")
 
@@ -1203,7 +1213,7 @@ mixmetSumm.df2 <- cbind(Sample, mixmetSumm.df)
 mixmetSumm.df2
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(mixmetSumm.df2,
           file = "./outputs50K/Hovestadt_outputs/MixingMetricTableOfSummaryFunctionValues.7conditions.csv",
           quote = FALSE)
