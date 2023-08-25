@@ -37,6 +37,7 @@ library(heatmap3)
 library(reshape2)
 library(Matrix)
 library(qlcMatrix)
+library(ggpubr)
 library(tidyverse)
 })
 ```
@@ -220,8 +221,8 @@ head(o76cbo.annotate@meta.data, 20)
 ***CLUSTER ANNOTATION*** 
 ```{r eval=FALSE, echo=FALSE}
 # continue to replace the cluster numbers with the identity of each cluster
-new.cluster.ids <- c("Roof Plate_1", "Purkinje cells_1", "Granule neurons", 
-                     "ONS76_cluster_3", "RL-derived_1", "Ribosome cluster", "Roof plate_2",
+new.cluster.ids <- c("Roof Plate_1", "Purkinje cells_2", "Granule neurons", 
+                     "ONS76_cluster_3", "RL-derived_2", "Ribosome cluster", "Roof plate_2",
                      "Glia", "IVth ventricle/CP", "Oligodendrocytes", "ONS76_cluster_10",
                      "Granule precursors")
 
@@ -238,10 +239,10 @@ metadata$cells <- rownames(metadata)
 # Create sample column
 metadata$celltype <- NA
 metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof Plate_1"
-metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje cells_2"
 metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Granule neurons"
 metadata$celltype[which(metadata$seurat_clusters == "3")] <- "ONS76_cluster_3"
-metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_2"
 metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Ribosome cluster"
 metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Roof plate_2"
 metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Glia"
@@ -272,7 +273,7 @@ cbo.annotate <-
   readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the stored annotated ons76-cbo seurat object
 o76cbo.annotate <- readRDS("outputs50K/ONS76-CBO/ons76cbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
@@ -282,6 +283,7 @@ DimPlot(o76cbo.annotate, label = TRUE, repel = TRUE, pt.size = 1,
         label.size = 4) +
   theme(legend.position = "none")
 ```
+
 
 ```{r eval=FALSE, echo=FALSE, fig.height=5, fig.width=5}
 # PCA plot shows ONS76_cluster_3 is closest transcriptionally to Granule neurons cluster. Glia and oligodendrocytes are also close, which is reassuring
@@ -455,7 +457,7 @@ p4a + p4b + p4c + p4d + p4e + p4f + plot_layout(ncol = 2)
 
 ```
 
-```{r ViolinPlotMDM2Pou3f2Meis1HoxB2HoxBAS1ONS76cboSCT, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, ViolinPlotMDM2Pou3f2Meis1HoxB2HoxBAS1ONS76cboSCT, fig.height=17, fig.width=22}
 # repeat violin plots for most of the same genes, so MDM2 can be added
 p5a <- VlnPlot(o76cbo.annotate, 
         features = c("MDM2")) +
@@ -784,26 +786,41 @@ cbo.presto %>%
 
 
 ```{r eval=FALSE, echo=FALSE}
-clust6.genes.cbo.presto <- cbo.presto %>%
+# this code will only reveal UP regulated pathways
+clust6.genesUP.cbo.presto <- cbo.presto %>%
   dplyr::filter(group == "6" & logFC > 0.25) %>%
   arrange(desc(auc)) %>% 
   dplyr::select(feature, auc)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-nrow(clust6.genes.cbo.presto) # 962 genes
+nrow(clust6.genesUP.cbo.presto) # 962 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# using the or, '|' Boolean means we get UP and DOWN regulated pathways and only then can we use scoretype=std
+# in multifgsea function
+clust6.genesUPnDOWN.cbo.presto <- cbo.presto %>%
+  dplyr::filter(group == "6" & logFC > 0.25 | logFC < -0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(clust6.genesUPnDOWN.cbo.presto)
 ```
 
 
 ```{r eval=FALSE, echo=FALSE}
-ranks.clus6 <- deframe(clust6.genes.cbo.presto)
+ranks.clus6 <- deframe(clust6.genesUPnDOWN.cbo.presto)
 head(ranks.clus6)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+# use scoretype=pos for genes where logFC > 0
 fgseaRes.clus6.cbo.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus6, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus6, eps = 0, minSize = 15, scoreType = "std", maxSize = 200)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -819,28 +836,59 @@ fgseaResTidy.clus6.cbo.GOBP %>%
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# gene sets are all associated with neuronal differentiation
+# gene sets are all associated with neuronal differentiation - if using this object remember to 
+# change the name of the object (e.g. "...clus6UP...") as these pathways are all NES positive
 saveRDS(fgseaResTidy.clus6.cbo.GOBP, 
         file = "./outputs50K/CBO/cluster6.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-fgseaResTidy.clus6.cbo.GOBP <- 
+# gene sets are all associated with neuronal differentiation - UP and DOWN pathways
+saveRDS(fgseaResTidy.clus6.cbo.GOBP, 
+        file = "./outputs50K/CBO/cluster6.UPandDOWNpathways.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r}
+# this object is just the UP-regulated pathways of CBO cluster 6
+fgseaResTidy.clus6UP.cbo.GOBP <- 
   readRDS("outputs50K/CBO/cluster6.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
-```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust6cbo, fig.height=10, fig.width=15}
+
+```{r BarplotFGSEAgoBPclust6cboUPregulatedPathways, fig.height=15, fig.width=25}
 # only plot the top 20 pathways
-ggplot(fgseaResTidy.clus6.cbo.GOBP %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+ggplot(fgseaResTidy.clus6UP.cbo.GOBP %>% 
+         dplyr::filter(padj < 0.05) %>% 
+         utils::head(n=10), aes(reorder(pathway, NES), NES)) +
   geom_col(fill = "blue") +
   coord_flip() +
   labs(x="Pathway", y="Normalized Enrichment Score",
       title= "") + 
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+         # can change bar colours using ggplot
 ```
 
+```{r echo=FALSE, eval=FALSE, BarplotFGSEAgoBPclust6cboDOWNregulatedPathways, fig.height=15, fig.width=25}
+# only plot the top 20 pathways
+ggplot(fgseaResTidy.clus6UP.cbo.GOBP %>% 
+         filter(padj < 0.05) %>% 
+         tail(n=5), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")) # can change bar colours using ggplot
+```
 
 
 ****Cluster 2 (ONS76-cbo, non-malignant granule neurons as control) FGSEA****
@@ -856,10 +904,10 @@ nrow(clust2.genes.presto) # genes=957
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# save as csv for input to g:Profiler (web app)
-# write.csv(cbo.cl6.UPgenes.presto, 
- #         "./outputs50K/CBO/CBO.cluster6.UPgenes.PRESTO.gProfilerInput.csv", 
- #         quote = F)
+save as csv for input to g:Profiler (web app)
+write.csv(cbo.cl6.UPgenes.presto, 
+       "./outputs50K/CBO/CBO.cluster6.UPgenes.PRESTO.gProfilerInput.csv", 
+         quote = F)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -871,6 +919,13 @@ head(ranks.clus2)
 # use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
 fgseaRes.clus2.GOBP <- 
   fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save this object as needed for GSEA table generation. Running fgseaMultilevel is unpredictable
+# and easily hangs/crashes on running the function!
+saveRDS(fgseaRes.clus2.GOBP,
+        file = "./outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster2ons7cbo.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -886,29 +941,129 @@ fgseaResTidy.clus2.GOBP %>%
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# no significant gene sets!
+# this is the 'tidy' version that is saved
 saveRDS(fgseaResTidy.clus2.GOBP, 
         file = "./outputs50K/ONS76-CBO/cluster2.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 fgseaResTidy.clus2.GOBP <- 
-  readRDS("outputs50K/DAOY-CBO/outputs50K/ONS76-CBO/cluster2.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+  readRDS("outputs50K/ONS76-CBO/cluster2.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 
-```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust2ONS76cbo, fig.height=10, fig.width=15}
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust2ONS76cbo, fig.height=15, fig.width=25}
 # only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus2.GOBP %>% filter(padj < 0.05) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+ggplot(fgseaResTidy.clus2.GOBP %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
   geom_col(fill = "blue") +
   coord_flip() +
   labs(x="Pathway", y="Normalized Enrichment Score",
       title= "") + 
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")
+        ) # can change bar colours using ggplot
 ```
 
+```{r eval=FALSE, echo=FALSE}
+head(fgseaResTidy.clus2.GOBP, 10)
+```
+
+*****GENERATE AN FGSEA TABLE WITH P-VALUES - CLUSTER 2 ONS76-CBO*****
+this is useful as we can see the adjusted p-values in a pretty table format using ggplot. Quite a lot of the code from above is replicated just to show the workflow. For clusters 3 and 10 I saved the FGSEAmultilevel output to avoid having to run that function repeatedly each time a new tmux session is initiated.
+useful vignette: https://bioinformatics-core-shared-training.github.io/cruk-summer-school-2019/RNAseq/html/06_Gene_set_testing.html#load-pathways
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+class(fgsea_sets_GOBP)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the ONS76-CBO dataset
+o76cbo.clust <- readRDS("outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# apply presto to ONS76-CBO sample
+o76cbo.presto <- wilcoxauc(o76cbo.clust, 'seurat_clusters')
+head(o76cbo.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# at this step, can specify logFC > 0.25 | logFC < 0.25 if the plan is to find UP- and DOWN-
+# regulated pathways in multifgsea
+clust2.genes.presto <- o76cbo.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(clust2.genes.presto)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+class(fgseaRes.clus2.GOBP)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaRes.clus2.GOBP <- readRDS("outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster2ons7cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgsea_sets_GOBP,
+         file = "./outputs50K/ONS76-CBO/FGSEA_SETS_GOBP.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- readRDS("outputs50K/ONS76-CBO/FGSEA_SETS_GOBP.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(ranks.clus2,
+        file = "./outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster2.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- readRDS("outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster2.ONS76cbo.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+topPathways <- fgseaRes.clus2.GOBP %>% 
+    top_n(5, wt = -padj) %>% 
+    arrange(-NES) %>% 
+    pull(pathway)
+```
+
+```{r eval=FALSE, echo=FALSE, GSEAtableONS76cboClus2, fig.height=5, fig.width=18}
+# needs library(ggpubr)
+ggpubr::as_ggplot(plotGseaTable(fgsea_sets_GOBP[topPathways],
+              ranks.clus2,
+              fgseaRes.clus2.GOBP,
+              gseaParam = 1,
+              render = FALSE))
+```
 
 
 ****Cluster 3 ONS76-CBO - geneset enrichment (FGSEA) including input for g:Profiler and Cytoscape****
@@ -943,12 +1098,26 @@ clust3.genes.presto <- o76cbo.presto %>%
   dplyr::select(feature, auc)
 ```
 
+```{r}
+clust3.markers.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  arrange(desc(auc))
+```
+
+```{r}
+head(clust3.markers.presto, 10)
+```
+
+```{r}
+write.csv(clust3.markers.presto,
+          file = "./outputs50K/ONS76-CBO/ONS76cbo.cluster3.markers.aucRanked.csv", quote = F)
+```
+
+
 ```{r eval=FALSE, echo=FALSE}
 ranks.clus3 <- deframe(clust3.genes.presto)
 head(ranks.clus3)
 ```
-
-
 
 ```{r eval=FALSE, echo=FALSE}
 # this code used to generate sorted gene list as input for gProfiler (web app)
@@ -976,6 +1145,12 @@ fgseaRes.clus3.GOBP <-
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# save the fgseaMultilevel function output
+saveRDS(fgseaRes.clus3.GOBP,
+        file = "./outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster3ons7cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
 # tidy up the data
 fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
   as_tibble() %>%
@@ -994,21 +1169,60 @@ saveRDS(fgseaResTidy.clus3.GOBP,
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-fgseaResTidy.clus3.GOBP <- 
-  readRDS("outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
+fgseaResTidy.clus3.GOBP <- readRDS("outputs50K/ONS76-CBO/cluster3.ONS76Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 
-```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust3ONS76cbo, fig.height=20, fig.width=15}
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust3ONS76cbo, fig.height=15, fig.width=25}
 # only plot the top 20 pathways - no enriched gene sets!
-ggplot(fgseaResTidy.clus3.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+ggplot(fgseaResTidy.clus3.GOBP %>% filter(padj < 0.001) %>% utils::head(n=10), aes(reorder(pathway, NES), NES)) +
   geom_col(fill = "blue") +
   coord_flip() +
   labs(x="Pathway", y="Normalized Enrichment Score",
       title= "") + 
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")) # can change bar colours using ggplot
+```
+
+
+
+*****GENERATE AN FGSEA TABLE WITH P-VALUES - CLUSTER 3 ONS76-CBO*****
+```{r eval=FALSE, echo=FALSE}
+fgseaRes.clus3.GOBP <- 
+  readRDS("outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster3ons7cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- readRDS("outputs50K/ONS76-CBO/FGSEA_SETS_GOBP.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(ranks.clus3,
+        file = "./outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster3.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- readRDS("outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster3.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+topPathways <- fgseaRes.clus3.GOBP %>% 
+    top_n(10, wt = -padj) %>% 
+    arrange(-NES) %>% 
+    pull(pathway)
+```
+
+```{r eval=FALSE, echo=FALSE, GSEAtableONS76cboClus3, fig.height=10, fig.width=15}
+# needs library(ggpubr)
+ggpubr::as_ggplot(plotGseaTable(fgsea_sets_GOBP[topPathways],
+              ranks.clus3,
+              fgseaRes.clus3.GOBP,
+              gseaParam = 1,
+              render = FALSE))
 ```
 
 
@@ -1026,6 +1240,18 @@ write.csv(ons76cbo.cl10.UPgenes.presto,
           "./outputs50K/ONS76-CBO/ONS76cbo.cluster10.UPgenes.PRESTO.gProfilerInput.csv", 
           quote = F)
 ```
+
+```{r eval=FALSE, echo=FALSE}
+clust10.markers.presto <- o76cbo.presto %>%
+  dplyr::filter(group == "10" & logFC > 0.25) %>%
+  arrange(desc(auc))
+```
+
+```{r}
+write.csv(clust10.markers.presto,
+          file = "./outputs50K/ONS76-CBO/ONS76cbo.cluster10.markers.aucRanked.csv", quote = F)
+```
+
 
 ```{r eval=FALSE, echo=FALSE}
 # this code used to generate sorted gene list as input for gProfiler (web app).
@@ -1057,6 +1283,13 @@ fgseaRes.clus10.GOBP <-
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# saving the below object to use as input for GSEA table function later
+saveRDS(fgseaRes.clus10.GOBP,
+        file = "outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster10ons7cbo.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # tidy up the data
 fgseaResTidy.clus10.GOBP <- fgseaRes.clus10.GOBP %>%
   as_tibble() %>%
@@ -1079,19 +1312,56 @@ fgseaResTidy.clus10.GOBP <-
 ```
 
 
-```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust10ons76Cbo, fig.height=20, fig.width=15}
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust10ons76Cbo, fig.height=15, fig.width=25}
 # only plot the top 20 pathways
-ggplot(fgseaResTidy.clus10.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
+ggplot(fgseaResTidy.clus10.GOBP %>% filter(padj < 0.001) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
   geom_col(fill = "blue") +
   coord_flip() +
   labs(x="Pathway", y="Normalized Enrichment Score",
       title= "") + 
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title = element_text(size = 30)) # can change bar colours using ggplot
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")) # can change bar colours using ggplot
 ```
 
 
+*****GENERATE AN FGSEA TABLE WITH P-VALUES - CLUSTER 10 ONS76-CBO*****
+```{r eval=FALSE, echo=FALSE}
+fgseaRes.clus10.GOBP <- 
+  readRDS("outputs50K/ONS76-CBO/fgseaMultilevel.scoreTypePOS.Output.cluster10ons7cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- readRDS("outputs50K/ONS76-CBO/FGSEA_SETS_GOBP.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(ranks.clus10,
+        file = "./outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster10.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus10 <- readRDS("outputs50K/ONS76-CBO/fgsea.Ranks_GOBP.Cluster10.ONS76cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+topPathways <- fgseaRes.clus10.GOBP %>% 
+    top_n(10, wt = -padj) %>% 
+    arrange(-NES) %>% 
+    pull(pathway)
+```
+
+```{r eval=FALSE, echo=FALSE, GSEAtableONS76cboClus10, fig.height=10, fig.width=15}
+# needs library(ggpubr)
+ggpubr::as_ggplot(plotGseaTable(fgsea_sets_GOBP[topPathways],
+              ranks.clus10,
+              fgseaRes.clus10.GOBP,
+              gseaParam = 1,
+              render = FALSE))
+```
 
 
 
