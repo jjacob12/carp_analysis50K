@@ -31,6 +31,7 @@ library(DOSE)
 library(Matrix)
 library(patchwork)
 library(clustree)
+library(RColorBrewer)
 library(EnhancedVolcano)
 library(tidyverse)
 # library(reshape2) not needed for base R Pearson correlation plots
@@ -173,6 +174,102 @@ VlnPlot(all.merge, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
 
 
 
+----------------------------------------------------------------------------------------------------
+***MERGE of ONS76-only cells from ONS76-CBO, ONS76-SPHER cells and ONS76-2D cells***
+- generate a UMAP plot pre-integration
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# ONS76-2D dataset
+o76.2d <- readRDS("outputs50K/ONS76_2D/filt.MitoCellsGenes.RiboRetained.seurat.ons76monolayer.rds")
+# ONS76-SPHER dataset
+o76.3d <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+# ONS-CBO and CBO datasets
+o76.cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+o76only.o76cbo <- readRDS("outputs50K/ONS76-CBO/ONS76OnlyCells.SubsetONS76cboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# cell names look fine
+head(WhichCells(o76.2d))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# cell names look fine
+head(WhichCells(o76.3d))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# cell IDs of o76only.o76cbo have no prefix
+head(WhichCells(o76only.o76cbo))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset ONS76-CBO dataset to get just the malignant clusters with the above cell IDs
+o76only.cbo.cellIDs <- WhichCells(o76only.o76cbo)
+
+# the object below consists of the ONS76 cells extracted from ONS76-CBO
+o76only.cbo <- subset(o76.cbo, cells = o76only.cbo.cellIDs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.3samples <- merge(o76.2d, 
+                  y = c(o76.3d, o76only.cbo), 
+                  add.cell.ids = c("o76mono", "o76spher", "o76only"), 
+                  project = "o76.3samples.merge")
+o76.3samples
+```
+
+```{r eval=FALSE, echo=FALSE}
+unique(sapply(X = strsplit(colnames(o76.3samples), split = "_"), FUN = "[", 1))
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(o76.3samples$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- o76.3samples@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^o76mono_"))] <- "monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^o76spher_"))] <- "spheroid"
+metadata$sample[which(str_detect(metadata$cells, "^o76only_"))] <- "coculture"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# assign metadata object back to the original seurat object
+o76.3samples@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.3samples <- NormalizeData(o76.3samples)
+o76.3samples <- FindVariableFeatures(o76.3samples)
+o76.3samples <- ScaleData(o76.3samples)
+o76.3samples <- RunPCA(o76.3samples, features = VariableFeatures(object = o76.3samples))
+o76.3samples <- RunUMAP(o76.3samples, dims = 1:5, reduction = "pca")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76.3samples,
+        file = "./outputs50K/INTEGRATE/ONS76.3samplesMerged.2d.Spher.ons76onlyCBO.pca.Umap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.3samples <- readRDS("outputs50K/INTEGRATE/ONS76.3samplesMerged.2d.Spher.ons76onlyCBO.pca.Umap.rds")
+```
+
+This result makes sense. Spheroid is more closely related to coculture and organoid than monolayer
+```{r eval=FALSE, echo=FALSE, DimPlotMergedONS76onlyCboMonoSpher, fig.height=6, fig.width=10}
+#UMAP plot PRE-integration (i.e. a simple 'merge' of the samples) - as expected the samples are well
+# separated
+DimPlot(o76.3samples, reduction = "umap", group.by = "sample", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
 
 ----------------------------------------------------------------------------------------------------
 ***INTEGRATED analysis of ONS76-only cells from ONS76-CBO, ONS76-SPHER cells and ONS76-2D cells using SCTransform***
@@ -258,7 +355,7 @@ saveRDS(o76.3samples.combined.sct,
         file = "./outputs50K/INTEGRATE/ons76onlyCocult.ONS76spher.ONS76mono.RiboRetained.integrated.SCT.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 o76.3samples.combined.sct <- readRDS("outputs50K/INTEGRATE/ons76onlyCocult.ONS76spher.ONS76mono.RiboRetained.integrated.SCT.rds")
 ```
 
@@ -267,10 +364,10 @@ table(o76.3samples.combined.sct$orig.ident)
 ```
 
 
-
 ------------------------------------------------------------------------------------------------------
-***Find differentially expressed genes in ONS76-spheroid vs ONS76-monolayer and produce a Volcano Plot***
+***Find differentially expressed genes in ONS76-spheroid vs ONS76-monolayer and produce a Volcano Plot and Heatmap***
 
+****Volcano Plot using integrated seurat object of all three conditions****
 ```{r eval=FALSE, echo=FALSE}
 # from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
 o76.3samples.combined.sct.prepSct <- PrepSCTFindMarkers(o76.3samples.combined.sct)
@@ -307,7 +404,7 @@ write.csv(o76SpherV2d.allMarkers.gene,
         quote = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the differential expressed gene list
 o76SpherV2d.allMarkers.gene <- 
   read.csv("outputs50K/INTEGRATE/DEgenesAll.ONS76SpherVSMono.Integrated.ONS76mono.ONS76Spher.ONS76Cocolture.csv")
@@ -316,7 +413,7 @@ o76SpherV2d.allMarkers.gene <-
 ```{r eval=FALSE, echo=FALSE}
 o76SpherV2d.allMarkers.gene %>% 
   dplyr::arrange(desc(avg_log2FC)) %>% 
-  head(60)
+  head(6)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -328,7 +425,7 @@ o76SpherV2d.allMarkers.gene %>%
 
 
 
-```{r VolcanoPlotNUMBER2ons76SpheroidVSmonoDEGsIntegratedObject, fig.height=10, fig.width=15}
+```{r eval=FALSE, echo=FALSE, VolcanoPlotNUMBER2ons76SpheroidVSmonoDEGsIntegratedObject, fig.height=10, fig.width=15}
 genes.to.label.o76SpherVsMono <- c("POSTN", "TNC", "VIM", "FN1", "COL6A1", "SNAI2", "COL5A1")
 
 EnhancedVolcano(o76SpherV2d.allMarkers.gene,
@@ -351,6 +448,98 @@ EnhancedVolcano(o76SpherV2d.allMarkers.gene,
                 gridlines.major = FALSE,
                 gridlines.minor = FALSE)
 
+```
+
+
+****Heatmap of ONS76 monolayer VS spheroid gene expression using integrated seurat object consisting of monolayer and spheroid samples only****
+```{r eval=FALSE, echo=FALSE}
+# load the dataset
+o76.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# find Markers
+# from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+
+Idents(o76.2d3d.combined.sct) <- "orig.ident" 
+o76.2d3d.combined.sct <- PrepSCTFindMarkers(o76.2d3d.combined.sct)
+
+o76.2d3d.combined.sct.allMarkers <- FindAllMarkers(o76.2d3d.combined.sct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(o76.2d3d.combined.sct.allMarkers) # 3736 differentially expressed UP-regulated genes in the two conditions
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(o76.2d3d.combined.sct.allMarkers, 3) # there is already a "gene" column
+```
+
+```{r eval=FALSE, echo=FALSE}
+# avoid rows by converting rows to a column
+o76.2d3d.combined.sct.allMarkers.gene <- o76.2d3d.combined.sct.allMarkers %>% 
+  rownames_to_column(var = "gene_name")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the DEGs which are UP-regulated
+saveRDS(o76.2d3d.combined.sct.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.SCT.ONS76mono.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the markers file - both monolayer and spheroid UP-regulated genes
+o76.2d3d.combined.sct.allMarkers.gene <- 
+  readRDS("outputs50K/INTEGRATE/DEgenesUP.Integrated.SCT.ONS76mono.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(o76.2d3d.combined.sct.allMarkers.gene)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get rid of 1st column of 'gene_name' as this is duplicate information
+o76.2d3d.combined.sct.allMarkers.OneGeneColumnOnly <- o76.2d3d.combined.sct.allMarkers.gene %>% 
+  dplyr::select(-gene_name)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# save above as csv file
+write.csv(o76.2d3d.combined.sct.allMarkers.OneGeneColumnOnly,
+          file = "outputs50K/INTEGRATE/ONS76.DEgeneMARKERS.Integrated.SCT.ONS76mono.ONS76spher.csv",
+          quote = FALSE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# compared sorting on p_val_adj and avg_log2FC, and p_val_adj is better
+top20.sorted <- o76.2d3d.combined.sct.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+Idents(o76.2d3d.combined.sct) <- "orig.ident"
+DefaultAssay(o76.2d3d.combined.sct) <- "RNA"  # in general SCT not the best assay for integrated data - best
+                                        # practice to use RNA assay.
+```
+
+
+```{r eval=FALSE, echo=FALSE, HeatmapSCTassayONS76integratedMonoSpher, fig.height=22, fig.width=16}
+# this vignette (https://github.com/satijalab/seurat/issues/4082) is a good reminder of when to 
+# use SCT Assay versus RNA Assay
+o76.2d3d.combined.sct.scaled <- ScaleData(o76.2d3d.combined.sct,
+                                    features = top20.sorted$gene,
+                                    verbose = FALSE)
+DoHeatmap(o76.2d3d.combined.sct.scaled, features = top20.sorted$gene, size = 20, assay = "RNA", group.by = "orig.ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 30), legend.title = element_text(size=20), legend.text=element_text(size=20))
 ```
 
 
@@ -499,7 +688,6 @@ o76.3samples.allMarkers.gene <-
 ```{r eval=FALSE, echo=FALSE}
 head(o76.3samples.allMarkers.gene)
 ```
-
 
 ```{r eval=FALSE, echo=FALSE}
 # this takes the top 20 genes in each cluster (mono, spher, coculture) sorted by avg_Log2FC
@@ -697,7 +885,7 @@ p3f <- VlnPlot(o76.3samples.combined.sct,
 p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
 ```
 
-```{r VlnPlotMDM2andNSCmarkersONS76monoSpherCocultIntegrated, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnPlotMDM2andNSCmarkersONS76monoSpherCocultIntegrated, fig.height=17, fig.width=22}
 Idents(o76.3samples.combined.sct) <- "orig.ident"
 
 p4a <- VlnPlot(o76.3samples.combined.sct,
@@ -989,6 +1177,125 @@ VlnPlot(dy.o76.cells,
         slot = "data",
         assay = "RNA") +
   theme(axis.text = element_text(size = 20))
+```
+
+
+
+
+****Merge of: 1. ONS76-2D, 2. ONS76-SPHEROID, 3. DAOY-2D (rep), 4. DAOY-spheroid cells****
+TO SHOW DIFFERENTIAL EXPRESSION OF CNTN1 IN ONS76 AND DAOY SAMPLES
+As the SCT assay has been used for the DAOY only cells in coculture and ONS76 only cells in co-culture, then get the cell IDs of the respective samples and use those cell IDs to subset the daoy-cbo and ons76-cbo samples that have NOT yet been through the SCT assay
+```{r eval=FALSE, echo=FALSE}
+# load the DAOY samples
+dy2d <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
+# load the ONS76 samples
+# ONS76-2D dataset
+o76.2d <- readRDS("outputs50K/ONS76_2D/filt.MitoCellsGenes.RiboRetained.seurat.ons76monolayer.rds")
+# ONS76-SPHER dataset
+o76.3d <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# create the merged object of ONS76 cells and DAOY cells
+dy.o76.2d3d <- merge(o76.2d, 
+                  y = c(o76.3d, dy2d, dySpher), 
+                  add.cell.ids = c("o76mono", "o76spher", "dy2d", "dySpher"), 
+                  project = "dy.ons76.2d3d.merge")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- dy.o76.2d3d@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^o76mono_"))] <- "ONS76_monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^o76spher_"))] <- "ONS76_spheroid"
+metadata$sample[which(str_detect(metadata$cells, "^dy2d_"))] <- "DAOY_monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^dySpher_"))] <- "DAOY_spheroid"
+head(metadata)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.o76.2d3d@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.o76.2d3d <- ScaleData(dy.o76.2d3d)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# change Idents from the default (which is cell IDs) to the sample
+Idents(dy.o76.2d3d) <- "sample"
+
+# re-order the sample levels
+my.levels <- 
+  c("ONS76_monolayer", "ONS76_spheroid", "DAOY_monolayer", "DAOY_spheroid")
+levels(dy.o76.2d3d) <- my.levels
+levels(dy.o76.2d3d)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.o76.2d3d$sample)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object was re-scaled after merging and only then was it saved
+saveRDS(dy.o76.2d3d, 
+file = "./outputs50K/INTEGRATE/daoy.ons76.Merged.4samples.o76Mono.o76Spher.dyMono.dySpher.rds")
+```
+
+```{r}
+# load the merged object above
+dy.o76.2d3d <- 
+  readRDS("outputs50K/INTEGRATE/daoy.ons76.Merged.4samples.o76Mono.o76Spher.dyMono.dySpher.rds")
+```
+
+```{r VlnPlot4samplesMergedDaoyONS762d3dCNTN1meis1MEIS2jkamp, fig.height=17, fig.width=22}
+Idents(dy.o76.2d3d) <- "sample"
+p4a <- VlnPlot(dy.o76.2d3d,
+                  features = c("CNTN1"),
+                  slot = "data",
+                  assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4b <- VlnPlot(dy.o76.2d3d,
+                 features = c("MEIS1"),
+                 slot = "data",
+                 assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4c <- VlnPlot(dy.o76.2d3d,
+                 features = c("MEIS2"),
+                 slot = "data",
+                 assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4d <- VlnPlot(dy.o76.2d3d,
+                 features = c("JKAMP"),
+                 slot = "data",
+                 assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p4a + p4b + p4c + p4d + plot_layout(ncol = 2)
 ```
 
 
@@ -1648,13 +1955,509 @@ metadata.clus3o76cbo.clus6cbo %>%
 
 
 
+***Pathway enrichment in monolayer and spheroid ONS76-cells***
+Compare upregulated pathways in these conditions using integrated object consisting of monolayer and spheroid cells
+Do a MERGE first, then do the INTEGRATION to get the UMAP plots pre and post integration
 
-****Comparison with patient SHH-MB (Hovestadt 2019, Nature)****
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# ONS76-2D dataset
+o76.2d <- readRDS("outputs50K/ONS76_2D/filt.MitoCellsGenes.RiboRetained.seurat.ons76monolayer.rds")
+# ONS76-SPHER dataset
+o76.3d <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+```
+
+*****MERGE:*****
+```{r eval=FALSE, echo=FALSE}
+o76.2samples <- merge(o76.2d, 
+                  y = c(o76.3d), 
+                  add.cell.ids = c("o76mono", "o76spher"), 
+                  project = "o76.2samples.merge")
+o76.2samples
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(o76.2samples$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- o76.2samples@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^o76mono_"))] <- "ONS76_monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^o76spher_"))] <- "ONS76_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# assign metadata object back to the original seurat object
+o76.2samples@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2samples <- NormalizeData(o76.2samples)
+o76.2samples <- FindVariableFeatures(o76.2samples)
+o76.2samples <- ScaleData(o76.2samples)
+o76.2samples <- RunPCA(o76.2samples, features = VariableFeatures(object = o76.2samples))
+o76.2samples <- RunUMAP(o76.2samples, dims = 1:5, reduction = "pca")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76.2samples,
+file = "./outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.MERGED.PRE-INTEGRATION.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2samples <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.MERGED.PRE-INTEGRATION.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotMergedONS76SpherMono2samplesPREINTEGRATION, fig.height=6, fig.width=10}
+# this is the pre-integration plot
+DimPlot(o76.2samples, reduction = "umap", group.by = "sample",
+        pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+
+*****INTEGRATION:*****
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# ONS76-2D dataset
+o76mono <- readRDS("outputs50K/ONS76_2D/ONS76mono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+# ONS76-SPHER dataset
+o76spher <- readRDS("outputs50K/ONS76_SPHER/ONS76spher.RiboGenesRetained.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+o76.list <- list(o76mono, o76spher)
+features <- SelectIntegrationFeatures(object.list = o76.list, nfeatures = 3000)
+o76.list <- PrepSCTIntegration(object.list = o76.list, anchor.features = features)
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.anchors <- FindIntegrationAnchors(object.list = o76.list, normalization.method = "SCT",
+    anchor.features = features)
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct <- IntegrateData(anchorset = o76.anchors, normalization.method = "SCT")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct <- RunPCA(o76.2d3d.combined.sct, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30) %>% 
+  FindNeighbors(reduction = "pca", dims = 1:30) %>% 
+  FindClusters(resolution = 0.3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(o76.2d3d.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# change the orig.ident notation for future plots
+o76.2d3d.combined.sct@meta.data[o76.2d3d.combined.sct@meta.data == "ons76mono"] <- "ONS76_monolayer"
+o76.2d3d.combined.sct@meta.data[o76.2d3d.combined.sct@meta.data == "ons76spher"] <- "ONS76_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(o76.2d3d.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the integrated object
+saveRDS(o76.2d3d.combined.sct,
+        file = "./outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotONS76SpherMono2samplesINTEGRATED, fig.height=6, fig.width=10}
+# this is the pre-integration plot
+DimPlot(o76.2d3d.combined.sct, reduction = "umap", group.by = "orig.ident",
+        pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+
+*****Expression of markers in monolayers vs spheroids*****
+```{r eval=FALSE, echo=FALSE}
+# load the integrated object
+o76.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(o76.2d3d.combined.sct) <- "orig.ident"
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotONS76spherMonoIntegratedGranuleMarkers, fig.height=17, fig.width=22}
+p1a <- VlnPlot(o76.2d3d.combined.sct,
+               features = "MEIS1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(o76.2d3d.combined.sct,
+               features = "CNTN1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(o76.2d3d.combined.sct,
+               features = "SATB2",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(o76.2d3d.combined.sct,
+               features = "ZIC1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(o76.2d3d.combined.sct,
+               features = "ZIC2",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(o76.2d3d.combined.sct,
+              features = "JKAMP",
+              slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotCNTN1ons76MonoSpherDAOYmonoSpherMerge}
+p2a <- VlnPlot(o76.2d3d.combined.sct,
+               features = "CNTN1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+```
+
+
+
+*****Monolayer cell FGSEA with 2 sample integration*****
+
+******GO:BP geneset enrichment******
+ONS76 monolayer, spheroid only
+```{r eval=FALSE, echo=FALSE}
+# load the object - only monolayer and spheroid integration
+o76.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(o76.3samples.combined.sct) <- "orig.ident"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# apply presto to the integrated sample
+o76.2d3d.combined.sct.presto <- wilcoxauc(o76.2d3d.combined.sct, 'orig.ident')
+head(o76.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "ONS76_monolayer") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+mono.genes.o76.2d3d.combined.sct.presto <- o76.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "ONS76_monolayer" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(mono.genes.o76.2d3d.combined.sct.presto) # 1071 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.mono.genes.o76.2d3d.combined.sct.presto <- deframe(mono.genes.o76.2d3d.combined.sct.presto)
+head(ranks.mono.genes.o76.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.mono.genes.o76.2d3d.combined.sct.presto.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.mono.genes.o76.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.GOBP <- fgseaRes.mono.genes.o76.2d3d.combined.sct.presto.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.GOBP, 
+        file = "./outputs50K/INTEGRATE/ONS76monolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.GOBP <- 
+  readRDS("outputs50K/INTEGRATE/ONS76monolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPons76MONOIntegratedMonoSpher, fig.height=15, fig.width=25}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.GOBP %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
+
+******C6 ONCOGENIC GENE SET ENRICHMENT******
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+cancer_geneSets <- msigdbr(species = "human", category = "C6")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_C6 <- cancer_geneSets %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.mono.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  fgseaMultilevel(fgsea_sets_C6, stats = ranks.mono.genes.o76.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  fgseaRes.mono.genes.o76.2d3d.combined.sct.presto.C6 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.C6 %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.C6, 
+        file = "./outputs50K/INTEGRATE/ONS76monolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  readRDS("outputs50K/INTEGRATE/ONS76monolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAoncogenicC6ons76MONOIntegratedMonoSpher, fig.height=10, fig.width=20}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.mono.genes.o76.2d3d.combined.sct.presto.C6 %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
 
 
 
 
-****Pathways enriched in ONS76-cells in co-culture****
+*****FGSEA ONS76-spheroid vs ONS76-monolayer*****
+
+******GO:BP GENESET ENRICHMENT******
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "ONS76_spheroid") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+spher.genes.o76.2d3d.combined.sct.presto <- o76.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "ONS76_spheroid" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(spher.genes.o76.2d3d.combined.sct.presto) # 465 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.spher.genes.o76.2d3d.combined.sct.presto <- deframe(spher.genes.o76.2d3d.combined.sct.presto)
+head(ranks.spher.genes.o76.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.spher.genes.o76.2d3d.combined.sct.presto.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.spher.genes.o76.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.GOBP <- fgseaRes.spher.genes.o76.2d3d.combined.sct.presto.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.GOBP, 
+        file = "./outputs50K/INTEGRATE/ONS76spheroid.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.GOBP <- 
+  readRDS("outputs50K/INTEGRATE/ONS76spheroid.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r  eval=FALSE, echo=FALSE, BarplotFGSEAgoBPons76SPHEROIDIntegratedMonoSpher, fig.height=15, fig.width=20}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.GOBP %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
+
+
+******ONCOGENIC C6 GENESET ENRICHMENT******
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+cancer_geneSets <- msigdbr(species = "human", category = "C6")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_C6 <- cancer_geneSets %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.spher.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  fgseaMultilevel(fgsea_sets_C6, stats = ranks.spher.genes.o76.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  fgseaRes.spher.genes.o76.2d3d.combined.sct.presto.C6 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.C6 %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.C6, 
+        file = "./outputs50K/INTEGRATE/ONS76spheroid.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.C6 <- 
+  readRDS("outputs50K/INTEGRATE/ONS76spheroid.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAoncogenicC6ons76SPHEROIDIntegratedMonoSpher, fig.height=10, fig.width=20}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.spher.genes.o76.2d3d.combined.sct.presto.C6 %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
+
+****Pathways enriched in ONS76-cells in G1 in co-culture****
 ```{r eval=FALSE, echo=FALSE}
 # load the above integrated object
 o76.g1.comb.sct <- readRDS("outputs50K/INTEGRATE/G1cells.ons76onlyCocult.ONS76spher.ONS76mono.integrated.SCT.rds")
@@ -1849,6 +2652,27 @@ fgseaResTidy.mono.o76.comb.GOBP %>%
 
 
 
+*****Find proliferating cells in ONS76 spheroid and monolayer integrated seurat object*****
+Find the cells that are actively proliferating in this sample
+```{r eval=FALSE, echo=FALSE}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+prolif.genes <- list(c(s.genes, g2m.genes))
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/ONS76spher.ONS76mono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, AddModuleScoreProlifernONS76cbo, fig.height=4}
+phase.o76.2d3d.combined.sct <- AddModuleScore(o76.2d3d.combined.sct,
+                        features = prolif.genes,
+                        name = "prolif.genes")
+FeaturePlot(phase.o76.2d3d.combined.sct, features = 'prolif.genes1', label = TRUE, repel = TRUE) +
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+```
+
+
 ```{r eval=FALSE, echo=FALSE}
 sessionInfo()
 ```
@@ -1903,7 +2727,7 @@ o76only.cl3 <- subset(o76only.o76cbo.unclust, cells = o76.cl3.cellID)
 o76only.cl8 <- subset(o76only.o76cbo.unclust, cells = o76.cl8.cellID)
 ```
 
-***Note about Seurat DOTPLOT
+***Note about Seurat DOTPLOT***
 ```{r eval=FALSE, echo=FALSE, DotplotG1phaseGenesONS76IntegratedMonoSpherCocult, fig.height=4, fig.width=5}
 # see this vignette - (https://github.com/satijalab/seurat/issues/5742) 
 # binarised expression (only grey OR blue, nothing in between) occurs when low number of groups.  
