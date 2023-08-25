@@ -306,7 +306,6 @@ p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
 
 
 
-
 ----------------------------------------------------------------------------------------------------
 ***Repeat analysis of CBO scRNA-seq with retained ribosomal genes - UNannotated***
 ```{r eval=FALSE, echo=FALSE}
