@@ -22,7 +22,12 @@ suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
 library(presto)
+library(msigdbr)
+library(fgsea)
+library(org.Hs.eg.db)
+library(DOSE)
 library(clustree)
+library(RColorBrewer)
 library(tidyverse)
 library(magrittr)
 library(patchwork)
@@ -32,14 +37,14 @@ library(patchwork)
 
 -----------------------------------------------------------------------------------------------------
 ***Repeat analysis of ONS76-CBO scRNA-seq with retained ribosomal genes***
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the data from scratch
 # load the ONS76-2D raw data (from "working_data" folder)
 data_dir <- "./working_data/ONS76-SPHER/"   # the dot is current dir and is essential!
 list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # note these are .gz files which can be directly read. n = 1322 cells (o76spher.data)
 o76spher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
                          features = paste0(data_dir, "features.tsv.gz"), 
@@ -52,20 +57,20 @@ o76spher <- CreateSeuratObject(counts = o76spher.data,
 dim(o76spher) # 17,677 genes and 1322 cells
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # identify mitochondrial genes and calculate percent
 mito.genes <- grep(pattern = "^MT", x = rownames(x = o76spher), value = TRUE)
 percent.mito <- 
   Matrix::colSums(o76spher[mito.genes, ])/Matrix::colSums(o76spher)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # add the mitochondrial gene percent to the metadata
 o76spher <- 
   AddMetaData(object = o76spher, metadata = percent.mito, col.name = "percent.mito")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
 
 # remove mitochondrial genes 
@@ -73,24 +78,24 @@ o76spher <- o76spher[ ! grepl("^MT-", rownames(o76spher)), ]
 dim(o76spher)  # 17,664 genes, 1322 cells
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # remove all cells with percent.mito > 10%
 o76spher <- subset(o76spher, subset = percent.mito < 0.1)
 dim(o76spher) # 17,664 genes and 1164 cells
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the above object, non-normalised, non-clustered
 saveRDS(o76spher,
         file = "./outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the above object, which has only been through mito, gene and cell filtering
-o76cbo <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
+o76spher <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
 
 # include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
@@ -105,7 +110,7 @@ o76spher <- CellCycleScoring(o76spher,
 o76spher$CC.difference <- o76spher$S.Score - o76spher$G2M.Score
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
 o76spher.input.integration <- SCTransform(o76spher, 
                    vars.to.regress = "CC.difference",
@@ -115,12 +120,12 @@ o76spher.input.integration <- SCTransform(o76spher,
   RunPCA(npcs = 30, verbose = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
 saveRDS(o76spher.input.integration, "./outputs50K/ONS76_SPHER/ONS76spher.RiboGenesRetained.inputIntegration.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 o76spher <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "glmGamPoi", 
                         verbose = FALSE) %>%   
   RunPCA(verbose = FALSE) %>% 
@@ -129,7 +134,7 @@ o76spher <- SCTransform(o76spher, vars.to.regress = "CC.difference", method = "g
   FindClusters(verbose=FALSE, resolution = 0.5)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the clustered, SCTransformed object above
 saveRDS(o76spher, 
         file = "./outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
@@ -141,40 +146,223 @@ o76spher <-
   readRDS("outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-```{r DimplotCboUmapSCTransform, fig.height=6, fig.width=10}
+```{r eval=FALSE, echo=FALSE, DimplotONS76SspherUmapSCTransform, fig.height=6, fig.width=10}
 # for res = 0.5, 5 clusters are found
-DimPlot(o76spher, label = TRUE)
+DimPlot(o76spher, label = TRUE, pt.size = 1, label.size = 4)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # get the markers of each cluster
 o76spher.POSmarkers <- FindAllMarkers(object = o76spher, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(o76spher.POSmarkers,
         file = "./outputs50K/ONS76_SPHER/POS.markers.RiboRetained.ONS76spheroid.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 o76spher.POSmarkers <- readRDS("outputs50K/ONS76_SPHER/POS.markers.RiboRetained.ONS76spheroid.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 o76spher.POSmarkers %>% 
   dplyr::group_by(cluster) %>% 
   slice_head(n = 10)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # MEIS1 and CNTN1 are expressed of these five, NEUROD1 is NOT expressed
 o76spher.POSmarkers %>%
   filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX"))
 ```
 
+```{r eval=FALSE, echo=FALSE, VlnPlotIFITM3, fig.height=3, fig.width=12}
+VlnPlot(o76spher, features = c("IFITM3", "SPARC"))
+```
+
+
+
+
+```{r eval=FALSE, echo=FALSE, VlnPlotGranuleGenesONS76spher, fig.height=17, fig.width=22}
+p1a <- VlnPlot(o76spher,
+               features = "MEIS1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(o76spher,
+               features = "CNTN1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(o76spher,
+               features = "SATB2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(o76spher,
+               features = "ZIC1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(o76spher,
+               features = "MEIS2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(o76spher,
+              features = "JKAMP") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinplotONS76spheroidCluster4ProlifernMarkers, fig.height=17, fig.width=22}
+p2a <- VlnPlot(o76spher,
+               features = "MKI67") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(o76spher,
+               features = "MYBL2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(o76spher,
+               features = "BIRC5") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(o76spher,
+               features = "RRM2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(o76spher,
+               features = "ZIC2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(o76spher,
+              features = "JKAMP") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+
+```
+
+```{r ViolinplotONS76spheroidUniversalMarkers, fig.height=17, fig.width=22}
+p3a <- VlnPlot(o76spher,
+               features = "IFITM3") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3b <- VlnPlot(o76spher,
+               features = "IGFBP2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3c <- VlnPlot(o76spher,
+               features = "STC1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3d <- VlnPlot(o76spher,
+               features = "SPARC") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3e <- VlnPlot(o76spher,
+               features = "ZIC2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3f <- VlnPlot(o76spher,
+              features = "JKAMP") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+prolif.genes <- list(c(s.genes, g2m.genes))
+```
+
+
+```{r eval=FALSE, echo=FALSE, AddModuleScoreProlifernONS76spheroid, fig.height=6, fig.width=10}
+phase.o76spher <- AddModuleScore(o76spher,
+                        features = prolif.genes,
+                        name = "prolif.genes")
+FeaturePlot(phase.o76spher, features = 'prolif.genes1', label = TRUE, repel = TRUE, pt.size = 1,
+            label.size = 4) +
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) +
+  labs(title = "")
+```
+
 
 The 5 clusters look different from each other when ribosome genes are retained. Not much different than with ribosome genes removed. Cluster 2 and 3 are more similar to each other than to other clusters as noted previously with ribosome genes removed.
-```{r HeatmapONS76spherTop10markers5clustersRes0.5, fig.height=6, fig.width=10}
+```{r eval=FALSE, echo=FALSE, HeatmapONS76spherTop10markers5clustersRes0.5, fig.height=6, fig.width=10}
 # first load o76spher seurat object above and the file of positive markers, then only run this chunk
 o76spher.POSmarkers %>% 
   group_by(cluster) %>%
@@ -184,15 +372,18 @@ DoHeatmap(o76spher, features = top10$gene) + guides(color = "none") +
         legend.text=element_text(size=20)) 
 ```
 
+
+***FGSEA***
 Run presto
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # prepare the data for gProfiler (web app) input (res = 0.5)
 o76spher.genes.presto <- wilcoxauc(o76spher, 'seurat_clusters')
 nrow(o76spher.genes.presto)
 dplyr::count(o76spher.genes.presto, group)
 ```
 
-```{r}
+****Cluster 0 FGSEA****
+```{r eval=FALSE, echo=FALSE}
 # filter and order the gene list for cluster 0
 o76spher.genes.presto.clust0 <- o76spher.genes.presto %>% 
   dplyr::filter(group == "0" & logFC > 0.25) %>%
@@ -202,14 +393,56 @@ o76spher.genes.presto.clust0 <- o76spher.genes.presto %>%
 nrow(o76spher.genes.presto.clust0) # 221 genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(o76spher.genes.presto.clust0, 
           "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster0.genes.presto.gProfilerInput.csv", quote = F)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+ranks.clus0 <- deframe(o76spher.genes.presto.clust0)
+head(ranks.clus0)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus0.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus0, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus0.GOBP <- fgseaRes.clus0.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus0.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved
+saveRDS(fgseaResTidy.clus0.GOBP, 
+        file = "./outputs50K/ONS76_SPHER/cluster0.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.clus0.GOBP <- 
+  readRDS("outputs50K/ONS76_SPHER/cluster0.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus0.GOBP, 
+       file = "./outputs50K/ONS76_SPHER/cluster0.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+****Cluster 1 FGSEA****
+```{r eval=FALSE, echo=FALSE}
 # filter and order the gene list for cluster 1
 o76spher.genes.presto.clust1 <- o76spher.genes.presto %>% 
   dplyr::filter(group == "1" & logFC > 0.25) %>%
@@ -219,14 +452,45 @@ o76spher.genes.presto.clust1 <- o76spher.genes.presto %>%
 nrow(o76spher.genes.presto.clust1) # 385 genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(o76spher.genes.presto.clust1, 
           "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster1.genes.presto.gProfilerInput.csv", quote = F)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+ranks.clus1 <- deframe(o76spher.genes.presto.clust1)
+head(ranks.clus1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus1.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus1, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus1.GOBP <- fgseaRes.clus1.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus1.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved - NO SIGNIFICANT ENRICHMENT OF PATHWAYS!
+saveRDS(fgseaResTidy.clus1.GOBP, 
+        file = "./outputs50K/ONS76_SPHER/cluster1.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+****Cluster 2 FGSEA****
+```{r eval=FALSE, echo=FALSE}
 # filter and order the gene list for cluster 2
 o76spher.genes.presto.clust2 <- o76spher.genes.presto %>% 
   dplyr::filter(group == "2" & logFC > 0.25) %>%
@@ -236,14 +500,45 @@ o76spher.genes.presto.clust2 <- o76spher.genes.presto %>%
 nrow(o76spher.genes.presto.clust2) # only 69 genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(o76spher.genes.presto.clust2, 
           "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster2.genes.presto.gProfilerInput.csv", quote = F)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(o76spher.genes.presto.clust2)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus2.GOBP <- fgseaRes.clus2.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus2.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+head(20)   # no significant pathway enrichment!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved - NO SIGNIFICANT PATHWAY ENRICHMENT!
+saveRDS(fgseaResTidy.clus2.GOBP, 
+        file = "./outputs50K/ONS76_SPHER/cluster2.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+****Cluster 3 FGSEA****
+```{r eval=FALSE, echo=FALSE}
 # filter and order the gene list for cluster 3
 o76spher.genes.presto.clust3 <- o76spher.genes.presto %>% 
   dplyr::filter(group == "3" & logFC > 0.25) %>%
@@ -253,14 +548,45 @@ o76spher.genes.presto.clust3 <- o76spher.genes.presto %>%
 nrow(o76spher.genes.presto.clust3) # 238 genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(o76spher.genes.presto.clust3, 
           "./outputs50K/ONS76_SPHER/ONS76spheroid.RiboRetained.cluster3.genes.presto.gProfilerInput.csv", quote = F)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- deframe(o76spher.genes.presto.clust3)
+head(ranks.clus3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus3.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus3.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # no significant pathway enrichment! (using padj < 0.05)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved - NO SIGNIFICANT PATHWAY ENRICHMENT!
+saveRDS(fgseaResTidy.clus3.GOBP, 
+        file = "./outputs50K/ONS76_SPHER/cluster3.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+
+****Cluster 4 FGSEA****
+```{r eval=FALSE, echo=FALSE}
 # filter and order the gene list for cluster 4
 o76spher.genes.presto.clust4 <- o76spher.genes.presto %>% 
   dplyr::filter(group == "4" & logFC > 0.25) %>%
@@ -270,7 +596,43 @@ o76spher.genes.presto.clust4 <- o76spher.genes.presto %>%
 nrow(o76spher.genes.presto.clust4) # 588 genes
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
+ranks.clus4 <- deframe(o76spher.genes.presto.clust4)
+head(ranks.clus4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus4.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus4, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - enrichment for cell division/proliferation
+fgseaResTidy.clus4.GOBP <- fgseaRes.clus4.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus4.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved
+saveRDS(fgseaResTidy.clus4.GOBP, 
+        file = "./outputs50K/ONS76_SPHER/cluster4.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus4.GOBP, 
+       file = "./outputs50K/ONS76_SPHER/cluster4.ONS76spheroid.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(o76spher.genes.presto.clust4, 
@@ -280,7 +642,7 @@ write.csv(o76spher.genes.presto.clust4,
 
 
 ***Clustree***
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # attempt to use Clustree package to find the right number of clusters
 # -----------------------------------------------------------------------------------------------
 
@@ -293,29 +655,29 @@ ons76spher.clusters <- FindClusters(object = o76spher,
                                       verbose = FALSE)
 ```
 
-```{r ClustreeCBO, fig.height=8}
+```{r eval=FALSE, echo=FALSE, ClustreeCBO, fig.height=8}
 # the clustering tree finds 2-4 major clusters initially with res = 0.5.
 # when res > 0.4 the cluster assignment becomes unstable.
 # clusters 0-2 have pct.1 ~ pct.2, whereas clusters 3 and 4 look unique 
 clustree(ons76spher.clusters)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # get the number of cells per cluster
 table(Idents(o76spher))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the dataset
 o76spher <- readRDS("outputs50K/ONS76_SPHER/ons76spher.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # confirm that cell cycle phase metadata is present - it is
 head(o76spher@meta.data)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # extract the G1 only cells from o76spher (this 'o76spher' object is the already CLUSTERED object)
 # first, switch Idents to 'Phase'
 Idents(o76spher) <- "Phase"
@@ -323,20 +685,20 @@ o76spher.g1.cellIDs <- WhichCells(o76spher, idents = "G1")
 length(o76spher.g1.cellIDs) # 635 cells
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # these cell IDs look correctly formatted
 # object o76spher has to be "filt.RiboMitoCellsGenes.seurat.ons76spheroid.rds" above!
 o76spher.g1cells <- subset(o76spher, cells = o76spher.g1.cellIDs)
 head(WhichCells(o76spher.g1cells))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # check the number of cells is correct in the subsetted object
 dim(o76spher.g1cells) # 635 cells in G1
 ```
 
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # create an object suitable for integration (don't need to regress cell cycle!)
 
 o76spher.g1cells.input.integration <- SCTransform(o76spher.g1cells,
@@ -346,11 +708,11 @@ o76spher.g1cells.input.integration <- SCTransform(o76spher.g1cells,
   RunPCA(npcs = 30, verbose = FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 dim(o76spher.g1cells.input.integration) # object has 635 cells which is correct
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the "o76spher.g1cells.input.integration" object
 saveRDS(o76spher.g1cells.input.integration, 
         file = "./outputs50K/ONS76_SPHER/G1phaseCells.RiboRetained.ONS76spheroid.inputIntegration.SCTransformed.PCA.unclustered.rds")
