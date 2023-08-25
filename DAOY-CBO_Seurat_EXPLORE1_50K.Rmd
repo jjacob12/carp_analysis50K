@@ -620,6 +620,54 @@ p2f <- VlnPlot(dyOnly.dyCboAnnot.rescaled,
 p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
 ```
 
+```{r eval=FALSE, echo=FALSE, ViolinPlotNeuroD1RTN1Rbfox3DAOYcbo, fig.height=17, fig.width=27}
+p3a <- VlnPlot(dyCbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3b <- VlnPlot(dyCbo.annotate, 
+        features = c("CNTN2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3c <- VlnPlot(dyCbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3d <- VlnPlot(dyCbo.annotate, 
+        features = c("CNTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3e <- VlnPlot(dyCbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3f <- VlnPlot(dyCbo.annotate, 
+        features = c("DCX")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
+
+
 ```{r eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
 # cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
 # malignant clusters are cluster 8 (n=137 cells), cluster 12 (n=77 cells), and cluster 13 (n=55 cells)
@@ -633,7 +681,7 @@ VlnPlot(dyCbo.annotate, features = c("SOX2", "NES", "POU3F2","FABP7", "ERBB4", "
 
 ```{r VlnplotsErbb4Sox2otx2, eval=FALSE, echo=FALSE, fig.height=9, fig.width=13}
 VlnPlot(dyCbo.annotate,
-        features = c("SOX2", "ERBB4", "POU3F4", "POU3F2", "OTX2", "FGFBP3"))
+        features = c("POU3F2", "HOXB2", "HOXB-AS1", "MEIS1"))
 ```
 
 
@@ -819,7 +867,7 @@ dplyr::count(dyCbo.genes.presto, group)
 ```
 
 
-***Cluster 9 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+***Cluster 9 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers***
 ```{r eval=FALSE, echo=FALSE}
 # order the gene list
 # the presto gene list puts ERBB4 at the top which is reassuring, and SOX2 is the 35th listed gene
@@ -830,14 +878,17 @@ dyCbo.genes.presto %>%
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# filter and order the gene list
-dyCbo.cl9.UPgenes.presto <- dyCbo.genes.presto %>% 
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl9.markers.presto <- dyCbo.genes.presto %>% 
   dplyr::filter(group == "9" & logFC > 0.25) %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-
-nrow(dyCbo.cl9.UPgenes.presto) # 548 genes
+  dplyr::arrange(desc(auc)) 
 ```
+
+```{r}
+write.csv(dyCbo.cl9.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster9.markers.aucRanked.csv", quote = F)
+```
+
 
 ```{r eval=FALSE, echo=FALSE}
 # gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
@@ -847,8 +898,10 @@ write.csv(dyCbo.cl9.UPgenes.presto,
 ```
 
 
+
+
 ---------------------------------------------------------------------------------------------------------
-***Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+***Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster 13 markers***
 ```{r eval=FALSE, echo=FALSE}
 dyCbo.genes.presto %>%
   dplyr::filter(group == "13") %>%
@@ -881,9 +934,25 @@ write.csv(dyCbo.cl13.UPgenes.presto,
           "./outputs50K/DAOY-CBO/daoyCbo.cluster13.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl13.markers.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "13" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) 
+```
+
+```{r}
+nrow(dyCbo.cl13.markers.presto) # 581 markers
+```
+
+```{r}
+write.csv(dyCbo.cl13.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster13.markers.aucRanked.csv", quote = F)
+```
+
 
 ---------------------------------------------------------------------------------------------------
-***Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape***
+***Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers***
 ```{r eval=FALSE, echo=FALSE}
 dyCbo.genes.presto %>%
   dplyr::filter(group == "14") %>%
@@ -916,7 +985,21 @@ write.csv(dyCbo.cl14.UPgenes.presto,
           "./outputs50K/DAOY-CBO/daoyCbo.cluster14.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl14.markers.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "14" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) 
+```
 
+```{r}
+nrow(dyCbo.cl14.markers.presto) # 1132 markers
+```
+
+```{r}
+write.csv(dyCbo.cl14.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster14.markers.aucRanked.csv", quote = F)
+```
 
 
 CODE RETAINED IN CASE IT PROVES USEFUL LATER
