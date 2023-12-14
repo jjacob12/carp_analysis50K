@@ -48,11 +48,12 @@ cbo.clust <- readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.
 # continue to replace the cluster numbers with the identity of each cluster - granule precursors
 # are so-called because GSEA suggests these care cycling cells
 new.cluster.ids <- c("Roof plate", "IVth ventricle/CP", "Purkinje cells_1", "Purkinje cells_2",
-                     "RL-derived_1", "Glia", "Granule neurons", "RL-derived_2", "Granule precursors",
-                     "Oligodendrocytes", "Ciliated cells", "Ribosome cluster")
+                     "RL-derived_1", "Glia-like", "Granule neurons", "RL-derived_2", "Granule precursors",
+                     "Oligodendrocytes", "Ciliated cells", "Uncertain")
 names(new.cluster.ids) <- levels(cbo.clust)
 cbo.annotate <- RenameIdents(cbo.clust, new.cluster.ids)
 ```
+
 
 ```{r eval=FALSE, echo=FALSE}
 # Create metadata dataframe
@@ -66,13 +67,13 @@ metadata$celltype[which(metadata$seurat_clusters == "1")] <- "IVth ventricle/CP"
 metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Purkinje cells_1"
 metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
 metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Glia"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Glia-like"
 metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Granule neurons"
 metadata$celltype[which(metadata$seurat_clusters == "7")] <- "RL-derived_2"
 metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Granule precursors"
 metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
 metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Ciliated cells"
-metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Ribosome cluster"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Uncertain"
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -114,7 +115,7 @@ VlnPlot(cbo.annotate,
         features = c("NEUROD1", "RBFOX3", "RTN1", "CDH15", "MAPT", "PDE1C")) # MAPT, PDE1C = granule marker
 ```
 
-```{r VlnPlotNEUROD1etcCBO, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnPlotNEUROD1etcCBO, fig.height=17, fig.width=22}
 p1a <- VlnPlot(cbo.annotate, 
         features = c("NEUROD1")) +
   theme(axis.text = element_text(size = 22),
@@ -166,6 +167,52 @@ p1f <- VlnPlot(cbo.annotate,
 p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
 ```
 
+```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1CBOcntrl, fig.height=17, fig.width=27}
+p3a <- VlnPlot(cbo.annotate, 
+        features = c("PTCH1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3b <- VlnPlot(cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3c <- VlnPlot(cbo.annotate, 
+        features = c("POU3F4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3d <- VlnPlot(cbo.annotate, 
+        features = c("FGFBP3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3e <- VlnPlot(cbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3f <- VlnPlot(cbo.annotate, 
+        features = c("LHX9")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
 
 ```{r eval=FALSE, echo=FALSE, VlnPlotGria4Twist1PhaseCBOannotate, fig.width=14}
 # HOXB2 is not expressed, and none of these markers show up as a violin
@@ -193,13 +240,8 @@ VlnPlot(cbo.annotate,
 VlnPlot(cbo.annotate, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
 ```
 
-```{r}
-VlnPlot(cbo.annotate, features = c("POU3F2", "POU3F4", "HOXB2", "MEIS1"))
-```
 
-
-
-```{r VlnPlotSOX2networkCbo, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnPlotSOX2networkCbo, fig.height=17, fig.width=22}
 p2a <- VlnPlot(cbo.annotate, 
         features = c("FABP7")) +
   theme(axis.text = element_text(size = 22),
