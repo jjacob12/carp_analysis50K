@@ -67,7 +67,7 @@ saveRDS(muv41,
         file = "./outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 muv41 <- readRDS("outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.rds")
 ```
 
@@ -76,8 +76,14 @@ muv41 <- readRDS("outputs50K/Hovestadt_outputs/muv41.PatientSHHMB.SCT.clustered.
 DimPlot(muv41, label = T, repel = T)
 ```
 
-```{r ViolinPlotMUV41shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
-VlnPlot(muv41, features = c("NEUROD1", "RBFOX3", "RTN1"))
+```{r eval=FALSE, echo=FALSE}
+VlnPlot(muv41, features = c("NEUROD1", "RTN1", "RBFOX3"))
+```
+
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotMUV41shhMBneurod1Rtn1Rbfox3, fig.height=5, fig.width=12}
+# SOX2, OTX2 not expressed, but OCT4 (POU5F1) is 
+VlnPlot(muv41, features = c("POU5F1", "SOX2", "GLI2", "SRRT", "OTX2", "ZIC2"))
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -200,11 +206,11 @@ saveRDS(sj454,
         file = "./outputs50K/Hovestadt_outputs/SJ454.SHH_MB.SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 sj454.clust <- readRDS("outputs50K/Hovestadt_outputs/SJ454.SHH_MB.SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
 ```
 
-```{r ViolinPlotSJ454shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
+```{r eval=FALSE, echo=FALSE, ViolinPlotSJ454shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
 VlnPlot(sj454.clust, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
 
@@ -290,10 +296,10 @@ summ.stats.props.cc.neurod1.sj454.phase. # total=238 cells. G1=0.69, G2M= 0.09, 
 
 ```{r eval=FALSE, echo=FALSE, VlnplotSOX2regNetworkSRRTgeneSJ454shhMB, fig.height=14, fig.width=22}
 # cluster 2 expresses all NSC factors except OTX2
-# VlnPlot(sj454, features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "OCT4", "PAX6"))
+# VlnPlot(sj454, features = c("SOX2", "POU5F1", "FABP7", "OTX2", "ZIC2", "GLI2"))
 
  p1a <- VlnPlot(sj454.clust, 
-        features = c("FABP7")) +
+        features = c("SOX2")) +
  theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -301,7 +307,7 @@ summ.stats.props.cc.neurod1.sj454.phase. # total=238 cells. G1=0.69, G2M= 0.09, 
         plot.title = element_text(size = 30))
 
 p1b <- VlnPlot(sj454.clust, 
-        features = c("ZIC2")) +
+        features = c("POU5F1")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -325,7 +331,7 @@ p1d <- VlnPlot(sj454.clust,
         plot.title = element_text(size = 30))
 
 p1e <- VlnPlot(sj454.clust, 
-        features = c("POU3F2")) +
+        features = c("ZIC2")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -378,7 +384,7 @@ saveRDS(sj577,
         file = "./outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 sj577 <- readRDS("outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered.rds")
 ```
 
@@ -387,9 +393,14 @@ sj577 <- readRDS("outputs50K/Hovestadt_outputs/SJ577.PatientSHH_MB.SCT.clustered
 DimPlot(sj577, label = T, repel = T)
 ```
 
-```{r ViolinPlotSJ577shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
+```{r eval=FALSE, echo=FALSE, ViolinPlotSJ577shhMBneurod1Rtn1Rbfox3, fig.height=4, fig.width=12}
 VlnPlot(sj577, features = c("NEUROD1", "RBFOX3", "RTN1"))
 ```
+
+```{r eval=FALSE, echo=FALSE}
+VlnPlot(sj577, features = c("SOX2", "POU5F1", "OTX2", "GLI2", "ZIC2", "SRRT"))
+```
+
 
 
 ****Isolate NEUROD1+ cells from SJ577****
@@ -475,6 +486,141 @@ summ.stats.props.cc.neurod1.sj577.phase <- summ.stats.cc.neurod1.sj577.phase %>%
 
 summ.stats.props.cc.neurod1.sj577.phase # total=238 cells. G1=0.69, G2M= 0.09, S=0.21
 ```
+
+
+***RMCB18 (PDX) SHH-MB***
+```{r eval=FALSE, echo=FALSE}
+raw.counts.rmcb18 <- read.table(file = "./hovestadt_Nature2019/GSM3905439_RCMB18.txt",
+                         sep = "")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+rmcb18 <- CreateSeuratObject(raw.counts.rmcb18,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "rmcb18_hovestadt")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(rmcb18)
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb18 <- SCTransform(rmcb18, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+DimPlot(rmcb18, label = T, repel = T)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(rmcb18,
+        file = "./outputs50K/Hovestadt_outputs/RMCB18.SHH_MB_PDX.check_SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb18.clust <- readRDS("outputs50K/Hovestadt_outputs/RMCB18.SHH_MB_PDX.check_SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=8, fig.width=12}
+# SOX2, GLI2 expressed in 2/3 clustersZIC2 and TBX6 not expressed
+VlnPlot(rmcb18.clust, features = c("SOX2", "POU5F1", "TBX6", "OTX2", "SRRT", "GLI2"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnplotSOX2regNetworkRMCB18pdxShhMB, fig.height=14, fig.width=22}
+
+p2a <- VlnPlot(rmcb18.clust, 
+        features = c("SOX2")) +
+ theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(rmcb18.clust, 
+        features = c("POU5F1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(rmcb18.clust, 
+        features = c("SRRT")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(rmcb18.clust, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(rmcb18.clust, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + plot_layout(ncol = 2)
+```
+
+
+***RMCB24 (PDX) SHH-MB***
+```{r eval=FALSE, echo=FALSE}
+raw.counts.rmcb24 <- read.table(file = "./hovestadt_Nature2019/GSM3905441_RCMB24.txt",
+                         sep = "")
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb24 <- CreateSeuratObject(raw.counts.rmcb24,
+                            min.cells = 10,
+                            min.genes = 2500,
+                            project = "rmcb24_hovestadt")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(rmcb24)
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb24 <- SCTransform(rmcb24, vst.flavor = "v2", verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "pca", dims = 1:30, verbose = FALSE) %>%
+  FindClusters(resolution = 0.7, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+DimPlot(rmcb24, label = T, repel = T)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(rmcb24,
+        file = "./outputs50K/Hovestadt_outputs/RMCB24.SHH_MB_PDX.check_SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+rmcb24.clust <- readRDS("outputs50K/Hovestadt_outputs/RMCB24.SHH_MB_PDX.check_SOX2networkExpression.MitoCellsGenesFilt.RiboRetained.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=8, fig.width=12}
+# ZIC2 and TBX6 is not expressed
+VlnPlot(rmcb24.clust, features = c("SOX2", "POU5F1", "OTX2", "SRRT", "ZIC2", "GLI2"))
+```
+
 
 
 ------------------------------------------------------------------------------------------------------
