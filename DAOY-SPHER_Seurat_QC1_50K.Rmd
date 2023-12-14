@@ -317,7 +317,8 @@ filtCellsGenes.daoySpher.seurat <- CreateSeuratObject(filtered_counts, meta.data
 dim(filtCellsGenes.daoySpher.seurat)           # number of genes further reduced to ~ 16,000 genes
 ```
 
-```{r}
+```
+{r}
 # save the 'filtCellsGenes.daoySpher.seurat' object to outputs50K folder
 
 saveRDS(filtCellsGenes.daoySpher.seurat, file = "./outputs50K/DAOY_SPHER/filtCellsGenes.daoySpher.seurat.rds")
@@ -354,7 +355,8 @@ dim(filtRibo.daoySpher)
 dim(filt.RiboMito.daoySpher)
 ```
 
-```{r}
+```
+{r}
 # SAVE the seurat object above (filt.RiboMito.daoySpher) which has been filtered for CELLS, GENES, RIBOSOMAL and MITOCHONDRIAL genes
 
 saveRDS(filt.RiboMito.daoySpher, file = "./outputs50K/DAOY_SPHER/filt.RiboMitoCellsGenes.daoySpher.rds")
@@ -368,19 +370,15 @@ filt.RiboMito.daoySpher <- readRDS("outputs50K/DAOY_SPHER/filt.RiboMitoCellsGene
 ```
 
 
+
 --------------------------------------------------------------------------------------------
 ***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
-
-
 Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
 ```{r}
-# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
-phase.daoySpher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.daoySpher)
-
 # run cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
-phase.daoySpher.filtRiboMito.sct <- CellCycleScoring(phase.daoySpher.filtRiboMito.sct,
+filt.RiboMito.daoySpher <- CellCycleScoring(filt.RiboMito.daoySpher,
                                  g2m.features = g2m.genes,
                                  s.features = s.genes)
 ```
@@ -388,7 +386,7 @@ phase.daoySpher.filtRiboMito.sct <- CellCycleScoring(phase.daoySpher.filtRiboMit
 First run SCTransfrom WITHOUT vars.to.regress argument
 ```{r DimplotSCTRegressOutCCdifference}
 # there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
-phase.daoySpher.filtRiboMito.sct <- SCTransform(phase.daoySpher.filtRiboMito.sct,
+phase.daoySpher.filtRiboMito.sct <- SCTransform(filt.RiboMito.daoySpher,
                                    method = "glmGamPoi", 
                                    verbose = FALSE)
 
@@ -416,10 +414,10 @@ DimPlot(phase.daoySpher.filtRiboMito.sct, reduction = "pca", group.by = "Phase")
 ```
 
 ```{r}
-# saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat 'phase' object 
+# saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat 'phase' object, SCTransformed, 
 # with regression of the cell cycle
 
-saveRDS(phase.daoySpher.filtRiboMito.sct, file = "./outputs50K/DAOY_SPHER/phase.daoySpher.filtRiboMito.SCT.regressedCCdiff.rds")
+saveRDS(phase.daoySpher.filtRiboMito.sct, file = "./outputs50K/DAOY_SPHER/phase.daoySpher.filtRiboMitoCellsGenes.SCT.regressedCCdiff.rds")
 ```
 
 
