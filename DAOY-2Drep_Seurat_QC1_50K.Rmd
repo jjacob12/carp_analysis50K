@@ -241,7 +241,7 @@ counts.1935 <- GetAssayData(object = filtered_daoy.2d.seurat, slot = "counts")
 # median genes per cell and expression sum, as above. Min. genes = 561. Median = 9526, Max = 15K genes!
 # Median genes is higher than before cells with high mitoch reads filtered out, which makes sense as the latter cells typically have lower number of genes expressed
 
-at_least_one.1935 <- apply(counts.1632, 2, function(x) sum(x>0))
+at_least_one.1935 <- apply(counts.1935, 2, function(x) sum(x>0))
 
 summary(at_least_one.1935)
 
@@ -332,8 +332,9 @@ filtCellsGenes.daoy.2d.seurat <- CreateSeuratObject(filtered_counts, meta.data =
 dim(filtCellsGenes.daoy.2d.seurat)       # number of genes further reduced to ~ 24.7K genes from ~ 28.4K genes                                                        for only cell-level filtering
 ```
 
-```{r}
-# saved the 'filtCellsGenes.ons76.2d.seurat' object to outputs50K/ONS76_2D folder
+```
+{r}
+# saved the 'filtCellsGenes.daoy.2d.seurat' object to outputs50K/ONS76_2D folder
 saveRDS(filtCellsGenes.daoy.2d.seurat, file = "./outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
 ```
 
@@ -369,10 +370,12 @@ dim(filt.CellsGenesRibo.daoy2d)
 dim(filt.CellsGenesRiboMito.daoy2d)
 ```
 
-```{r}
+```
+{r}
 # save the cell, gene, ribosomal, mitochodrial gene filtered seurat object - no mitochondrial or 
 # ribosomal genes.
-saveRDS(filt.CellsGenesRiboMito.daoy2d, file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
+saveRDS(filt.CellsGenesRiboMito.daoy2d, 
+        file = "./outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 ```
 
 
@@ -383,7 +386,7 @@ Load the Seurat object  with only filtering of cells and genes
 ```{r load_filtered_CellsGenes_SeuratObject}
 # the name of this object reflects it has undergone filtering for cells AND genes
 
-fullFilt.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filtCellsGenes.daoy.2d.seurat.rds")
+fullFilt.daoy.2d.seurat <- readRDS("outputs50K/DAOY_2D/filt.CellsGenesRiboMito.daoy2dRep.seurat.rds")
 ```
 
 ```{r normalize_fully_filtered_seuratObject}
@@ -421,7 +424,8 @@ DimPlot(seurat.phase, reduction = "pca", group.by = "Phase")
 
 Next step is to adjust for the cell cycle  (based on https://satijalab.org/seurat/articles/cell_cycle_vignette.html).
 We do not want to entirely regress out the cell cycle, as we want to separate apart cycling from NON-cycling cells. However, differences in cell cycle phase among proliferating cells will be regressed out.
-```{r }
+```{r}
+# do not run this code as it takes nearly 1 hour!!!
 seurat.phase$CC.difference <- seurat.phase$S.Score - seurat.phase$G2M.Score
 seurat.phase <- ScaleData(seurat.phase, vars.to.regress = "CC.difference", features = rownames(seurat.phase))
 ```
@@ -442,10 +446,11 @@ DimPlot(seurat.phase,reduction = "pca", group.by = "Phase")
 
 ```{r}
 # save the seurat.phase object as a .RDS file in outputs50K
-saveRDS(seurat.phase, file = "./outputs50K/DAOY_2D/seurat.phase.regressedCCdiff.daoy.2d.rds")
+saveRDS(seurat.phase, file = "./outputs50K/DAOY_2D/seurat.CCphase.regressedCCdiff.daoy.2drep.rds")
 ```
 
 ```{r}
+# load this object to plot the DimPlot
 seurat.phase.daoy2d <- readRDS("outputs50K/DAOY_2D/seurat.phase.regressedCCdiff.daoy.2d.rds")
 ```
 
@@ -479,8 +484,6 @@ DimPlot(seurat.phase,
 -------------------------------------------------------------------------------------
 ***Using SCTransform with cell cycle regression***
 ```{r}
-# normalise data - WHY NORMALIZE BEFORE SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
-seurat.phase.sct <- NormalizeData(fullFilt.daoy.2d.seurat)
 
 # run cell cycle scoring
 s.genes <- cc.genes$s.genes
@@ -491,7 +494,7 @@ seurat.phase.sct <- CellCycleScoring(seurat.phase.sct,
 
 ```
 
-Normalisation, followed by CellCycleScoring, then SCTransform, then PCA worked! Get a similar result to DimplotRegressOutCCdifference code chunk above. Much faster to run. This code separates G1 from other cell cycle phases.
+CellCycleScoring, then SCTransform, then PCA worked! Get a similar result to DimplotRegressOutCCdifference code chunk above. Much faster to run. This code separates G1 from other cell cycle phases.
 ```{r DimplotSCTRegressOutCCdifference}
 seurat.phase.sct$CC.difference <- seurat.phase.sct$S.Score - seurat.phase.sct$G2M.Score
 
@@ -510,6 +513,8 @@ DimPlot(seurat.phase.sct, reduction = "pca", group.by = "Phase")
 
 saveRDS(seurat.phase.sct, file = "./outputs50K/DAOY_2D/seurat.phase.SCT.regressedCCdiff.daoy.2d.rds")
 ```
+
+
 -------------------------------------------------------------------------------------------
 Run the SCTransform analysis and check whether the 'seurat.phase' objects look the same as the seurat object which has had mitochondrial and ribosomal genes removed. Answer - cell cycle dependent clustering is retained
 ```{r}
