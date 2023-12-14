@@ -376,9 +376,10 @@ filtRiboMito.ons76cbo <- readRDS("outputs50K/ONS76-CBO/filtRiboMitoCellsGenes.on
 ```
 
 
-Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
+Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes.
 ```{r}
-# normalise data
+# normalise data - NOT A NECESSARY STEP, SO THIS AND BELOW CODE CHUNKS RETAINED SIMPLY
+# TO SHOW THAT REGRESSION OF THE CELL CYCLE DIFFERENCE IS IMPORTANT BEFORE DOWNSTREAM ANALYSIS
 phase.filtRiboMito.ons76cbo.sct <- NormalizeData(filtRiboMito.ons76cbo)
 
 # run cell cycle scoring
@@ -418,11 +419,6 @@ DimPlot(phase.filtRiboMito.ons76cbo.sct, reduction = "pca", group.by = "Phase")
 
 ```
 
-```
-# saved 'phase' seurat object on which the PCA algorithm (for cell-cycle genes ONLY) has already been run
-
-saveRDS(phase.filtRiboMito.ons76cbo.sct, "./outputs50K/ONS76-CBO/phase.filtRiboMito.ons76cbo.SCT.regressedCCdiff.rds")
-```
 
 ```{r}
 sessionInfo()
