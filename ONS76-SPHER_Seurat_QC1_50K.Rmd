@@ -323,7 +323,8 @@ filtCellsGenes.ons76spher.seurat <- CreateSeuratObject(filtered_counts, meta.dat
 dim(filtCellsGenes.ons76spher.seurat)
 ```
 
-```{r}
+```
+{r}
 # saved the 'filtCellsGenes.ons76spher.seurat' object to outputs50K/ONS76_SPHER folder
 
 saveRDS(filtCellsGenes.ons76spher.seurat, file = "./outputs50K/ONS76_SPHER/filtCellsGenes.ons76spher.seurat.rds")
@@ -337,12 +338,12 @@ saveRDS(filtCellsGenes.ons76spher.seurat, file = "./outputs50K/ONS76_SPHER/filtC
 
 
 # remove ribosomal genes first
-filt.noRibo.ons76spher <- fullFilt.ons76spher.seurat[ ! grepl('^RP[SL]', rownames(fullFilt.ons76spher.seurat)), ]
+filt.noRibo.ons76spher <- filtCellsGenes.ons76spher.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.ons76spher.seurat)), ]
 ```
 
 ```{r check_ribo_removed}
 # this has worked - 95 ribosomal genes have been removed from the new Seurat object
-dim(fullFilt.ons76spher.seurat)
+dim(filtCellsGenes.ons76spher.seurat)
 dim(filt.noRibo.ons76spher)
 ```
 
@@ -370,12 +371,11 @@ filt.RiboMito.ons76spher <- readRDS("outputs50K/ONS76_SPHER/filt.NoRiboNoMito.on
 ```
 
 
-
 --------------------------------------------------------------------------------------------
 ***EXPLORE SOURCES OF UNWANTED VARIATION, e.g. cell cycle***
 Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
 ```{r}
-# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
+# normalise data - NOT NECESSARY TO NORMALIZE BEFORE RUNNING SCTRANSFORM. 
 phase.ons76spher.filtRiboMito.sct <- NormalizeData(filt.RiboMito.ons76spher)
 
 # run cell cycle scoring
@@ -386,7 +386,7 @@ phase.ons76spher.filtRiboMito.sct <- CellCycleScoring(phase.ons76spher.filtRiboM
                                  s.features = s.genes)
 ```
 
-First run SCTransfrom WITHOUT vars.to.regress argument
+First run SCTransfrom WITHOUT vars.to.regress argument. CODE RETAINED TO SHOW CELL CYCLE EFFECTS ONLY
 ```{r DimplotSCTRegressOutCCdifference}
 # there is clustering by cell cycle phase, but not that many cells in G2M and S phase.
 phase.ons76spher.filtRiboMito.sct <- SCTransform(phase.ons76spher.filtRiboMito.sct,
@@ -415,11 +415,7 @@ DimPlot(phase.ons76spher.filtRiboMito.sct, reduction = "pca", group.by = "Phase"
 
 ```
 
-```{r}
-# saved the GENE, CELL, MITOCHONDRIAL and RIBOSOMAL FILTERED seurat object with regression of the cell cycle
-
-saveRDS(phase.ons76spher.filtRiboMito.sct, file = "./outputs50K/ONS76_SPHER/phase.ons76spher.filtRiboMito.SCT.regressedCCdiff.rds")
-```
+ABOVE OBJECT NOT SAVED - RETAINED THE OBJECT AS IT IS INSTRUCTIVE TO SEE THE EFFECTS OF REGRESSING OUT CELL CYCLE DIFFERENCE
 
 
 
