@@ -371,18 +371,18 @@ saveRDS(filtRiboMito.daoyCbo, file = "./outputs50K/DAOY-CBO/filtRiboMitoCellsGen
 
 Load the seurat object above
 ```{r}
-filtRiboMito.daoyCbo <- readRDS("outputs50K/DAOY-CBO/filtRiboMitoCellsGenes.daoyCbo.rds")
+filtRiboMito.daoyCbo <- readRDS("outputs50K/DAOY-CBO/daoyCbo.seurat.filtCellsGenesNoRiboNoMito.rds")
 ```
 
-Run SCTransform on the seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
+Run SCTransform on the Seurat object below - fully filtered object for cells, genes, ribosomal and mitochondrial genes
 ```{r}
-# normalise data - NOT SURE WHY!!
-phase.filtRiboMito.daoyCbo.sct <- NormalizeData(filtRiboMito.daoyCbo) # why normalize before SCTransform???
+# THIS CODE IS RETAINED TO SHOW THAT REGRESSION OF THE CELL CYCLE DIFFERENCE 
+# IS IMPORTANT BEFORE DOWNSTREAM ANALYSIS
 
 # run cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
-phase.filtRiboMito.daoyCbo.sct <- CellCycleScoring(phase.filtRiboMito.daoyCbo.sct,
+phase.filtRiboMito.daoyCbo.sct <- CellCycleScoring(filtRiboMito.daoyCbo,
                                  g2m.features = g2m.genes,
                                  s.features = s.genes)
 ```
@@ -401,7 +401,7 @@ DimPlot(phase.filtRiboMito.daoyCbo.sct, reduction = "pca", group.by = "Phase")
 
 Then run SCTransform with vars.to.regress argument = cell cycle difference
 ```{r DimplotSCTRegressOutCCdifferenceFiltRiboMito}
-# now G1 and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
+# now S and G2/M are just one cluster, separate from G1, i.e. there are 2 clusters instead of 3.
 
 phase.filtRiboMito.daoyCbo.sct$CC.difference <- phase.filtRiboMito.daoyCbo.sct$S.Score - phase.filtRiboMito.daoyCbo.sct$G2M.Score # get the cell cycle difference
 
@@ -416,12 +416,7 @@ DimPlot(phase.filtRiboMito.daoyCbo.sct, reduction = "pca", group.by = "Phase")
 
 ```
 
-```{r}
-# save the Seurat (seurat.phase) object on which the PCA algorithm has already been run, 
-# for specific subset of genes, which are cell cycle genes
-
-saveRDS(phase.filtRiboMito.daoyCbo.sct, "./outputs50K/DAOY-CBO/phase.filtRiboMito.daoyCbo.SCT.regressedCCdiff.rds")
-```
+It is not necessary to save the above DimPlot as the code chunks simply confirm that regression of the cell cycle difference has an impact on downstream analysis and so the regression step is an important one.
 
 ```{r}
 sessionInfo()
