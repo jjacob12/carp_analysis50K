@@ -18,7 +18,6 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 ```{r libraries}
-# library(clusterProfiler)
 suppressPackageStartupMessages({
 library(Seurat)
 library(SeuratWrappers)
@@ -143,7 +142,7 @@ dyCbo.input.integration <- SCTransform(dyCbo,
 saveRDS(dyCbo.input.integration, "./outputs50K/DAOY-CBO/DaoyCbo.inputIntegration.RiboGenesNotRemoved.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
 ```
 
-```{r DimPlotClusterMapDaoyCbo, eval=FALSE, echo=FALSE, fig.height=6, fig.width=10}
+```{r eval=FALSE, echo=FALSE, DimPlotClusterMapDaoyCbo, fig.height=6, fig.width=10}
 # this object is fully SCTransformed and clustered
 dyCbo.clust <- SCTransform(dyCbo, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
   RunPCA(verbose = FALSE) %>% 
@@ -162,7 +161,7 @@ saveRDS(dyCbo.clust, file = "./outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMit
 dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-```{r fig.height=6, fig.width=10, eval=FALSE, echo=FALSE}
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=10}
 DimPlot(dyCbo.clust, label = TRUE, repel = TRUE)
 ```
 
@@ -314,8 +313,8 @@ Using the above correlations change the specification of the cell types as below
 ```{r eval=FALSE, echo=FALSE}
 # continue to replace the cluster numbers with the identity of each cluster
 new.cluster.ids <- c("Roof Plate_1", "IVth ventricle/CP", "RL-derived_2", 
-                     "Purkinje cells_2", "Granule neurons", "Purkinje cells_1", "Glia",
-                     "Roof plate_2", "Ribosome cluster", "DAOY_cluster_9", 
+                     "Purkinje cells_2", "Granule neurons", "Purkinje cells_1", "Glia-like",
+                     "Roof plate_2", "Uncertain", "DAOY_cluster_9", 
                      "Granule precursors", "Oligodendrocytes", "Ciliated cells", "DAOY_cluster_13", 
                      "DAOY_cluster_14")
 
@@ -336,9 +335,9 @@ metadata$celltype[which(metadata$seurat_clusters == "2")] <- "RL-derived_2"
 metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
 metadata$celltype[which(metadata$seurat_clusters == "4")] <- "Granule neurons"
 metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Purkinje cells_1"
-metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Glia"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Glia-like"
 metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Roof plate_2"
-metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Ribosome cluster"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Uncertain"
 metadata$celltype[which(metadata$seurat_clusters == "9")] <- "DAOY_cluster_9"
 metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Granule precursors"
 metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Oligodendrocytes"
@@ -407,7 +406,7 @@ corr2cbo.cl <- readRDS("outputs50K/DAOY-CBO/CorrelnSpearmanDAOY-CBOvsCBOclusters
 ```
 
 
-```{r HeatmapDaoyCboVSCboClusterCorrelations2, eval=FALSE, echo=FALSE, fig.height=6,fig.width=6}
+```{r eval=FALSE, echo=FALSE, HeatmapDaoyCboVSCboClusterCorrelations2, fig.height=6,fig.width=6}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 graphics.off()
 par("mar")
@@ -494,7 +493,7 @@ saveRDS(dyOnly.dyCboAnnot.rescaled,
         file = "./outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the subsetted object
 dyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
@@ -502,7 +501,7 @@ dyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetD
 
 ****Expression of the SOX2 regulatory network****
 ```{r eval=FALSE, echo=FALSE, ViolinPlotSOX2NetworkDaoyOnlyDaoyCbo, fig.height=17, fig.width=22}
-# ARS2/SRRT is not expressed (ARS2 and SRRT are same gene)
+# ARS2/SRRT is not expressed (ARS2 and SRRT are same gene), also POU5F1 (OCT4) not expressed but other POU domain factors are, e.g.POU3F2
 p1a <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
         features = c("FABP7")) +
   theme(axis.text = element_text(size = 22),
@@ -554,7 +553,7 @@ p1f <- VlnPlot(dyOnly.dyCboAnnot.rescaled,
 p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 p1g<- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
         features = c("SRRT")) +
   theme(axis.text = element_text(size = 22),
@@ -620,44 +619,44 @@ p2f <- VlnPlot(dyOnly.dyCboAnnot.rescaled,
 p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
 ```
 
-```{r eval=FALSE, echo=FALSE, ViolinPlotNeuroD1RTN1Rbfox3DAOYcbo, fig.height=17, fig.width=27}
+```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1DAOYcbo, fig.height=17, fig.width=27}
 p3a <- VlnPlot(dyCbo.annotate, 
-        features = c("NEUROD1")) +
+        features = c("PTCH1")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 p3b <- VlnPlot(dyCbo.annotate, 
-        features = c("CNTN2")) +
+        features = c("MEIS1")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 p3c <- VlnPlot(dyCbo.annotate, 
-        features = c("RTN1")) +
+        features = c("POU3F4")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 p3d <- VlnPlot(dyCbo.annotate, 
-        features = c("CNTN1")) +
+        features = c("FGFBP3")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 p3e <- VlnPlot(dyCbo.annotate, 
-        features = c("RBFOX3")) +
+        features = c("TWIST1")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
         legend.position = "none",
         plot.title = element_text(size = 30))
 p3f <- VlnPlot(dyCbo.annotate, 
-        features = c("DCX")) +
+        features = c("LHX9")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -667,6 +666,11 @@ p3f <- VlnPlot(dyCbo.annotate,
 p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
 ```
 
+```{r eval=FALSE, echo=FALSE}
+VlnPlot(dyOnly.dyCboAnnot.rescaled,
+        features = c("ATOH1", "FUT4"))
+```
+
 
 ```{r eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
 # cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
@@ -674,35 +678,35 @@ p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
 VlnPlot(dyCbo.annotate, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX"))
 ```
 
-```{r VlnPlotDaoyCellsSox2networkErbb4Nrg3DaoyCbo, eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
+```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSox2networkErbb4Nrg3DaoyCbo, fig.height=10, fig.width=12}
 # visualise gene expression indicating DAOY cell clusters
-VlnPlot(dyCbo.annotate, features = c("SOX2", "NES", "POU3F2","FABP7", "ERBB4", "NRG3"))
+VlnPlot(dyCbo.annotate, features = c("PTCH1", "MEIS1", "POU3F2", "FGFBP3", "TWIST1", "LHX9"))
 ```
 
-```{r VlnplotsErbb4Sox2otx2, eval=FALSE, echo=FALSE, fig.height=9, fig.width=13}
+```{r eval=FALSE, echo=FALSE, VlnplotsErbb4Sox2otx2, fig.height=9, fig.width=13}
 VlnPlot(dyCbo.annotate,
         features = c("POU3F2", "HOXB2", "HOXB-AS1", "MEIS1"))
 ```
 
 
-```{r VlnPlotDaoyCellsGranuleGenesDaoyCbo, eval=FALSE, echo=FALSE, fig.width=9, fig.width=13}
+```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsGranuleGenesDaoyCbo, fig.width=9, fig.width=13}
 # visualise gene expression indicating DAOY cell clusters
 VlnPlot(dyCbo.annotate,
         features = c("MEIS1", "DCX", "ZIC1", "ZIC2", "IRX5", "TTYH1"))
 ```
 
-```{r VlnPlotDaoyCellsSHHgenesOtx2DaoyCbo, eval=FALSE, echo=FALSE, fig.width=9, fig.width=13}
+```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSHHgenesOtx2DaoyCbo, fig.width=9, fig.width=13}
 # visualise gene expression indicating DAOY cell clusters
 VlnPlot(dyCbo.annotate,
         features = c("TWIST1", "OTX2", "PTCH1", "GLI2", "NNAT", "PROM1"))
 ```
 
-```{r VlnPlotDaoyCellsSOX2networkDaoyCbo, eval=FALSE, echo=FALSE, fig.height=9, fig.width=13}
+```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSOX2networkDaoyCbo, fig.height=9, fig.width=13}
 VlnPlot(dyCbo.annotate,
         features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GABRA6"))
 ```
 
-```{r VlnPlotGranuleNeuronGenesDaoyCbo, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnPlotGranuleNeuronGenesDaoyCbo, fig.height=17, fig.width=22}
 p3a <- VlnPlot(dyCbo.annotate, 
         features = c("NEUROD1")) +
   theme(axis.text = element_text(size = 22),
@@ -796,7 +800,7 @@ p4f <- VlnPlot(dyCbo.annotate,
 p4a + p4b + p4c + p4d + p4e + p4f + plot_layout(ncol = 2)
 ```
 
-```{r VlnPlotUniqueMarkersMalignantCellsDaoyCbo, fig.height=17, fig.width=22}
+```{r eval=FALSE, echo=FALSE, VlnPlotUniqueMarkersMalignantCellsDaoyCbo, fig.height=17, fig.width=22}
 p5a <- VlnPlot(dyCbo.annotate, 
         features = c("PTCH1")) +
   theme(axis.text = element_text(size = 22),
@@ -884,7 +888,7 @@ dyCbo.cl9.markers.presto <- dyCbo.genes.presto %>%
   dplyr::arrange(desc(auc)) 
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(dyCbo.cl9.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster9.markers.aucRanked.csv", quote = F)
 ```
@@ -941,11 +945,11 @@ dyCbo.cl13.markers.presto <- dyCbo.genes.presto %>%
   dplyr::arrange(desc(auc)) 
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 nrow(dyCbo.cl13.markers.presto) # 581 markers
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(dyCbo.cl13.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster13.markers.aucRanked.csv", quote = F)
 ```
@@ -992,11 +996,11 @@ dyCbo.cl14.markers.presto <- dyCbo.genes.presto %>%
   dplyr::arrange(desc(auc)) 
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 nrow(dyCbo.cl14.markers.presto) # 1132 markers
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(dyCbo.cl14.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster14.markers.aucRanked.csv", quote = F)
 ```
