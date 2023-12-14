@@ -1,0 +1,446 @@
+---
+title: "learn InferCNV"
+author: "JJ"
+date: "19/09/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+```{r libraries}
+# Biomart needed to get genome position files of a list of genes
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(infercnv)
+library(rjags)
+library(Matrix)
+library(patchwork)
+library(tidyverse)  
+})
+```
+
+
+This is a test run of infercnv package. First I need to get the 'reference' sample (CBO) in the correct format
+```{r}
+# load filt.NoRiboNoMitochGenes.cbo.rds
+
+filt.noRiboMito.cbo <- readRDS("outputs50K/CBO/filt.NoRiboNoMitochGenes.cbo.rds")
+```
+
+```{r}
+# extract the raw count data for CBO sample
+counts.matrix.cbo = GetAssayData(filt.noRiboMito.cbo, slot="counts")
+```
+
+```{r}
+dim(counts.matrix.cbo)
+```
+
+```{r}
+filt.noRiboMito.ons76cbo <- readRDS("outputs50K/ONS76-CBO/filt.NoRiboNoMito.cboONS76.rds")
+```
+
+Try infercnv with the ONS76-CBO sample as the 'observation' sample
+```{r}
+# extract the raw count data for ONS76-CBO sample
+counts.matrix.ons76cbo = GetAssayData(filt.noRiboMito.ons76cbo, slot="counts")
+```
+
+```{r}
+dim(counts.matrix.ons76cbo)
+```
+
+```{r}
+# convert counts.matrix.cbo to a df
+counts.matrix.cbo.df <- data.frame(counts.matrix.cbo)
+```
+
+```{r}
+# use rownames_to_column() function
+counts.matrix.cbo.df <- rownames_to_column(counts.matrix.cbo.df)
+```
+
+```{r}
+# give the 1st column (formerly rowname) a new column name, so there is an extra column 
+# in the df vs counts.matrix object
+colnames(counts.matrix.cbo.df)[1] <- "genes"
+```
+
+```{r}
+# find total no. of columns of this df, as we want to omit adding a 
+# prefix ("normal") to the 1st column ("genes"). There are 3071 columns and I want a prefix for 3070
+# of those columns but not for the 1st column. The 1st column is "genes", so there are 3070 cell IDs.
+
+dim(counts.matrix.cbo.df)
+```
+
+```{r}
+# prefix all but the first column header with "normal". This code worked!
+colnames(counts.matrix.cbo.df)[2:3071] <- paste("normal", 
+                                                colnames(counts.matrix.cbo.df[, c(2:3071)]), 
+                                                sep = "_")
+```
+
+```{r}
+# convert counts.matrix.ons76cbo to a df
+counts.matrix.ons76cbo.df <- data.frame(counts.matrix.ons76cbo)
+```
+
+```{r}
+# use rownames_to_column() function
+counts.matrix.ons76cbo.df <- rownames_to_column(counts.matrix.ons76cbo.df)
+```
+
+```{r}
+# give the 1st column (formerly rowname) a new column name
+colnames(counts.matrix.ons76cbo.df)[1] <- "genes"
+```
+
+```{r}
+# find total no. of columns of this df, as we want to omit adding a 
+# prefix ("cancer") to the 1st column ("genes"). There are 2546 columns and I want a prefix ("cancer") for 2545
+# of those columns but not for the 1st column. The 1st column is "genes", so there are 2545 cell IDs.
+
+dim(counts.matrix.ons76cbo.df)
+```
+
+```{r}
+# prefix all but the first column header with "cancer". This code worked!
+colnames(counts.matrix.ons76cbo.df)[2:2546] <- paste("cancer", 
+                                                     colnames(counts.matrix.ons76cbo.df[, c(2:2546)]), 
+                                                     sep = "_")
+```
+
+```
+# the three code chunks below are NOT run because this is the wrong approach. However,
+# the code is retained as it is useful to know about the base R setdiff() function.
+
+# extract genes in the first column of counts.matrix.cbo.df as a vector
+# extract genes in the first column of counts.matrix.ons76cbo.df as another vector
+
+genes.cbo <- counts.matrix.cbo.df[, 1]
+genes.ons76cbo <- counts.matrix.ons76cbo.df[, 1]
+```
+
+```
+# these are correct number of genes in each vector
+length(genes.cbo)
+length(genes.ons76cbo)
+```
+
+```
+# use setdiff() function to list the differences between the two vectors in terms of the 
+# number of genes. 1068 genes are different between the two vectors
+gene.diff <- setdiff(genes.cbo, genes.ons76cbo)
+length(gene.diff)
+```
+
+```{r}
+# merge() the two df's. This function merges the two df's by the "genes" column, which is found
+# in both df's. In the merged df, each of the values in "genes' column is a unique gene, 
+# i.e. no duplicate genes
+merge.cbo.ons76cbo <- merge(counts.matrix.cbo.df, counts.matrix.ons76cbo.df,
+                            by = "genes",
+                            all = TRUE)
+
+# in the merged df, replace NA values with 0
+merge.cbo.ons76cbo[is.na(merge.cbo.ons76cbo)] <- 0
+
+
+# merged df has 5615 cell IDs as columns and a single 'genes' column, which is correct
+dim(merge.cbo.ons76cbo)
+```
+
+Let's see what the merged df looks like - this is the counts matrix
+```{r}
+merge.cbo.ons76cbo[1:5, 1:3]
+```
+
+```{r}
+# get the desired seurat metadata columns of CBO and ONS76-CBO, 
+# assign to new objects to avoid changing original metadata.
+# for filt.noRiboMito.cbo, orig.ident=CBO
+# for filt.noRiboMito.ons76cbo, orig.ident=ONS76-CBO
+
+cbo.metadata <- filt.noRiboMito.cbo@meta.data
+ons76cbo.metadata <- filt.noRiboMito.ons76cbo@meta.data
+```
+
+```{r}
+# make the sample ID = normal, for CBO
+cbo.metadata$orig.ident <- "normal"
+nrow(cbo.metadata)
+```
+
+```{r}
+# make the sample ID = cancer, for ONS76-CBO
+ons76cbo.metadata$orig.ident <- "cancer"
+nrow(ons76cbo.metadata)
+```
+
+```{r}
+# make the rownames into a column called 'cellID'
+cbo.metadata <- cbo.metadata %>% 
+  rownames_to_column("cellID")
+
+ons76cbo.metadata <- ons76cbo.metadata %>% 
+  rownames_to_column("cellID")
+```
+
+```{r}
+# extract the first two columns from CBO metadata
+sample.annot.cbo <- cbo.metadata %>% 
+  select(cellID, orig.ident)
+```
+
+```{r}
+# extract the first two columns from ONS76-CBO metadata
+sample.annot.ons76cbo <- ons76cbo.metadata %>% 
+  select(cellID, orig.ident)
+```
+
+```{r}
+# for 'sample.annot.cbo': add the prefix "normal" to the values in the 'cellID' column
+sample.annot.cbo$cellID <- paste("normal", sample.annot.cbo$cellID, sep = "_")
+
+# for 'sample.annot.ons76cbo': add the prefix "cancer" to the values in the 'cellID' column
+sample.annot.ons76cbo$cellID <- paste("cancer", sample.annot.ons76cbo$cellID, sep = "_")
+```
+
+```{r}
+# rbind() the two df's: the cellID values have the appropriate prefixes, but SUFFIXES ARE DIFFERENT
+# compared to the merged expression matrix:
+# ('-1' instead of '.1' )
+
+sample.annot.cbo.ons76cbo <- rbind(sample.annot.cbo, sample.annot.ons76cbo)
+head(sample.annot.cbo.ons76cbo)
+tail(sample.annot.cbo.ons76cbo)
+```
+How many 'normal' cellIDs are there and now many 'cancer' cellIDs are there?
+```{r}
+# this confirms: cancer cells = 2545, and normal cells = 3070
+table(sample.annot.cbo.ons76cbo$orig.ident)
+```
+
+Change the suffixes of 'sample.annot.cbo.ons76cbo$cellID'
+```{r}
+# In the sample annotation file, the cellID has a suffix of "-1", 
+# whereas counts matrix  colnames have a suffix of ".1",
+# so replace (gsub) "-" with a "."
+
+sample.annot.cbo.ons76cbo$cellID <- sub("-", ".", sample.annot.cbo.ons76cbo$cellID)
+```
+
+```{r}
+# for sample annotation file, check the replacement of "-" with "." has worked - it has!
+# Now, sample annotation cellID column and count matrix colnames match
+head(sample.annot.cbo.ons76cbo)
+```
+
+Check the sample annotation table, 'sample.annot.cbo.ons76cbo' is the right length
+```{r}
+# 5615 rows which is correct
+nrow(sample.annot.cbo.ons76cbo)
+```
+
+```
+# save the SAMPLE ANNOTATION FILE INPUT TO INFERCNV
+write.table(sample.annot.cbo.ons76cbo, 
+            file = "./outputs50K/infercnv/sample.annot.cbo.ons76cbo.txt",
+            col.names = FALSE,
+            row.names = FALSE,
+            sep = "\t")
+```
+
+A genome position file is needed. The ones on the infercnv website don't work so I generated my own using the following R code in Terminal window as an internet connection is needed.
+First step for creating the above file:
+```{r}
+# get a vector of genes (gene symbols) in the 'merge.cbo.ons76cbo' object.
+# This list is needed to create a gene position file for the genes in 'gene_list'
+gene_list <- merge.cbo.ons76cbo %>% 
+  rownames_to_column(var = "genes") %>% 
+  select(genes)
+head(gene_list)
+```
+
+Save the object 'gene_list':
+```
+# save the 'gene_list' object and use this to make the gene positions file later
+write.table(gene_list, file = "./working_data/infercnv_data_public/geneList.infercnv.txt")
+```
+------------------------------------------------------------------------
+***Generate the custom gene position dataframe to match genes in expression matrix***
+Switch to the Terminal and connect to the BMRC cluster to get the gene position dataframe using biomaRt:
+load the necessary R modules in Terminal window (rescomp1) and start R by pressing 'R' on the keyboard
+>library(biomaRt)
+>gene_list = read.table("geneList.infercnv.txt") # this txt file is in folder 'working_data' > 'infercnv_data_public'
+                                                # the geneList.infercnv.txt is the list of genes extracted from the                                                     count matrix
+>nrow(gene_list)
+[1] 21649
+>genes.infercnv <- gene_list$genes
+>mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+>gene_pos <- getBM(attributes= c("hgnc_symbol", "ensembl_gene_id", 
+                     "chromosome_name", "start_position", "end_position"), values=genes.infercnv, mart= mart)
+> nrow(gene_pos_df)   # the length of the gene-list is unexpectedly low (expect ~21K)
+[1] 18578
+
+The above 'gene_pos_df' object is shorter than the nrows() in the expression matrix because the expression matrix contains a load of weird genes that lack proper HUGO names and are some type of inferred ncRNA or other non-canonical gene. This conclusion was reached by Ben in an email R notebook attachment he sent on 26-9-22.
+------------------------------------------------------------------------
+
+Inspect the format of 'gene_position_file.txt'
+```{r}
+#  there are columns V1-V4 for gene symbol, chromosome number, start position, stop position
+gene.order <- read.table("working_data/infercnv_data_public/gene_position_file.txt",
+                         sep = "\t")
+head(gene.order)
+colnames(gene.order)
+nrow(gene.order)
+```
+
+Let's figure out what is going on, and check for duplicates in 'filtered.merge'
+```{r}
+# many genes have duplicates, sometimes even occuring at 7x expected frequency!
+n_occur <- data.frame(table(gene.order$V1))
+n_occur[n_occur$Freq > 1, ]
+```
+
+Load an example of a gene with frequency > 1, and inspect the chromosome names - they are weird!
+```{r}
+# let's look in the gene.order df at these duplicates. There are duplicates with weird chromosome names,
+# e.g. CHR_HSCHR17_3_CTG2. Where a recognisable chromosome is provided it is just numerically labelled.
+# what about chromosome X and Y? X and Y are just that, 'X' and 'Y'
+
+gene.order[gene.order$V1 == "ABR", ]
+
+```
+
+Subset the rows of 'merge.cbo.ons76cbo' based on the gene name in 'gene.order' (the genome position file)
+```{r}
+# filter the rows of 'merge.cbo.ons76cbo' based on the 'V1' colname values (i.e. list of genes).
+# there are 16,924 genes, which is less than expected. Expected 18578 genes!
+filtered.merge <- subset(merge.cbo.ons76cbo, genes %in% gene.order$V1)
+nrow(filtered.merge)
+```
+
+I need a regex that will match up to two numbers or letters to get chromosomes 1-22, X and Y. For this I used 'Regex Tester' that is in my bookmarks. I have crudely used the object name 'regex.genes' for the result of filtering the 'gene.order' object which has funny chromosome names. The 'regex.genes' object should be lacking all those weird chromosome names
+```{r}
+# regex has 16,931 genes which is less than the 18,578 'gene.order' object originally had.
+regex.genes <- gene.order %>% 
+  filter(grepl("^[XY0-9]{1,2}$", V2))
+nrow(regex.genes)
+```
+
+16,931 genes is an improvement but still more than the 16,924 genes in 'filtered.merge', therefore there could still be duplicates in 'regex.genes'
+```{r}
+# 7 duplicate genes which equals 14 rows (7 x 2 = 14)
+x_occur <- data.frame(table(regex.genes$V1))
+x_occur[x_occur$Freq > 1, ]
+```
+For these 7 genes, the same gene has different annotations! 
+```{r}
+# check out these duplicates. This is ambiguous with same gene having different annotations.
+regex.genes[regex.genes$V1 %in% c("GOLGA8M","ITFG2-AS1", "LINC01238", "PINX1", "POLR2J3", "RMRP", "TBCE"), ]
+```
+
+As there are only 7 genes with duplicates, leave out these seven genes from genome positions file. In total there should be 14 less rows, as each gene is duplicated (7 x 2 = 14)
+```{r}
+gene.order.filtered <- regex.genes %>% 
+  filter(!V1 %in% c("GOLGA8M","ITFG2-AS1", "LINC01238", "PINX1", "POLR2J3", "RMRP", "TBCE"))
+```
+
+Check how many genes there are left
+```{r}
+# nrow should now be 14 less than before (i.e. 16,931 - 14 = 16,917 genes) - correct!
+nrow(gene.order.filtered)
+```
+The prefix 'chr' needed in front of chromosome number for CreateInfercnvObject() to run
+```{r}
+# prefix the chromosome number with the string "chr"
+gene.order.filtered$V2 <- paste0("chr", gene.order.filtered$V2)
+```
+
+
+SAVE THE 'gene.order.filtered' FILE
+```
+# save 'gene.order.filtered'
+write.table(gene.order.filtered,
+            file = "./working_data/infercnv_data_public/gene_position_filtered_file.txt",
+            col.names = FALSE,
+            row.names = FALSE,
+            sep = "\t")
+```
+
+I need to remove these seven genes from the count matrix
+```{r}
+filtered.merge.cbo.ons76cbo <- filtered.merge %>% 
+  filter(!genes %in% c("GOLGA8M","ITFG2-AS1", "LINC01238", "PINX1", "POLR2J3", "RMRP", "TBCE"))
+```
+
+Now the number of genes in the expression matrix ('filtered.merge.cbo.on76cbo') matches the number of genes in the genome position file ('gene.order.filtered')
+```{r}
+nrow(filtered.merge.cbo.ons76cbo)
+```
+
+Check that the genes in the genes column of expression matrix ('filtered.merge.cbo.on76cbo') and in gene position file
+('gene.order.filtered') are the same
+```{r}
+# check that all genes 'filtered.merge.cbo.on76cbo$genes' are in the set of 'gene.order.filtered$V1' - by
+# checking sum() we can see if the total of all 'TRUE' values adds up to 16,917 - AND IT DOES!
+sum(filtered.merge.cbo.ons76cbo$genes %in% gene.order.filtered$V1)
+```
+
+```{r}
+# convert back to matrix-like format, where values in "genes" column become the rownames
+filtered.merge.cbo.ons76cbo <- filtered.merge.cbo.ons76cbo %>% 
+  column_to_rownames(var = "genes")
+
+```
+
+```
+# save 'filtered.merge.cbo.ons76cbo' which is now in the correct format as the INPUT COUNT MATRIX FOR INFERCNV
+write.table(filtered.merge.cbo.on76cbo, 
+            file = "./outputs50K/infercnv/filtered.merge.cbo.ons76cbo.txt",
+            row.names = TRUE,
+            col.names = TRUE,
+            sep = "\t")
+```
+
+***the gene ordering file (hum gene positions file) is stored in analysis50K > working_data > infercnv_data_public***
+
+```{r}
+# create the infercnv object
+infercnv_obj <- CreateInfercnvObject(raw_counts_matrix = "outputs50K/infercnv/filtered.merge.cbo.ons76cbo.txt",
+                                    annotations_file = "outputs50K/infercnv/sample.annot.cbo.ons76cbo.txt",
+                                    delim = "\t",
+                                    gene_order_file = "working_data/infercnv_data_public/gene_position_filtered_file.txt",
+                                    ref_group_names = c("normal"))
+```
+
+```{r}
+# by default chrX and Y are excluded from analysis
+
+infercnv_obj = infercnv::run(infercnv_obj,
+                             cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
+                             out_dir="./outputs50K/infercnv/infercnv_outs/infercnvRUN_outputs_ONS76CBO/", 
+                             cluster_by_groups=FALSE, 
+                             denoise=TRUE,
+                             HMM=TRUE)
+```
+
+```{r}
+saveRDS(infercnv_obj, "./outputs50K/infercnv/infercnv_object_ONS76-CBO.rds")
+```
+
+
+
+
