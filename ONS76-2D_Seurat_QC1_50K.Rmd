@@ -332,12 +332,12 @@ saveRDS(filtCellsGenes.ons76.2d.seurat, file = "./outputs50K/ONS76_2D/filtCellsG
 #-------------------------------------------------------------------------------------
 
 # remove ribosomal genes first
-filt.noRibo.ons76.2d <- fullFilt.ons76.2d.seurat[ ! grepl('^RP[SL]', rownames(fullFilt.ons76.2d.seurat)), ]
+filt.noRibo.ons76.2d <- filtCellsGenes.ons76.2d.seurat[ ! grepl('^RP[SL]', rownames(filtCellsGenes.ons76.2d.seurat)), ]
 ```
 
 ```{r check_ribo_removed}
 # this has worked - 95 ribosomal genes have been removed from the new Seurat object
-dim(fullFilt.ons76.2d.seurat)
+
 dim(filt.noRibo.ons76.2d)
 ```
 
@@ -352,7 +352,8 @@ dim(filt.noRibo.ons76.2d)
 dim(filt.noRiboMito.ons76.2d)
 ```
 
-```{r}
+```
+{r}
 # SAVE this seurat object from code line 344
 
 saveRDS(filt.noRiboMito.ons76.2d, file = "./outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
@@ -368,9 +369,6 @@ filt.ons76mono <- readRDS("outputs50K/ONS76_2D/filt.NoRiboNoMito.ons76.2d.rds")
 ```
 
 ```{r}
-# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
-filt.ons76mono <- NormalizeData(filt.ons76mono)
-
 # run cell cycle scoring
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
@@ -454,7 +452,8 @@ DimPlot(seurat.phase.ons762d, reduction = "pca", group.by = "Phase")
 
 
 ```{r}
-# normalise data - WHY NORMALISE BEFORE RUNNING SCTRANSFORM?? THIS IS NOT DONE IN SCTRANSFORM VIGNETTE!!!
+# normalise data - see Seurat Github issue: https://github.com/satijalab/seurat/issues/1679
+# Make sure you run NormalizeData prior to CellCycleScoring. This learns cell cycle scores that can be added to the vars.to.regress parameter in SCTransform. For all downstream analyses, you can use the SCT assay.
 seurat.phase.sct <- NormalizeData(fullFilt.ons76.2d.seurat)
 
 # run cell cycle scoring
