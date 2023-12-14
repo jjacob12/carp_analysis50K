@@ -222,8 +222,8 @@ head(o76cbo.annotate@meta.data, 20)
 ```{r eval=FALSE, echo=FALSE}
 # continue to replace the cluster numbers with the identity of each cluster
 new.cluster.ids <- c("Roof Plate_1", "Purkinje cells_2", "Granule neurons", 
-                     "ONS76_cluster_3", "RL-derived_2", "Ribosome cluster", "Roof plate_2",
-                     "Glia", "IVth ventricle/CP", "Oligodendrocytes", "ONS76_cluster_10",
+                     "ONS76_cluster_3", "RL-derived_2", "Uncertain", "Roof plate_2",
+                     "Glia-like", "IVth ventricle/CP", "Oligodendrocytes", "ONS76_cluster_10",
                      "Granule precursors")
 
 names(new.cluster.ids) <- levels(o76cbo.clust)
@@ -243,9 +243,9 @@ metadata$celltype[which(metadata$seurat_clusters == "1")] <- "Purkinje cells_2"
 metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Granule neurons"
 metadata$celltype[which(metadata$seurat_clusters == "3")] <- "ONS76_cluster_3"
 metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_2"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Ribosome cluster"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Uncertain"
 metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Roof plate_2"
-metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Glia"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Glia-like"
 metadata$celltype[which(metadata$seurat_clusters == "8")] <- "IVth ventricle/CP"
 metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
 metadata$celltype[which(metadata$seurat_clusters == "10")] <- "ONS76_cluster_10"
@@ -398,8 +398,9 @@ p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
 VlnPlot(o76cbo.annotate, features = c("POU3F2", "HOXB2", "ERBB4", "NRG3", "MEIS1", "HOXB-AS1"))
 ```
 
+Interesting to note that although ONS76-CBO does not have a distinct cluster of ciliated cells (unlike DAOY-CBO and CBO samples), expression of three ciliated cell markers is highest in the RL_derived_2 subpopulation suggesting those ciliated cells were present but not well represented in the ONS76-CBO sample.
 ```{r eval=FALSE, echo=FALSE, MDM2expression, fig.height=9, fig.width=12}
-VlnPlot(o76cbo.annotate, features = c("POU3F2", "HOXB2", "ERBB4", "NRG3", "MEIS1", "MDM2"))
+VlnPlot(o76cbo.annotate, features = c("POU3F2", "HOXB2", "ERBB4", "NRG3", "MEIS1", "MDM2", "FUT4", "FOXJ1", "CCNO", "TEKT1"))
 ```
 
 
@@ -590,15 +591,16 @@ saveRDS(o76only.o76cboAnnot.rescaled,
 ------------------------------------------------------------------------------------------
 ***Gene expression in ONS76 cancer clusters 3 and 10***
 
-```{r eval=FALSE, echo=FALSE}
+```{r}
 # load the object
 o76only.o76cboAnnot.rescaled <- 
   readRDS("outputs50K/ONS76-CBO/ONS76onlyCells.Annotated.SubsetONS76cboSample.Rescaled.SCT.RiboRetained.NoMito.CCdiffRegressed.rds")
 ```
 
-```{r eval=FALSE, echo=FALSE, ViolinPlotSox2networkONS76onlyONS76cbo, fig.height=17, fig.width=22}
+```{r ViolinPlotSox2networkInclSRRTgeneONS76onlyONS76cbo, fig.height=17, fig.width=22}
+# POU5F1 (OCT4) is not expressed, POU3F2, SRRT are expressed
 p2a <- VlnPlot(o76only.o76cboAnnot.rescaled, 
-        features = c("FABP7")) +
+        features = c("SRRT")) +
   theme(axis.text = element_text(size = 22),
         axis.title.x = element_blank(),
         axis.title.y = element_text(size = 22),
@@ -722,7 +724,7 @@ VlnPlot(o76only.o76cboAnnot.rescaled,
 
 ---------------------------------------------------------------------------------------------------------
 ***Gene set enrichment analysis (GSEA) using FGSEA and PRESTO for malignant clusters of ONS76-CBO sample***
-from: https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_05_dge.html#Gene_Set_Enrichment_Analysis_(GSEA) and https://crazyhottommy.github.io/scRNA-seq-workshop-Fall-2019/scRNAseq_workshop_3.html
+from: https://nbisweden.github.io/workshop-scRNAseq/labs/seurat/seurat_05_dge.html#pseudobulk and https://crazyhottommy.github.io/scRNA-seq-workshop-Fall-2019/scRNAseq_workshop_3.html
 PRESTO is good package to use, ranks genes very fast for Gene Set Enrichment analysis
 
 The first website uses the output of Seurat FindMarkers() to generate the gene list, but this does not use all genes. Note that the arguments are different from the standard ones used to generate DEG list.
@@ -848,14 +850,14 @@ saveRDS(fgseaResTidy.clus6.cbo.GOBP,
         file = "./outputs50K/CBO/cluster6.UPandDOWNpathways.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # this object is just the UP-regulated pathways of CBO cluster 6
 fgseaResTidy.clus6UP.cbo.GOBP <- 
   readRDS("outputs50K/CBO/cluster6.GranuleNeurons.Cbo.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
 
-```{r BarplotFGSEAgoBPclust6cboUPregulatedPathways, fig.height=15, fig.width=25}
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPclust6cboUPregulatedPathways, fig.height=15, fig.width=25}
 # only plot the top 20 pathways
 ggplot(fgseaResTidy.clus6UP.cbo.GOBP %>% 
          dplyr::filter(padj < 0.05) %>% 
@@ -1098,17 +1100,17 @@ clust3.genes.presto <- o76cbo.presto %>%
   dplyr::select(feature, auc)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 clust3.markers.presto <- o76cbo.presto %>%
   dplyr::filter(group == "3" & logFC > 0.25) %>%
   arrange(desc(auc))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 head(clust3.markers.presto, 10)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(clust3.markers.presto,
           file = "./outputs50K/ONS76-CBO/ONS76cbo.cluster3.markers.aucRanked.csv", quote = F)
 ```
@@ -1247,7 +1249,7 @@ clust10.markers.presto <- o76cbo.presto %>%
   arrange(desc(auc))
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 write.csv(clust10.markers.presto,
           file = "./outputs50K/ONS76-CBO/ONS76cbo.cluster10.markers.aucRanked.csv", quote = F)
 ```
@@ -1449,13 +1451,6 @@ head(o76only.cellID.corrected) # the prefixes have been removed
 o76onlyO76cbo.g1cells.ccn <- RenameCells(o76onlyO76cbo.g1cells, new.names = o76only.cellID.corrected)
 head(WhichCells(o76onlyO76cbo.g1cells.ccn))
 ```
-
-
-
-
-
-
-
 
 
 ```{r eval=FALSE, echo=FALSE}
@@ -2197,25 +2192,3 @@ ggplot(data = up.m.ons76cbo.cbo.degs, aes(x = Var1, y = Var2, fill = value)) +
   geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 4) +
   coord_fixed()
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
