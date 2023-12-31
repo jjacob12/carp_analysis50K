@@ -1,0 +1,276 @@
+---
+title: "Riemondy_NeurOncol_2022_seurat_QC_analysis"
+author: "JJ"
+date: "2023-12-29"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/Riemondy_outputs/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(SeuratObject)
+library(SeuratWrappers)
+library(batchelor)
+library(cluster)
+library(factoextra)
+library(glmGamPoi)
+library(data.table) # needed for fread()
+library(Matrix)
+library(patchwork)
+library(tidyverse)
+})
+```
+
+Type of analysis: this is a dataset of 28 primary childhood MB patient samples from GP3, GP4, SHH, and WNT subgroups and a single matched sample from recurrence from Riemondy et al, Neuro-Oncol 2022 (doi: 10.1093/neuonc/noab135)
+
+
+#############################################################################################################
+***Load the whole dataset, apply quality thresholds, subset SHH-MB patient tumours***
+```{r eval=FALSE, echo=FALSE}
+# load the counts file - this includes all tumour types
+# make the object 'riem_mat' a dataFRAME and not a data.table
+
+riem <- "./Riemondy_NeurOncol2022/GSE155446_human_raw_counts.csv.gz"
+riem_mat <- fread(riem, data.table = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the counts matrix
+saveRDS(riem_mat, file = "./outputs50K/Riemondy_outputs/humanMB.counts.matrix.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# move gene column to rownames.
+# The first line of the code rownames(riem_mat) <- riem_mat$gene sets the 'gene' column of the riem_mat dataframe as the row names of the dataframe. This means each row will be named according to the corresponding entry in the 'gene' column. The second line riem_mat$gene <- NULL then removes the 'gene' column from the dataframe. In R, assigning NULL to a dataframe column effectively deletes that column. So, after these two lines of code are executed, the 'gene' column will no longer exist as a separate column in riem_mat, but its values will have been transferred to serve as the row names of the dataframe. 
+rownames(riem_mat) <- riem_mat$gene
+riem_mat$gene <- NULL
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert from a data.frame to a sparseMatrix
+riem_mat <- as.matrix(riem_mat)
+riem_mat <- as(riem_mat, "sparseMatrix")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the sparse matrix
+saveRDS(riem_mat, file = "./outputs50K/Riemondy_outputs/humanMB.sparse.matrix.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load metadata file
+m.data <- "./Riemondy_NeurOncol2022/GSE155446_human_cell_metadata.csv.gz"
+riem.mdata <- fread(m.data, data.table = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# move cell names to rownames
+rownames(riem.mdata) <- riem.mdata$cell
+riem.mdata$cell <- NULL
+```
+
+```{r eval=FALSE, echo=FALSE}
+riem.seu.obj <- CreateSeuratObject(riem_mat, meta.data = riem.mdata, min.cells = 10, min.features = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the Seurat object
+saveRDS(riem.seu.obj, file = "./outputs50K/Riemondy_outputs/humanMB.allGroups.filteredCellsGenes.SeuratObject.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object - contains all subtypes of patient MB!
+riem.seu.obj <- readRDS("outputs50K/Riemondy_outputs/humanMB.allGroups.filteredCellsGenes.SeuratObject.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(riem.seu.obj)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset the object for the SHH subgroup
+Idents(riem.seu.obj) <- "subgroup"
+shh.riem <- subset(riem.seu.obj, subset = subgroup == "SHH")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(shh.riem@meta.data)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.riem)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# determine mitochondrial percentage - add this as a metadata column to shh.riem
+shh.riem[["percent.mt"]] <- PercentageFeatureSet(shh.riem, pattern = "^MT-")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(shh.riem@meta.data)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# find the range of mitochondrial values (0 - 30%, mean 13.57%) - just for SHH-MB subset
+summary(shh.riem@meta.data$percent.mt)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# choose a 10% cut-off for mitochondrial gene expression (because of this paper, doi: 10.1093/bioinformatics/btaa751)
+shh.riem <- subset(shh.riem, subset = percent.mt < 10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.riem)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(shh.riem@meta.data$coarse_cell_type)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(shh.riem@meta.data$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# try sctransform v2 normalisation and clustering on the whole SHH group to see if the malignant cells cluster separately.
+# first save the shh.riem object
+saveRDS(shh.riem, file = "./outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load shh.riem - unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+SECTION END
+##################################################################################################################
+
+
+##################################################################################################################
+***For SHH-MB subset, regress out cell-cycle difference, apply sctransform and cluster***
+this subset includes non-malignant cells
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+shh.riem2 <- NormalizeData(shh.riem2)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.riem2 <- CellCycleScoring(shh.riem2,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.riem2$CC.difference <- shh.riem2$S.Score - shh.riem2$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.riem2.clust <- SCTransform(shh.riem2, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r}
+# save the shh.riem2.clust object - this Seurat object is cell cycle difference regressed, 
+saveRDS(shh.riem2.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CcdiffRegressed.SCT.clustered.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, DimPlotAllSHHMBmalignantANDnonMalignantCells}
+# clustering shows malignant cells well separated from non-malignant cells
+Idents(shh.riem2.clust) <- "coarse_cell_type"
+DimPlot(shh.riem2.clust, label = TRUE, repel = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=4, fig.width=8}
+# OCT4=POU5F1, BRN2=POU3F2
+VlnPlot(shh.riem2.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=12}
+Idents(shh.riem2.clust) <- "orig.ident"
+VlnPlot(shh.riem2.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+SECTION END
+##################################################################################################################
+
+##################################################################################################################
+***Subset individual SHH-MB and include non-malignant cells***
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1224 (SHH-beta, infant), includes malignant and non-malignant cells
+Idents(riem.seu.obj) <- "orig.ident"
+shh.1224 <- subset(shh.riem2, subset = orig.ident == "1224")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.1224) # 294 cells in total
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1224 <- NormalizeData(shh.1224)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.1224 <- CellCycleScoring(shh.1224,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.1224$CC.difference <- shh.1224$S.Score - shh.1224$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1224.clust <- SCTransform(shh.1224, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r}
+saveRDS(shh.1224.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1224.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r}
+shh.1224.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1224.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.1224.clust) <- "coarse_cell_type"
+VlnPlot(shh.1224.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+
+
+
+
+
