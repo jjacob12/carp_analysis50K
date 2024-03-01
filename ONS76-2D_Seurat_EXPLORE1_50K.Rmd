@@ -21,13 +21,11 @@ knitr::opts_chunk$set(dev = "png",
 suppressPackageStartupMessages({
 library(Seurat)
 library(glmGamPoi)
-library(presto)
 library(msigdbr)
 library(fgsea)
 library(presto)
 library(org.Hs.eg.db)
 library(DOSE)
-library(clustree)
 library(tidyverse)
 library(magrittr)
 library(RColorBrewer)
@@ -35,6 +33,7 @@ library(patchwork)
 })
 ```
 
+Type of analysis: clustering of the DAOY-SPHEROID sample, marker identification, cell cycle difference regression, proliferation scoring of clusters, pathway enrichment for clusters, genes differentially expressed in G1 phase vs other (G2M and S phase) cells. Workflow performed EXcluding mitochondrial genes, and INcluding mitochondrial genes - essentially the same results. At an early step any cells with >10% mitochondrial reads were excluded from further analyses.
 
 ```{r eval=FALSE, echo=FALSE}
 # load the data from scratch
@@ -66,16 +65,14 @@ percent.mito <-
 o76mono <- 
   AddMetaData(object = o76mono, metadata = percent.mito, col.name = "percent.mito")
 
-# remove mitochondrial genes 
-o76mono <- o76mono[ ! grepl("^MT-", rownames(o76mono)), ]
-
-dim(o76mono) # 15,686 genes and 648 cells
-```
-
-```{r eval=FALSE, echo=FALSE}
 # remove all cells with percent.mito > 10%
 o76mono <- subset(o76mono, subset = percent.mito < 0.1)
 dim(o76mono) # reduced to 15,686 genes and 474 cells
+
+# remove mitochondrial genes from the remaining cells 
+o76mono <- o76mono[ ! grepl("^MT-", rownames(o76mono)), ]
+
+dim(o76mono) # 15,686 genes and 474 cells
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -93,9 +90,11 @@ o76mono <- readRDS("outputs50K/ONS76_2D/filt.MitoCellsGenes.RiboRetained.seurat.
 # normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
 o76mono <- NormalizeData(o76mono)
 
+# get the list of cell cycle genes from Seurat
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
-# calculate CC difference
+
+# calculate cell cycle difference
 o76mono <- CellCycleScoring(o76mono,
                 g2m.features = g2m.genes,
                 s.features = s.genes)
@@ -133,13 +132,18 @@ saveRDS(o76mono, file = "./outputs50K/ONS76_2D/ons76mono.RiboRetained.MitoCellsG
 ```{r}
 # load the above object. This object not yet been annotated.
 o76mono <- readRDS("outputs50K/ONS76_2D/ons76mono.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
-# if plotting markers using this object scale (ScaleData function) before plotting genes of interest
+# if plotting markers using this object, scale (ScaleData function) before plotting genes of interest
 ```
 
 ```{r eval=FALSE, echo=FALSE, DimplotONS76monoUmapSCTransform, fig.height=6, fig.width=10}
 DimPlot(o76mono, label = TRUE, pt.size = 1, label.size = 4)
 ```
 
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Proliferation scoring of clusters***
 ```{r eval=FALSE, echo=FALSE}
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
@@ -157,7 +161,12 @@ FeaturePlot(phase.o76mono, features = 'prolif.genes1', label = TRUE, repel = TRU
   labs(title = "")
 ```
 
+SECTION END
+##########################################################################################################
 
+
+##########################################################################################################
+***Get the cluster markers***
 ```{r eval=FALSE, echo=FALSE}
 # get the markers of each cluster
 o76mono.POSmarkers <- FindAllMarkers(object = o76mono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
@@ -318,7 +327,12 @@ DoHeatmap(o76mono, features = top20.sorted$gene,
         legend.text=element_text(size=20)) 
 ```
 
-***Run presto, then gProfiler on this sample to get an idea of what pathways are active in the different cell clusters***
+SECTION END
+##########################################################################################################
+
+
+##########################################################################################################
+***Get pathways that are enriched in the different cell clusters***
 
 ```{r eval=FALSE, echo=FALSE}
 # prepare the data for gProfiler (web app) input
@@ -366,9 +380,8 @@ write.csv(o76mono.genes.presto.clust1,
 ```
 
 
-***FGSEA***
 ```{r eval=FALSE, echo=FALSE}
-# apply presto to CBO control
+# apply PRESTO
 o76mono.presto <- wilcoxauc(o76mono, 'seurat_clusters')
 head(o76mono.presto, 4)
 ```
@@ -388,14 +401,13 @@ fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# filter gene expression for cluster 2, the ONS76 NEUROD1+ cluster
-# the presto gene list puts EYA2 and NEUROD1 near the top which is reassuring
 o76mono.presto %>%
   dplyr::filter(group == "0") %>%
   arrange(desc(logFC), desc(auc)) %>%
   head(10)
 ```
-
+****Cluster 0****
+enriched for protein synthesis pathways
 ```{r eval=FALSE, echo=FALSE}
 # this code will only reveal UP regulated pathways
 clust0.genesUP.o76mono.presto <- o76mono.presto %>%
@@ -448,7 +460,8 @@ fwrite(fgseaResTidy.clus0.GOBP,
        file = "./outputs50K/ONS76_2D/cluster0.ONS76mono.multifgsea.presto.GOBiolProcessGenes.csv")
 ```
 
-
+****Cluster 1****
+no pathway enrichment
 ```{r eval=FALSE, echo=FALSE}
 # this code will only reveal UP regulated pathways
 clust1.genesUP.o76mono.presto <- o76mono.presto %>%
@@ -490,35 +503,12 @@ saveRDS(fgseaResTidy.clus1.GOBP,
         file = "./outputs50K/ONS76_2D/cluster1.ONS76mono.multifgsea.presto.GOBiolProcessGenes.rds")
 ```
 
+SECTION END
+##########################################################################################################
 
 
-
-
-
-***Clustree***
-```{r eval=FALSE, echo=FALSE}
-# attempt to use Clustree package to find the right number of clusters
-# -----------------------------------------------------------------------------------------------
-
-# Select a range of resolutions
-resolution.range <- seq(from = 0, to = 1.8, by = 0.2)
-
-# Find clusters using a range of resolutions, the clustering information is in the metadata slot
-ons76.2d.clusters <- FindClusters(object = o76mono, 
-                                      resolution = resolution.range,
-                                      verbose = FALSE)
-```
-
-```{r eval=FALSE, echo=FALSE, ClustreeCBO, fig.height=6}
-# the clustering tree finds too many clusters! These clusters are not biologically
-# meaningful as pct.1 and pct.2 are so similar.
-# with res = 0.8 there are 4 clusters; with res = 1 there are 5 clusters.
-# use marker differences (FindAllMarkers) and pathway enrichment to tell how many clusters have distinct enrichments. 
-
-clustree(ons76.2d.clusters)
-```
-
-Find the genes differentially expressed in G1 phase vs other (G2M and S phase) cells
+##########################################################################################################
+***Find the genes differentially expressed in G1 phase vs other (G2M and S phase) cells***
 
 ```{r eval=FALSE, echo=FALSE}
 head(o76mono@meta.data)
@@ -551,13 +541,8 @@ length(o76mono.g1.cellIDs)
 
 ```{r eval=FALSE, echo=FALSE}
 # these cell IDs look correctly formatted
-# object o76mono has to be "filt.RiboMitoCellsGenes.seurat.ons76monolayer.rds" above!
 o76mono.g1cells <- subset(o76mono, cells = o76mono.g1.cellIDs)
 head(WhichCells(o76mono.g1cells))
-```
-
-```{r eval=FALSE, echo=FALSE}
-dim(o76mono.g1cells) # 148 cells in G1 phase
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -580,17 +565,295 @@ saveRDS(o76mono.g1cells.input.integration,
         file = "./outputs50K/ONS76_2D/G1phaseCells.ONS76monolayer.inputIntegration.RiboRetained.SCTransformed.PCA.unclustered.rds")
 ```
 
+SECTION END
+##########################################################################################################
 
 
 
+##########################################################################################################
+##########################################################################################################
+***Alternate workflow with removal of cells with > 10% mitochondrial gene expression, RETENTION of mitochondrial genes (WITHOUT REGRESSION of mitochondrial genes)***
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = o76mono), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(o76mono[mito.genes, ])/Matrix::colSums(o76mono)
+
+# add the mitochondrial gene percent to the metadata
+o76mono <- 
+  AddMetaData(object = o76mono, metadata = percent.mito, col.name = "percent.mito")
+
+# remove all cells with percent.mito > 10%, retain mitochondrial genes
+o76mono <- subset(o76mono, subset = percent.mito < 0.1)
+dim(o76mono) # reduced to 15,686 genes and 474 cells
+
+dim(o76mono) # 15,686 genes and 474 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the NON-normalised, NON-clustered seurat object
+saveRDS(o76mono, file = "./outputs50K/ONS76_2D/MITO_RETAIN/filt.CellsGenes.MitoGenesPresentUNregressed.RiboRetained.seurat.ONS76mono.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+o76mono <- NormalizeData(o76mono)
+
+# get the list of cell cycle genes from Seurat
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# calculate cell cycle difference
+o76mono <- CellCycleScoring(o76mono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+o76mono$CC.difference <- o76mono$S.Score - o76mono$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+o76mono.input.integration <- SCTransform(o76mono, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(o76mono.input.integration, "./outputs50K/ONS76_2D/MITO_RETAIN/ONS76mono.inputIntegration.RiboRetained.MitochRetainUNregressed.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76mono <- SCTransform(o76mono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(o76mono, file = "./outputs50K/ONS76_2D/MITO_RETAIN/ons76mono.RiboRetained.MitoRetainUNregressed.CellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r}
+# load the above object. This object not yet been annotated.
+o76monoMitoPresentUNregressed <- readRDS("outputs50K/ONS76_2D/MITO_RETAIN/ons76mono.RiboRetained.MitoCellsGenesFilt.SCT.clustered.CCdiffRegressed.rds")
+# if plotting markers using this object, scale (ScaleData function) before plotting genes of interest
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotONS76monoUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(o76mono, label = TRUE, pt.size = 1, label.size = 4)
+```
+
+****Proliferation scoring of clusters****
+```{r eval=FALSE, echo=FALSE}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+prolif.genes <- list(c(s.genes, g2m.genes))
+```
 
 
+```{r eval=FALSE, echo=FALSE, AddModuleScoreProlifernONS76mono, fig.height=6, fig.width=10}
+phase.o76mono <- AddModuleScore(o76mono,
+                        features = prolif.genes,
+                        name = "prolif.genes")
+FeaturePlot(phase.o76mono, features = 'prolif.genes1', label = TRUE, repel = TRUE, pt.size = 1,
+            label.size = 4) +
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) +
+  labs(title = "")
+```
+
+****Get the cluster markers****
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster
+o76mono.POSmarkers <- FindAllMarkers(object = o76mono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# ribosome gene enrichment in cluster 0 when grouping by cluster only and leaving out '..arrange..'
+o76mono.POSmarkers %>% 
+  dplyr::group_by(cluster) %>%
+  slice_head(n = 30)
+```
+
+****Get pathways that are enriched in the different cell clusters****
+
+```{r eval=FALSE, echo=FALSE}
+# prepare the data for gProfiler (web app) input
+o76mono.genes.presto <- wilcoxauc(o76mono, 'seurat_clusters')
+nrow(o76mono.genes.presto)
+dplyr::count(o76mono.genes.presto, group)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+o76mono.genes.presto.clust0 <- o76mono.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76mono.genes.presto.clust0) # 45 genes only
+```
+
+```{r eval=FALSE, echo=FALSE}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76mono.genes.presto.clust0, 
+          "./outputs50K/ONS76_2D/MITO_RETAIN/ONS76mono.MitoRetainedUNregressed.cluster0.genes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+o76mono.genes.presto.clust1 <- o76mono.genes.presto %>% 
+  dplyr::filter(group == "1" & !(feature == "MALAT1") & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(o76mono.genes.presto.clust1) # 374 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(o76mono.genes.presto.clust1, 
+          "./outputs50K/ONS76_2D/MITO_RETAIN/ONS76mono.MitoRetainedUNregressed.cluster1.genes.presto.gProfilerInput.csv", quote = F)
+```
 
 
+```{r eval=FALSE, echo=FALSE}
+# apply PRESTO
+o76mono.presto <- wilcoxauc(o76mono, 'seurat_clusters')
+head(o76mono.presto, 4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter gene expression for cluster 2, the ONS76 NEUROD1+ cluster
+# the presto gene list puts EYA2 and NEUROD1 near the top which is reassuring
+o76mono.presto %>%
+  dplyr::filter(group == "0") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(10)
+```
+****Cluster 0****
+```{r eval=FALSE, echo=FALSE}
+# this code will only reveal UP regulated pathways
+clust0.genesUP.o76mono.presto <- o76mono.presto %>%
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(clust0.genesUP.o76mono.presto) # 45 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus0 <- deframe(clust0.genesUP.o76mono.presto)
+head(ranks.clus0)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus0.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus0, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus0.GOBP <- fgseaRes.clus0.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus0.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved
+saveRDS(fgseaResTidy.clus0.GOBP, 
+        file = "./outputs50K/ONS76_2D/MITO_RETAIN/cluster0.ONS76mono.multifgsea.presto.MitoUNregressed.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite(), as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus0.GOBP, 
+       file = "./outputs50K/ONS76_2D/MITO_RETAIN/cluster0.ONS76mono.MitoUNregressed.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+****Cluster 1****
+No enriched pathways based on adjusted p-values
+```{r eval=FALSE, echo=FALSE}
+# this code will only reveal UP regulated pathways
+clust1.genesUP.o76mono.presto <- o76mono.presto %>%
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(clust1.genesUP.o76mono.presto) # 375 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus1 <- deframe(clust1.genesUP.o76mono.presto)
+head(ranks.clus1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus1.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus1, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus1.GOBP <- fgseaRes.clus1.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus1.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this is the 'tidy' version that is saved - NO SIGNIFICANT PATHWAY ENRICHMENT!
+saveRDS(fgseaResTidy.clus1.GOBP, 
+        file = "./outputs50K/ONS76_2D/MITO_RETAIN/cluster1.ONS76mono.multifgsea.presto.MitoUNregressed.GOBiolProcessGenes.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite(), as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus1.GOBP, 
+       file = "./outputs50K/ONS76_2D/MITO_RETAIN/cluster1.ONS76mono.multifgsea.presto.MitoUNregressed.GOBiolProcessGenes.csv")
+```
 
 
-
-
+SECTION END
+##########################################################################################################
 
 
 
