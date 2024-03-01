@@ -29,329 +29,27 @@ library(patchwork)
 library(tidyverse)  
 })
 ```
-
-```
-{r}
-load("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
-```
+Types of analysis: clustering of the CBO (cerebellar organoid) control sample, annotation of the cerebellar cell types, analysis of markers, use of ClusterMap to facilitate identification of malignant cell clusters in DAOY and ONS-76 cells
 
 
-***CBO cluster annotation (includes ribosome genes)***
-
-# load the above object. This object not yet been annotated.
+***Re-analysis of CBO scRNA-seq with retained ribosomal genes - UNannotated***
 ```{r eval=FALSE, echo=FALSE}
-# load the above object. This object not yet been annotated.
-cbo.clust <- readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+# load the CBO raw data (from "working_data" folder)
+data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# continue to replace the cluster numbers with the identity of each cluster - granule precursors
-# are so-called because GSEA suggests these care cycling cells
-new.cluster.ids <- c("Roof plate", "IVth ventricle/CP", "Purkinje cells_1", "Purkinje cells_2",
-                     "RL-derived_1", "Glia-like", "Granule neurons", "RL-derived_2", "Granule precursors",
-                     "Oligodendrocytes", "Ciliated cells", "Uncertain")
-names(new.cluster.ids) <- levels(cbo.clust)
-cbo.annotate <- RenameIdents(cbo.clust, new.cluster.ids)
+# note these are .gz files which can be directly read. n = 3838 cells
+
+cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
 ```
 
 
 ```{r eval=FALSE, echo=FALSE}
-# Create metadata dataframe
-metadata <- cbo.annotate@meta.data
-# Add cell IDs to metadata
-metadata$cells <- rownames(metadata)
-# Create sample column
-metadata$celltype <- NA
-metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof plate"
-metadata$celltype[which(metadata$seurat_clusters == "1")] <- "IVth ventricle/CP"
-metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Purkinje cells_1"
-metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
-metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
-metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Glia-like"
-metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Granule neurons"
-metadata$celltype[which(metadata$seurat_clusters == "7")] <- "RL-derived_2"
-metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Granule precursors"
-metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
-metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Ciliated cells"
-metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Uncertain"
-```
-
-```{r eval=FALSE, echo=FALSE}
-cbo.annotate@meta.data <- metadata
-```
-
-```{r eval=FALSE, echo=FALSE}
-# save the cbo.annotate object
-saveRDS(cbo.annotate, 
-        file = "./outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
-```
-
-```{r}
-# load the 'cbo.annotate' object
-cbo.annotate <- 
-  readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
-```
-
-```{r eval=FALSE, echo=FALSE, DimplotCBOcellTypesAnnotated, fig.height=6, fig.width=10}
-DimPlot(cbo.annotate, label = TRUE, repel = TRUE, pt.size = 1,
-        label.size = 4) +
-  theme(legend.position = "none")
-```
-
-```{r eval=FALSE, echo=FALSE}
-table(cbo.annotate$celltype)
-```
-
-
-Granule marker genes are from DOI: https://doi.org/10.7554/eLife.37551 (Heintz lab)
-```{r eval=FALSE, echo=FALSE, ViolinPlotGranuleLineageByClusterCBO, fig.height=9, fig.width=12}
-# CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
-# CD44 is not expressed or expressed very little.
-# ITGB1 is expressed at quite a high level across most cell types
-# In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
-# CALB2, SLC17A7, RELN, GABRA6, AQP7 are all granule markers that are not expressed in cluster 5 (NEUROD1+)
-
-VlnPlot(cbo.annotate, 
-        features = c("NEUROD1", "RBFOX3", "RTN1", "CDH15", "MAPT", "PDE1C")) # MAPT, PDE1C = granule marker
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotNEUROD1etcCBO, fig.height=17, fig.width=22}
-p1a <- VlnPlot(cbo.annotate, 
-        features = c("NEUROD1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1b <- VlnPlot(cbo.annotate, 
-        features = c("RBFOX3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1c <- VlnPlot(cbo.annotate, 
-        features = c("RTN1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1d <- VlnPlot(cbo.annotate, 
-        features = c("NEUROD1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1e <- VlnPlot(cbo.annotate, 
-        features = c("RBFOX3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1f <- VlnPlot(cbo.annotate, 
-        features = c("RTN1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
-```
-
-```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1CBOcntrl, fig.height=17, fig.width=27}
-p3a <- VlnPlot(cbo.annotate, 
-        features = c("PTCH1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3b <- VlnPlot(cbo.annotate, 
-        features = c("MEIS1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3c <- VlnPlot(cbo.annotate, 
-        features = c("POU3F4")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3d <- VlnPlot(cbo.annotate, 
-        features = c("FGFBP3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3e <- VlnPlot(cbo.annotate, 
-        features = c("TWIST1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3f <- VlnPlot(cbo.annotate, 
-        features = c("LHX9")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotGria4Twist1PhaseCBOannotate, fig.width=14}
-# HOXB2 is not expressed, and none of these markers show up as a violin
-
-VlnPlot(cbo.annotate, 
-        features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotGli2Ptch1Pou3F2PhaseCBOannotate, fig.width=14}
-VlnPlot(cbo.annotate, features = c("MIR124-2HG", "PTCH1", "GLI2",
-                                             "POU3F2", "MEIS1", "LHX9"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotDll3Hes5PhaseCBOannotate, fig.width=14}
-VlnPlot(cbo.annotate, 
-        features = c("PRRX1", "DLL1", "DLL3", "DLL4","HES5"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotNotchGenesPhaseCBOannotate, fig.width=14}
-VlnPlot(cbo.annotate, 
-        features = c("HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotNrgErbb4PhaseCBOannotate, fig.height=17, fig.width=16}
-VlnPlot(cbo.annotate, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
-```
-
-
-```{r eval=FALSE, echo=FALSE, VlnPlotSOX2networkCbo, fig.height=17, fig.width=22}
-p2a <- VlnPlot(cbo.annotate, 
-        features = c("FABP7")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2b <- VlnPlot(cbo.annotate, 
-        features = c("ZIC2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2c <- VlnPlot(cbo.annotate, 
-        features = c("SOX2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2d <- VlnPlot(cbo.annotate, 
-        features = c("OTX2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2e <- VlnPlot(cbo.annotate, 
-        features = c("POU3F2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2f <- VlnPlot(cbo.annotate, 
-        features = c("GLI2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotSox2networkNesErbb4Nrg3DaoyCbo, fig.height=17, fig.width=16}
-
-p2a <- VlnPlot(cbo.annotate, 
-        features = c("ERBB4")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2b <- VlnPlot(cbo.annotate, 
-        features = c("NES")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2c <- VlnPlot(cbo.annotate, 
-        features = c("PRRX1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2d <- VlnPlot(cbo.annotate, 
-        features = c("TWIST1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2e <- VlnPlot(cbo.annotate, 
-        features = c("NRG3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2f <- VlnPlot(cbo.annotate, 
-        features = c("DCX")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
-```
-
-
-
-----------------------------------------------------------------------------------------------------
-***Repeat analysis of CBO scRNA-seq with retained ribosomal genes - UNannotated***
-```{r eval=FALSE, echo=FALSE}
-# create the seurat object, keep genes expressed in 10 or more cells.
+# create the seurat object, keep genes expressed in 10 or more cells. 'min.genes'=200, the Seurat default
 cbo <- CreateSeuratObject(counts = cbo.data,
                           min.cells = 10, min.genes=200,
                           project = "cbo")
@@ -372,6 +70,8 @@ cbo <-
   AddMetaData(object = cbo, metadata = percent.mito, col.name = "percent.mito")
 ```
 
+
+****Remove mitochondrial genes****
 ```{r eval=FALSE, echo=FALSE}
 # remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
 cbo <- cbo[ ! grepl("^MT-", rownames(cbo)), ]
@@ -379,6 +79,8 @@ cbo <- cbo[ ! grepl("^MT-", rownames(cbo)), ]
 dim(cbo) # 21,669 genes and 3838 cells
 ```
 
+
+Continue below with the usual Seurat workflow
 ```{r eval=FALSE, echo=FALSE}
 # remove all cells with percent.mito > 10%
 cbo <- subset(cbo, subset = percent.mito < 0.1)
@@ -448,23 +150,342 @@ table(cbo.clust$seurat_clusters)
 ```
 
 
+***CBO cluster annotation (includes ribosome genes)***
+
 ```{r eval=FALSE, echo=FALSE}
-# Identify ribosomal genes: I have checked that there are ribosomal genes beginning with RP, RPL and RPS
+# load the above object. This object not yet been annotated.
+cbo.clust <- readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# continue to replace the cluster numbers with the identity of each cluster - granule precursors
+# are so-called because GSEA suggests these care cycling cells
+new.cluster.ids <- c("Roof plate", "IVth ventricle/CP", "Purkinje cells_1", "Purkinje cells_2",
+                     "RL-derived_1", "Glia-like", "Granule neurons", "RL-derived_2", "Granule precursors",
+                     "Oligodendrocytes", "Ciliated cells", "Ribosome cluster")
+names(new.cluster.ids) <- levels(cbo.clust)
+cbo.annotate <- RenameIdents(cbo.clust, new.cluster.ids)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- cbo.annotate@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$celltype <- NA
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "IVth ventricle/CP"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Glia-like"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "RL-derived_2"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Granule precursors"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Ciliated cells"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Ribosome cluster"
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.annotate@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the cbo.annotate object
+saveRDS(cbo.annotate, 
+        file = "./outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r}
+# load the 'cbo.annotate' object
+cbo.annotate <- 
+  readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotCBOcellTypesAnnotated, fig.height=6, fig.width=10}
+DimPlot(cbo.annotate, label = TRUE, repel = TRUE, pt.size = 1,
+        label.size = 4) +
+  theme(legend.position = "none")
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(cbo.annotate$celltype)
+```
+
+Plot various granule marker genes
+Granule marker genes are from DOI: https://doi.org/10.7554/eLife.37551 (Heintz lab)
+```{r eval=FALSE, echo=FALSE, ViolinPlotGranuleLineageByClusterCBO, fig.height=9, fig.width=12}
+# CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
+# CD44 is not expressed or expressed very little.
+# ITGB1 is expressed at quite a high level across most cell types
+# In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
+# CALB2, SLC17A7, RELN, GABRA6, AQP7 are all granule markers that are not expressed in cluster 5 (NEUROD1+)
+
+VlnPlot(cbo.annotate, 
+        features = c("NEUROD1", "RBFOX3", "RTN1", "CDH15", "MAPT", "PDE1C")) # MAPT, PDE1C = granule marker
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNEUROD1etcCBO, fig.height=17, fig.width=22}
+# for publication quality plots
+p1a <- VlnPlot(cbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(cbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(cbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(cbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(cbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(cbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1CBOcntrl, fig.height=17, fig.width=27}
+# for publication quality plots
+p3a <- VlnPlot(cbo.annotate, 
+        features = c("PTCH1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3b <- VlnPlot(cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3c <- VlnPlot(cbo.annotate, 
+        features = c("POU3F4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3d <- VlnPlot(cbo.annotate, 
+        features = c("FGFBP3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3e <- VlnPlot(cbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3f <- VlnPlot(cbo.annotate, 
+        features = c("LHX9")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
+
+Plot expression of various markers to explore the data
+```{r eval=FALSE, echo=FALSE, VlnPlotGria4Twist1PhaseCBOannotate, fig.width=14}
+# HOXB2 is not expressed, and none of these markers show up as a violin
+
+VlnPlot(cbo.annotate, 
+        features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotGli2Ptch1Pou3F2PhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, features = c("MIR124-2HG", "PTCH1", "GLI2",
+                                             "POU3F2", "MEIS1", "LHX9"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotDll3Hes5PhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, 
+        features = c("PRRX1", "DLL1", "DLL3", "DLL4","HES5"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNotchGenesPhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, 
+        features = c("HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNrgErbb4PhaseCBOannotate, fig.height=17, fig.width=16}
+VlnPlot(cbo.annotate, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
+```
+
+
+```{r eval=FALSE, echo=FALSE, VlnPlotSOX2networkCbo, fig.height=17, fig.width=22}
+# for publication quality plots
+p2a <- VlnPlot(cbo.annotate, 
+        features = c("FABP7")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(cbo.annotate, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(cbo.annotate, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(cbo.annotate, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(cbo.annotate, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(cbo.annotate, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotSox2networkNesErbb4Nrg3DaoyCbo, fig.height=17, fig.width=16}
+# for publication quality plots
+p2a <- VlnPlot(cbo.annotate, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(cbo.annotate, 
+        features = c("NES")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(cbo.annotate, 
+        features = c("PRRX1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(cbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(cbo.annotate, 
+        features = c("NRG3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(cbo.annotate, 
+        features = c("DCX")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+```
+
+
+
+****Identify and remove ribosomal genes should that prove necessary****
+In the manuscript, the analysis of this dataset INCLUDED ribosome genes. Analysis was performed both with ribosome genes excluded or included in the dataset. For the manuscript, ribosome genes were included.
+```{r eval=FALSE, echo=FALSE}
+# Identify ribosomal genes if necessary: I have checked that there are ribosomal genes beginning with RP, RPL and RPS
 ribosomal_genes <- grep("^RP|^RPL|^RPS", x = rownames(x = cbo), value = TRUE)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# how many ribosomal genes are there?
 length(ribosomal_genes)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# get the markers of each cluster
+# get the markers of each cerebellar organoid cluster
 cbo.markers.test <- FindAllMarkers(object = cbo.clust,
                                   features = setdiff(rownames(x = cbo), ribosomal_genes), 
                                   only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# this dataset was not used for downstream analysis as ribosome genes were excluded
 saveRDS(cbo.markers.test, 
         file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesExcluded.Cbo.rds")
 ```
@@ -487,6 +508,7 @@ cbo.markers.test %>%
 cbo.markers.test %>% 
   filter(gene %in% c("GRIA4", "POU3F2", "PRRX1", "CHCHD2", "TWIST1"))
 ```
+
 
 ```{r eval=FALSE, echo=FALSE}
 # get the markers of each cluster, ribosome genes INCLUDED
@@ -522,27 +544,13 @@ write.csv(cbo.markers.test.2,
           file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv")
 ```
 
+SECTION END
+########################################################################################################
 
------------------------------------------------------------------------------------------
+##########################################################################################################
 ***ClusterMap to compare the clusters of CBO, DAOY-CBO and ONS76-CBO***
-
+To find matched clusters in the control, non-malignant organoid and in assembloids we performed hierarchical clustering using ClusterMap. using ClusterMap helped to identify the malignant clusters as they had no counterpart in the control organoid. The output was visualised as a Circos plot (but other outputs also generated e.g. tSNE plots)
 Combine the CBO and DAOY-CBO samples as shown in the example of https://xgaoo.github.io/ClusterMap/pre_analysis/pre_analysis.html
-
-```{r eval=FALSE, echo=FALSE}
-# load the CBO raw data (from "working_data" folder)
-data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
-list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
-```
-
-```{r eval=FALSE, echo=FALSE}
-# note these are .gz files which can be directly read. n = 3838 cells
-
-cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
-                         features = paste0(data_dir, "features.tsv.gz"), 
-                         cells = paste0(data_dir, "barcodes.tsv.gz"))
-```
-
-
 
 ```{r eval=FALSE, echo=FALSE}
 # load the DAOY-CBO raw data
@@ -646,9 +654,7 @@ saveRDS(cbo.dyCbo.combined,
         file = "./outputs50K/DAOY-CBO/clusterMap_files/ClusterMapInput.DaoyCbo.Cbo.combined.RiboRetained.NoMito.SCT.clustered.CCdiffRegressed.rds")
 ```
 
-
-
-****ClusterMap: preparation of the CBO object****
+NOTE: The CBO object for input to ClusterMap already prepared above.
 
 ```{r eval=FALSE, echo=FALSE}
 # load the above object. This object not yet been annotated.
@@ -667,7 +673,7 @@ cbo.dyCbo.combined <-
 ```
 
 ****Run ClusterMap - simple run and full run: DAOY-CBO and CBO****
-Simple run and full run are performed. ClusterMap seems able to identify the DAOY clusters as clusters 7, 11, 12! Looking at the gene expression for these clusters they appear to match the DAOY clusters I identified manually previously! THE OUTPUT IS AUTOMATICALLY SAVED - SEE OUTPUTS50K/DAOY-CBO/CLUSTERMAP_FILES/dyCboSimple.results.csv
+Simple run and full run are performed. ClusterMap seems able to identify the DAOY clusters as clusters 9, 13, 14! Looking at the gene expression for these clusters they appear to match the DAOY clusters I identified manually previously! THE OUTPUT IS AUTOMATICALLY SAVED - SEE OUTPUTS50K/DAOY-CBO/CLUSTERMAP_FILES/dyCboSimple.results.csv
 ```{r eval=FALSE, echo=FALSE}
 # FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
 # clusterMap SIMPLE RUN
@@ -679,7 +685,7 @@ res.dyCboSimple
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# all figures are in outputs50K > CBO or DAOY-CBO > figures
+# all figures are in outputs50K > CBO, or DAOY-CBO > figures
 # prepare the data
 cbo.tsne <- RunTSNE(cbo.clust)
 dyCbo.tsne <- RunTSNE(dyCbo.clust)
@@ -717,7 +723,6 @@ res.dyCbo.fullRun
 
 
 
-----------------------------------------------------------------------------------------
 ****ClusterMap input preparation of the COMBINED CBO and ONS76-CBO object****
 Repeat the above with the ONS76-CBO sample
 ```{r eval=FALSE, echo=FALSE}
@@ -879,250 +884,12 @@ res.o76cbo.fullRun <- cluster_map(marker_file_list,
                    comb_obj = objList$combined)
 ```
 
-
-CODE THAT IS RETAINED AS IT MIGHT BE USEFUL LATER BUT NOT NEEDED CURRENTLY
------------------------------------------------------------------------------------------
-
-***Clustree***
-```
-{r}
-# attempt to use Clustree package to find the right number of clusters. Not hugely useful!
-# -----------------------------------------------------------------------------------------------
-
-# Select a range of resolutions
-resolution.range <- seq(from = 0, to = 1.6, by = 0.2)
-
-# Find clusters using a range of resolutions, the clustering information is in the metadata slot
-cbo.clusters <- FindClusters(object = cbo, 
-                                      resolution = resolution.range,
-                                      verbose = FALSE)
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
 ```
 
-```
-{r ClustreeCBO, fig.height=8,fig.width=8}
-# the clustering tree finds 9 clusters before some nodes have multiple incoming edges.
-# note that at res = 1 there are 14 clusters
-
-clustree(cbo.clusters)
-```
-
-
-Subset seurat object so that all genes analysed are expressed in at least 10 cells
-```
-{r}
-# this code chunk is not needed, as min.cells=10 in CreateSeuratObject does the same thing
-# Only keeping those genes expressed in more than 10 cells
-counts <- GetAssayData(object = cbo.dyCbo.combined, slot = "counts")
-nonzero <- counts > 0
-keep_genes <- Matrix::rowSums(nonzero) >= 10
-filtered_counts <- counts[keep_genes, ]
-# Reassign to filtered Seurat object
-cbo.dyCbo.combined <- CreateSeuratObject(filtered_counts, meta.data = cbo.dyCbo.combined@meta.data)
-
-dim(cbo.dyCbo.combined) # 24,165 genes and 7492 cells
-```
-
-```
-{r}
-# simpler to use min.cells=10 argument in CreateSeuratObject!!!
-# Only keeping those genes expressed in more than 10 cells
-counts <- GetAssayData(object = cbo, slot = "counts")
-nonzero <- counts > 0
-keep_genes <- Matrix::rowSums(nonzero) >= 10
-filtered_counts <- counts[keep_genes, ]
-# Reassign to Seurat object
-cbo <- CreateSeuratObject(filtered_counts, meta.data = cbo@meta.data)
-
-dim(cbo) # 21,682 genes and 3838 cells before filtering for mitochondrial percent < 10% and before removing mitochondrial and ribosomal genes
-```
-
-```
-{r}
-# Cell counts per cluster.
-# there are 3049 cells in total, which is correct, and the cell numbers per cluster are shown below.
-# Two clusters, 9 and 10 are present with < 100 cells
-
-cell.num <- table(cbo@active.ident)
-cell.num
-sum(cell.num)
-```
-
-
-***Plot the distribution of proliferative cells in the DimPlot***
-Superimpose cycling cells onto the UMAP plot of cell clusters
-
-```
-{r}
-phase.cbo.sct <- 
-  readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
-```
-
-Get the list of genes expressed in cycling cells (Seurat list from Tirosh et al.). This shows that there are much smaller numbers of actively cycling cells than I first assumed.
-```
-{r}
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-prolif.genes <- list(c(s.genes, g2m.genes))
-```
-
-
-```
-{r DimPlotProlifGenes}
-phase.cbo.sct <- AddModuleScore(phase.cbo.sct,
-                        features = prolif.genes,
-                        name = "prolif.genes")
-FeaturePlot(phase.cbo.sct, features = 'prolif.genes1', label = TRUE, repel = TRUE) +
-   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) +
-  labs()
-```
-
-Be careful with the colnames of meta.data. Even though I named "prolif.genes" above, getting the colnames has shown that this becomes "prolif.genes1" !!!
-```
-{r}
-names(x = phase.cbo.sct[[]])
-```
-
-Subset the object to extract cluster 5 cells, which are Neurod1+.
-```
-{r}
-neurod1.cbo <- subset(phase.cbo.sct, idents = c("5"))
-```
-
-```
-{r}
-dim(neurod1.cbo)
-```
-
-```
-# save the neurod1 cluster 5 (which was generated from phase cell cycle scored, CC difference regressed,
-# SCTransformed seurat object)
-saveRDS(neurod1.cbo, file = "./outputs50K/CBO/neurod1Clust.phaseCCDiffRegress.SCT.cbo.rds")
-```
-
-```
-save.image("./RDataFiles/CBO_Seurat_EXPLORE1_50K.RData")
-```
-
-```
-{r}
-# Differentially expressed genes using a FOR loop
-Idents(phase.cbo.sct.clusters) <- "seurat_clusters"
-markers.pos <- data.frame()
-for (i in levels(Idents(phase.cbo.sct.clusters))){
-  markers <- FindMarkers(phase.cbo.sct.clusters, ident.1 = i, grouping.var = "ident", 
-                         verbose = FALSE, only.pos = TRUE, logfc.threshold = 0.25)  # base 2 log fold change
-  dat <- markers %>% rownames_to_column(var = "genes")
-  dat$cluster_ID <- i
-  dat$cluster_ID <- as.numeric(dat$cluster_ID)
-  df <- data.frame(dat)
-  markers.pos <- rbind(markers.pos, df)
-}
-head(markers.pos)
-```
-
---------------------------------------------------------------------------------------------
-***Repeat clustering of CBO dataset using conventional normalization***
-```
-# NO NEED TO RUN THESE CODE CHUNKS - SCT transformation worked better
-
-# load the dataset
-filt.RiboMito.cbo <- readRDS("outputs50K/CBO/filt.RiboMitoCellsGenes.seurat.cbo.rds")
-
-# load cell cycle genes in advance of regressing out CC difference
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-
-filt.RiboMito.cbo <- NormalizeData(filt.RiboMito.cbo, normalization.method = "LogNormalize", scale.factor = 10000)
-filt.RiboMito.cbo <- FindVariableFeatures(filt.RiboMito.cbo, selection.method = "vst", nfeatures = 2000)
-
-# regress CC difference
-filt.RiboMito.cbo <- CellCycleScoring(phase.cbo.sct,
-                g2m.features = g2m.genes,
-                s.features = s.genes)
-filt.RiboMito.cbo$CC.difference <- filt.RiboMito.cbo$S.Score - filt.RiboMito.cbo$G2M.Score
-
-filt.RiboMito.cbo <- ScaleData(filt.RiboMito.cbo, vars.to.regress = "CC.difference")
-
-# run the rest of the seurat workflow
-filt.RiboMito.cbo <- RunPCA(filt.RiboMito.cbo, features = VariableFeatures(object = filt.RiboMito.cbo))
-filt.RiboMito.cbo <- FindNeighbors(filt.RiboMito.cbo, dims = 1:10)
-filt.RiboMito.cbo <- FindClusters(filt.RiboMito.cbo, resolution = 0.8) # this res gives only 1 NeuroD1 cluster
-
-filt.RiboMito.cbo <- RunUMAP(filt.RiboMito.cbo, dims = 1:10)
-DimPlot(filt.RiboMito.cbo, reduction = "umap")
-```
-
-```
-VlnPlot(filt.RiboMito.cbo, features = c("NEUROD1", "RBFOX3", "RTN1"))
-```
-
-This code retained just to show arguments to read a csv file
-```
-# load 'cbo.cluster.markers.NoRiboNoMito.csv'
-
-cbo.cluster.markers.noRiboMito <- read.csv("outputs50K/CBO/cbo.cluster.markers.NoRiboNoMito.csv", 
-                                       header = TRUE, 
-                                       stringsAsFactors = FALSE)
-```
-
-This code is retained just to show the usage of write.csv
-```
-# save cbo.cluster.markers.ribo20 as a csv file. This object has percent.ribo < 20
-
-write.csv(cbo.cluster.markers.ribo20, "./outputs50K/CBO/cbo.cluster.markers.ribo20.csv", quote = F)
-```
-
-The DotPlots are not that useful
-```
-{r DotplotSeppTFmarkers}
-# using the Sepp et al paper (Extended Fig 8g), test if markers from that paper are expressed 
-# in the seurat object filtered to remove all ribosomal and mitochondrial genes, and where cells which
-# have mitoch genes > 10% are excluded.
-# MUST use the already clustered seurat object.
-# I used just the transcription factor (TF) markers (sepp.TF.markers)
-
-sepp.TF.markers <- c("PAX3", "RFX4", "TCFL71", "GLIS3", "SOX6", "TCF7L2", "HOPX", "TSC22D4", "ID4",
-             "ESRRB", "FOXP2", "FOXP4", "MEF2C",
-             "PAX2", "TFAP2A", "TFAP2B", "BHLHE22", "PRDM8",
-             "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", "ZBTB18", "NEUROD1", "ETV1", "KLF9", "NR3C1")
-
-
-DotPlot(object = phase.cbo.sct.clusters, features = sepp.TF.markers) +
-  coord_flip()
-```
-
-```
-{r DotplotSeppMarkersAndCiliaManyCBO, fig.height=10}
-# from the Sepp paper repeat Dotplot with TF and some key non-TF markers
-# added markers of ciliated cells from cluster10 above.
-# used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
-
-sepp.all.markers <- c("TFAP2A", "PAX3", "RFX4", "TCFL71", "TCF7L2", "GLIS3", "SOX6", "HOPX", "TSC22D4",  
-                      "ID4", "NCKAP5", "SLIT2", "CLYBL", "SLC1A3", "SLC6A11", "AQP4",  #astroglial/progenitor
-                      
-                      "ESRRB", "FOXP1", "FOXP2", "FOXP4", "MEF2C", "RORB", "CDH9", "ETV1", "EBF1", "EBF2", 
-                      "SKOR2", "DAB1", "IPTR",   # Purkinje
-                      
-                      "NOTCH1",    # VZ neuroblast
-             
-                      "PAX2", "NFIA", "NFIB", "TFAP2B", "BHLHE22", "PRDM8",  # interneuron
-                      
-                      "ZFHX3", "ZFHX4",   # GABAergic deep nuclei neurons
-             
-                      "TOP2A", "ATOH1", "LMX1A", "OTX2","ETV6", "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", 
-                      "ZBTB18", "NEUROD1", "ZIC1", "ZIC4", "GABAR6", "CNTN1", "CNTN2", "KLF9", "NR3C1", "LMO3", 
-                      "SYNPR", "KCNIP4", "HCRTR2", 
-                      "EOMES", "TRPC3", "GRM1")
-                      # UBC/GCP/granule/glut deep cerebellar nuclei                                                                   
-seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "C11orf88", "ANKRD66", "C20orf85", 
-                                "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
-
-DotPlot(object = phase.cbo.sct.clusters, features = seppAll.cilia.stem.markers, col.min = 0) +
-  coord_flip()
-```
-
-
-
+SECTION END
+##########################################################################################################
 
 
 
