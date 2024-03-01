@@ -12,6 +12,7 @@ The purpose of this analysis is to uncover the cellular and molecular dynamics o
 **Contents**
 
 The PrePrint folder includes:
+
 Analysis Notebooks: .Rmd files detailing the data processing, analysis, and visualization steps.
 
 The root directory houses earlier iterations of analysis scripts. These .Rmd files are precursors to those found in the PrePrint/ folder and serve as a developmental record.  
