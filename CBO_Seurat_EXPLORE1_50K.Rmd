@@ -1,0 +1,896 @@
+---
+title: "CBO_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "07/08/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/CBO/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(RColorBrewer)
+library(Matrix)
+library(ClusterMap)
+library(clustree)
+library(patchwork)
+library(tidyverse)  
+})
+```
+Types of analysis: clustering of the CBO (cerebellar organoid) control sample, annotation of the cerebellar cell types, analysis of markers, use of ClusterMap to facilitate identification of malignant cell clusters in DAOY and ONS-76 cells
+
+
+***Re-analysis of CBO scRNA-seq with retained ribosomal genes - UNannotated***
+```{r eval=FALSE, echo=FALSE}
+# load the CBO raw data (from "working_data" folder)
+data_dir <- "./working_data/CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. n = 3838 cells
+
+cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# create the seurat object, keep genes expressed in 10 or more cells. 'min.genes'=200, the Seurat default
+cbo <- CreateSeuratObject(counts = cbo.data,
+                          min.cells = 10, min.genes=200,
+                          project = "cbo")
+
+dim(cbo) # 21,582 genes and 3838 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo[mito.genes, ])/Matrix::colSums(cbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add the mitochondrial gene percent to the metadata
+cbo <- 
+  AddMetaData(object = cbo, metadata = percent.mito, col.name = "percent.mito")
+```
+
+
+****Remove mitochondrial genes****
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
+cbo <- cbo[ ! grepl("^MT-", rownames(cbo)), ]
+
+dim(cbo) # 21,669 genes and 3838 cells
+```
+
+
+Continue below with the usual Seurat workflow
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+cbo <- subset(cbo, subset = percent.mito < 0.1)
+dim(cbo) # reduced to 21,669 genes and 3048 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the NON-normalised, NON-clustered cbo seurat object
+saveRDS(cbo, file = "./outputs50K/CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo <- readRDS("outputs50K/CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+cbo <- NormalizeData(cbo)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo <- CellCycleScoring(cbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo$CC.difference <- cbo$S.Score - cbo$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+cbo.input.integration <- SCTransform(cbo, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(cbo.input.integration, "./outputs50K/CBO/cbo.inputIntegration.RiboGenesNotRemoved.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE, DimPlotClusterMapCbo, fig.height=6, fig.width=10}
+cbo.clust <- SCTransform(cbo, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(cbo.clust, file = "./outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotCboUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(cbo.clust, label = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(cbo.clust$seurat_clusters)
+```
+
+
+***CBO cluster annotation (includes ribosome genes)***
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object. This object not yet been annotated.
+cbo.clust <- readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# continue to replace the cluster numbers with the identity of each cluster - granule precursors
+# are so-called because GSEA suggests these care cycling cells
+new.cluster.ids <- c("Roof plate", "IVth ventricle/CP", "Purkinje cells_1", "Purkinje cells_2",
+                     "RL-derived_1", "Glia-like", "Granule neurons", "RL-derived_2", "Granule precursors",
+                     "Oligodendrocytes", "Ciliated cells", "Ribosome cluster")
+names(new.cluster.ids) <- levels(cbo.clust)
+cbo.annotate <- RenameIdents(cbo.clust, new.cluster.ids)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- cbo.annotate@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$celltype <- NA
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof plate"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "IVth ventricle/CP"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "RL-derived_1"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Glia-like"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "RL-derived_2"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Granule precursors"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "Oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Ciliated cells"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Ribosome cluster"
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.annotate@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the cbo.annotate object
+saveRDS(cbo.annotate, 
+        file = "./outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r}
+# load the 'cbo.annotate' object
+cbo.annotate <- 
+  readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotCBOcellTypesAnnotated, fig.height=6, fig.width=10}
+DimPlot(cbo.annotate, label = TRUE, repel = TRUE, pt.size = 1,
+        label.size = 4) +
+  theme(legend.position = "none")
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(cbo.annotate$celltype)
+```
+
+Plot various granule marker genes
+Granule marker genes are from DOI: https://doi.org/10.7554/eLife.37551 (Heintz lab)
+```{r eval=FALSE, echo=FALSE, ViolinPlotGranuleLineageByClusterCBO, fig.height=9, fig.width=12}
+# CDH5 (marker of ONS76 cells) is not expressed but CDH1 is (also a marker of ONS76 cells).
+# CD44 is not expressed or expressed very little.
+# ITGB1 is expressed at quite a high level across most cell types
+# In CBO there is only 1 NEUROD1, RBFOX3, RTN1 cluster
+# CALB2, SLC17A7, RELN, GABRA6, AQP7 are all granule markers that are not expressed in cluster 5 (NEUROD1+)
+
+VlnPlot(cbo.annotate, 
+        features = c("NEUROD1", "RBFOX3", "RTN1", "CDH15", "MAPT", "PDE1C")) # MAPT, PDE1C = granule marker
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNEUROD1etcCBO, fig.height=17, fig.width=22}
+# for publication quality plots
+p1a <- VlnPlot(cbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(cbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(cbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(cbo.annotate, 
+        features = c("NEUROD1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(cbo.annotate, 
+        features = c("RBFOX3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(cbo.annotate, 
+        features = c("RTN1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1CBOcntrl, fig.height=17, fig.width=27}
+# for publication quality plots
+p3a <- VlnPlot(cbo.annotate, 
+        features = c("PTCH1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3b <- VlnPlot(cbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3c <- VlnPlot(cbo.annotate, 
+        features = c("POU3F4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3d <- VlnPlot(cbo.annotate, 
+        features = c("FGFBP3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3e <- VlnPlot(cbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3f <- VlnPlot(cbo.annotate, 
+        features = c("LHX9")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
+
+Plot expression of various markers to explore the data
+```{r eval=FALSE, echo=FALSE, VlnPlotGria4Twist1PhaseCBOannotate, fig.width=14}
+# HOXB2 is not expressed, and none of these markers show up as a violin
+
+VlnPlot(cbo.annotate, 
+        features = c("IRX3", "GRIA4", "IRX5", "TWIST1", "PAX3"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotGli2Ptch1Pou3F2PhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, features = c("MIR124-2HG", "PTCH1", "GLI2",
+                                             "POU3F2", "MEIS1", "LHX9"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotDll3Hes5PhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, 
+        features = c("PRRX1", "DLL1", "DLL3", "DLL4","HES5"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNotchGenesPhaseCBOannotate, fig.width=14}
+VlnPlot(cbo.annotate, 
+        features = c("HES6", "JAG1", "JAG2", "NNAT", "TTYH1", "CD24"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotNrgErbb4PhaseCBOannotate, fig.height=17, fig.width=16}
+VlnPlot(cbo.annotate, features = c("NRG1", "NRG2", "NRG3", "NRG4", "ERBB4"))
+```
+
+
+```{r eval=FALSE, echo=FALSE, VlnPlotSOX2networkCbo, fig.height=17, fig.width=22}
+# for publication quality plots
+p2a <- VlnPlot(cbo.annotate, 
+        features = c("FABP7")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(cbo.annotate, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(cbo.annotate, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(cbo.annotate, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(cbo.annotate, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(cbo.annotate, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotSox2networkNesErbb4Nrg3DaoyCbo, fig.height=17, fig.width=16}
+# for publication quality plots
+p2a <- VlnPlot(cbo.annotate, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(cbo.annotate, 
+        features = c("NES")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(cbo.annotate, 
+        features = c("PRRX1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(cbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(cbo.annotate, 
+        features = c("NRG3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(cbo.annotate, 
+        features = c("DCX")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+```
+
+
+
+****Identify and remove ribosomal genes should that prove necessary****
+In the manuscript, the analysis of this dataset INCLUDED ribosome genes. Analysis was performed both with ribosome genes excluded or included in the dataset. For the manuscript, ribosome genes were included.
+```{r eval=FALSE, echo=FALSE}
+# Identify ribosomal genes if necessary: I have checked that there are ribosomal genes beginning with RP, RPL and RPS
+ribosomal_genes <- grep("^RP|^RPL|^RPS", x = rownames(x = cbo), value = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# how many ribosomal genes are there?
+length(ribosomal_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cerebellar organoid cluster
+cbo.markers.test <- FindAllMarkers(object = cbo.clust,
+                                  features = setdiff(rownames(x = cbo), ribosomal_genes), 
+                                  only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this dataset was not used for downstream analysis as ribosome genes were excluded
+saveRDS(cbo.markers.test, 
+        file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesExcluded.Cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(cbo.markers.test, 
+          file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.Cbo.csv")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# look at the top markers of each CBO cluster
+cbo.markers.test %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 40)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# none of the malignant markers are expressed in CBO
+cbo.markers.test %>% 
+  filter(gene %in% c("GRIA4", "POU3F2", "PRRX1", "CHCHD2", "TWIST1"))
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster, ribosome genes INCLUDED
+cbo.markers.test.2 <- FindAllMarkers(object = cbo.clust,
+                                   only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# look at the top markers of each CBO cluster
+cbo.markers.test.2 %>% 
+  group_by(cluster) %>% 
+  slice_head(n = 40)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# look at the top markers of each CBO cluster
+cbo.markers.test.2 %>% 
+  dplyr::filter(cluster == 0)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object includes ribosome genes which are heavily expressed in cluster 11
+saveRDS(cbo.markers.test.2,
+        file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.markers.test.2 <- readRDS("outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(cbo.markers.test.2,
+          file = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv")
+```
+
+SECTION END
+########################################################################################################
+
+##########################################################################################################
+***ClusterMap to compare the clusters of CBO, DAOY-CBO and ONS76-CBO***
+To find matched clusters in the control, non-malignant organoid and in assembloids we performed hierarchical clustering using ClusterMap. using ClusterMap helped to identify the malignant clusters as they had no counterpart in the control organoid. The output was visualised as a Circos plot (but other outputs also generated e.g. tSNE plots)
+Combine the CBO and DAOY-CBO samples as shown in the example of https://xgaoo.github.io/ClusterMap/pre_analysis/pre_analysis.html
+
+```{r eval=FALSE, echo=FALSE}
+# load the DAOY-CBO raw data
+data_dir <- "./working_data/DAOY-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+
+dyCbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+****ClusterMap input: preparation of the COMBINED CBO and DAOY-CBO object****
+```{r eval=FALSE, echo=FALSE}
+colnames(cbo.data) = paste0('cbo-', colnames(cbo.data))
+colnames(dyCbo.data) = paste0('dyCbo.data-', colnames(dyCbo.data))
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.dyCbo.data = cbind(cbo.data, dyCbo.data)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+cbo.dyCbo.combined <- CreateSeuratObject(counts = cbo.dyCbo.data,
+                                         min.cells = 10, min.genes=200,
+                                         project = "cbo.dyCbo.comb")
+
+dim(cbo.dyCbo.combined) #24,165 genes and 7492 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo.dyCbo.combined), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo.dyCbo.combined[mito.genes, ])/Matrix::colSums(cbo.dyCbo.combined)
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add the mitochondrial gene percent to the metadata
+cbo.dyCbo.combined <- 
+  AddMetaData(object = cbo.dyCbo.combined, metadata = percent.mito, col.name = "percent.mito")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes 
+cbo.dyCbo.combined <- cbo.dyCbo.combined[ ! grepl("^MT-", rownames(cbo.dyCbo.combined)), ]
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(cbo.dyCbo.combined) # 24,152 genes and 7492 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+cbo.dyCbo.combined <- subset(cbo.dyCbo.combined, subset = percent.mito < 0.1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(cbo.dyCbo.combined) # 24,152 genes and 6086 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# this normalisation step recommended prior to CellCycle scoring in Seurat GitHub issue https://github.com/satijalab/seurat/issues/1679
+cbo.dyCbo.combined <- NormalizeData(cbo.dyCbo.combined)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo.dyCbo.combined <- CellCycleScoring(cbo.dyCbo.combined,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo.dyCbo.combined$CC.difference <- cbo.dyCbo.combined$S.Score - cbo.dyCbo.combined$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.dyCbo.combined <- SCTransform(cbo.dyCbo.combined, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotClusterMapCombinedObjectDaoyCboAndCbo, fig.height=6, fig.width=10}
+cbo.dyCbo.combined <- cbo.dyCbo.combined %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(cbo.dyCbo.combined, label = TRUE, repel = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# saved the above combined object
+saveRDS(cbo.dyCbo.combined, 
+        file = "./outputs50K/DAOY-CBO/clusterMap_files/ClusterMapInput.DaoyCbo.Cbo.combined.RiboRetained.NoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+NOTE: The CBO object for input to ClusterMap already prepared above.
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object. This object not yet been annotated.
+cbo.clust <- readRDS("outputs50K/CBO/ClusterMapInput.Cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the clustered dyCbo object
+dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the object
+cbo.dyCbo.combined <- 
+  readRDS("outputs50K/DAOY-CBO/clusterMap_files/ClusterMapInput.DaoyCbo.Cbo.combined.RiboRetained.NoMito.SCT.clustered.CCdiffRegressed.rds")
+```
+
+****Run ClusterMap - simple run and full run: DAOY-CBO and CBO****
+Simple run and full run are performed. ClusterMap seems able to identify the DAOY clusters as clusters 9, 13, 14! Looking at the gene expression for these clusters they appear to match the DAOY clusters I identified manually previously! THE OUTPUT IS AUTOMATICALLY SAVED - SEE OUTPUTS50K/DAOY-CBO/CLUSTERMAP_FILES/dyCboSimple.results.csv
+```{r eval=FALSE, echo=FALSE}
+# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
+# clusterMap SIMPLE RUN
+marker_file_list.dyCbo.simple <- c(cbo = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv", 
+                      dyCbo = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.csv")
+
+res.dyCboSimple <- cluster_map(marker_file_list.dyCbo.simple, edge_cutoff = 0.1, output = "dyCboSimple")
+res.dyCboSimple
+```
+
+```{r eval=FALSE, echo=FALSE}
+# all figures are in outputs50K > CBO, or DAOY-CBO > figures
+# prepare the data
+cbo.tsne <- RunTSNE(cbo.clust)
+dyCbo.tsne <- RunTSNE(dyCbo.clust)
+cbo.dyCbo.combined.tsne <- RunTSNE(cbo.dyCbo.combined)
+
+# save the above TSNE files as RDS files for downstream use
+saveRDS(cbo.tsne, file = "./outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds")
+saveRDS(dyCbo.tsne, file = "./outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.tsne.DAOY-CBOsample.ClusterMapInputFullRun.rds")
+saveRDS(cbo.dyCbo.combined.tsne, file = "./outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.Cbo.combined.tsne.daoyCboVScboSamples.ClusterMapInputFullRun.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# clusterMap FULL run - this code produces correct output even though it throws an error message!
+marker_file_list <- c(CBO = "outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv", 
+                      DAOY_CBO = "outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.csv")
+
+fList <- c(CBO = "outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds",
+           DAOY_CBO = "outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.tsne.DAOY-CBOsample.ClusterMapInputFullRun.rds",
+           combined = "outputs50K/DAOY-CBO/clusterMap_files/DaoyCbo.Cbo.combined.tsne.daoyCboVScboSamples.ClusterMapInputFullRun.rds")
+
+objList <- lapply(fList, readRDS)
+
+single_obj_list <- 
+  c(CBO = objList$CBO, DAOY_CBO = objList$DAOY_CBO)
+
+res.dyCbo.fullRun <- cluster_map(marker_file_list, 
+                   edge_cutoff = 0.1, 
+                   output = "./outputs50K/DAOY-CBO/figures/combined", 
+                   single_obj_list = single_obj_list, 
+                   comb_obj = objList$combined)
+
+res.dyCbo.fullRun
+```
+
+
+
+****ClusterMap input preparation of the COMBINED CBO and ONS76-CBO object****
+Repeat the above with the ONS76-CBO sample
+```{r eval=FALSE, echo=FALSE}
+# load the ONS76-CBO raw data
+data_dir <- "./working_data/ONS76-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+
+o76cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+colnames(cbo.data) = paste0('cbo-', colnames(cbo.data))
+colnames(o76cbo.data) = paste0('o76cbo.data-', colnames(o76cbo.data))
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.o76cbo.data = cbind(cbo.data, o76cbo.data)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cbo.o76cbo.combined <- CreateSeuratObject(counts = cbo.o76cbo.data,
+                                         min.cells = 10, min.genes=200,
+                                         project = "cbo.o76cbo.comb")
+
+dim(cbo.o76cbo.combined) #23,696 genes and 7294 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = cbo.o76cbo.combined), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(cbo.o76cbo.combined[mito.genes, ])/Matrix::colSums(cbo.o76cbo.combined)
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add the mitochondrial gene percent to the metadata
+cbo.o76cbo.combined <- 
+  AddMetaData(object = cbo.o76cbo.combined, metadata = percent.mito, col.name = "percent.mito")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes 
+cbo.o76cbo.combined <- cbo.o76cbo.combined[ ! grepl("^MT-", rownames(cbo.o76cbo.combined)), ]
+
+dim(cbo.o76cbo.combined) # 23,683 genes and 7294 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+cbo.o76cbo.combined <- subset(cbo.o76cbo.combined, subset = percent.mito < 0.1)
+
+dim(cbo.o76cbo.combined) # 23,683 cells and 5578 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+# normalise the combined object before the cell cycle scoring and then run SCT (seurat github issue: https://github.com/satijalab/seurat/issues/1679)
+cbo.o76cbo.combined <- NormalizeData(cbo.o76cbo.combined)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+cbo.o76cbo.combined <- CellCycleScoring(cbo.o76cbo.combined,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+cbo.o76cbo.combined$CC.difference <- cbo.o76cbo.combined$S.Score - cbo.o76cbo.combined$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# start with SCTransform normalisation
+cbo.o76cbo.combined <- SCTransform(cbo.o76cbo.combined, 
+                   vars.to.regress = "CC.difference", 
+                   method = "glmGamPoi", 
+                   verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotClusterMapCombinedObjectONS76CboAndCbo, fig.height=6, fig.width=10}
+# do the clustering
+cbo.o76cbo.combined <- cbo.o76cbo.combined %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+DimPlot(cbo.o76cbo.combined, label = TRUE, repel = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered object
+saveRDS(cbo.o76cbo.combined, file = "./outputs50K/ONS76-CBO/clusterMap_files/ClusterMapInput.Ons76Cbo.Cbo.combined.NoMito.RiboRetained.SCT.clustered.CCdiffRegressed.rds")
+```
+
+
+****ClusterMap input: load the ONS76-CBO object****
+```{r eval=FALSE, echo=FALSE}
+# load the object
+o76cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+```
+
+
+****Run ClusterMap - simple run and full run: ONS76-CBO and CBO****
+This SIMPLE run result shows that CBO cluster 6 (granule precursors) maps to ONS76-CBO cluster 4, 5 and 11 which are all NEUROD1+ clusters and this matches the ViolinPlot results above (but not NEUROD1+ cluster 9). CBO cluster 7 has no counterpart in ONS76-CBO.
+```{r eval=FALSE, echo=FALSE}
+# clusterMap SIMPLE RUN
+marker_file_list.o76cbo.simple <- 
+  c(cbo = "./outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv", 
+    o76cbo = "./outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRetained.ONS76cbo.csv")
+
+res.o76cboSimple <- cluster_map(marker_file_list.o76cbo.simple, 
+                                edge_cutoff = 0.1, 
+                                output = "o76cboSimple")
+res.o76cboSimple
+```
+
+
+ClusterMap FULL RUN:
+```{r eval=FALSE, echo=FALSE}
+# prepare the data
+# load the objects
+o76cbo.clust <- readRDS("outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+cbo.tsne <- RunTSNE(cbo.clust)
+o76cbo.tsne <- RunTSNE(o76cbo.clust)
+cbo.o76cbo.combined.tsne <- RunTSNE(cbo.o76cbo.combined)
+
+# save the above TSNE files as RDS files for downstream use
+# saveRDS(cbo.tsne, file = "./outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds") already saved
+saveRDS(o76cbo.tsne, file = "./outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.tsne.ONS76cboSample.ClusterMapInputFullRun.rds")
+saveRDS(cbo.o76cbo.combined.tsne, file = "./outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.Cbo.combined.tsne.ONS76cboVScboSamples.ClusterMapInputFullRun.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# results already saved, but figure labels are not ideal!
+# clusterMap FULL run - this code produces correct output even though it throws an error message!
+
+marker_file_list <- 
+  c(ORG = "outputs50K/CBO/ClusterMapInput.FindAllMarkers.RiboGenesIncluded.Cbo.csv", 
+    ONS76_ORG = "outputs50K/ONS76-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRetained.ONS76cbo.csv")
+
+fList <- 
+  c(ORG = "outputs50K/CBO/clusterMap_files/cbo.tsne.CBOsample.ClusterMapInputFullRun.rds",
+    ONS76_ORG = "outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.tsne.ONS76cboSample.ClusterMapInputFullRun.rds",
+    combined = "outputs50K/ONS76-CBO/clusterMap_files/ONS76cbo.Cbo.combined.tsne.ONS76cboVScboSamples.ClusterMapInputFullRun.rds")
+
+objList <- lapply(fList, readRDS)
+
+single_obj_list <- 
+  c(ORG = objList$ORG, ONS76_ORG = objList$ONS76_ORG)
+
+res.o76cbo.fullRun <- cluster_map(marker_file_list, 
+                   edge_cutoff = 0.1, 
+                   output = "./outputs50K/ONS76-CBO/figures/", 
+                   single_obj_list = single_obj_list, 
+                   comb_obj = objList$combined)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+SECTION END
+##########################################################################################################
+
+
+
+
