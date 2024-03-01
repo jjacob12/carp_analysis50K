@@ -33,7 +33,7 @@ library(tidyverse)
 })
 ```
 
-Type of analysis: this is a dataset of 28 primary childhood MB patient samples from GP3, GP4, SHH, and WNT subgroups and a single matched sample from recurrence from Riemondy et al, Neuro-Oncol 2022 (doi: 10.1093/neuonc/noab135)
+Type of analysis: this is a dataset of 28 primary childhood MB patient samples from GP3, GP4, SHH, and WNT subgroups and a single matched sample from recurrence from Riemondy et al, Neuro-Oncol 2022 (doi: 10.1093/neuonc/noab135). Analysis of differentiation markers of granule cells. Analysis of CSC-like factor expression across malignant and non-malignant cells. Determination of the proportion of CSC-like cells in each SHH-MB patient tumour.
 
 
 #############################################################################################################
@@ -53,7 +53,7 @@ saveRDS(riem_mat, file = "./outputs50K/Riemondy_outputs/humanMB.counts.matrix.rd
 
 ```{r eval=FALSE, echo=FALSE}
 # move gene column to rownames.
-# The first line of the code rownames(riem_mat) <- riem_mat$gene sets the 'gene' column of the riem_mat dataframe as the row names of the dataframe. This means each row will be named according to the corresponding entry in the 'gene' column. The second line riem_mat$gene <- NULL then removes the 'gene' column from the dataframe. In R, assigning NULL to a dataframe column effectively deletes that column. So, after these two lines of code are executed, the 'gene' column will no longer exist as a separate column in riem_mat, but its values will have been transferred to serve as the row names of the dataframe. 
+# The first line of the code: rownames(riem_mat) <- riem_mat$gene sets the 'gene' column of the riem_mat dataframe as the row names of the dataframe. This means each row will be named according to the corresponding entry in the 'gene' column. The second line riem_mat$gene <- NULL then removes the 'gene' column from the dataframe. In R, assigning NULL to a dataframe column effectively deletes that column. So, after these two lines of code are executed, the 'gene' column will no longer exist as a separate column in riem_mat, but its values will have been transferred to serve as the row names of the dataframe. 
 rownames(riem_mat) <- riem_mat$gene
 riem_mat$gene <- NULL
 ```
@@ -128,7 +128,7 @@ summary(shh.riem@meta.data$percent.mt)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# choose a 10% cut-off for mitochondrial gene expression (because of this paper, doi: 10.1093/bioinformatics/btaa751)
+# choose a 10% cut-off for mitochondrial gene expression (suggested in this paper, doi: 10.1093/bioinformatics/btaa751)
 shh.riem <- subset(shh.riem, subset = percent.mt < 10)
 ```
 
@@ -141,12 +141,12 @@ table(shh.riem@meta.data$coarse_cell_type)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# the 4-digit and 3-digit numbers on rows 1 and 3 below are the ID numbers of all the MB tumours. The other numbers are the number of cells in each sample. Zero indicates the sample was excluded (because non-SHH-MB)
 table(shh.riem@meta.data$orig.ident)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# try sctransform v2 normalisation and clustering on the whole SHH group to see if the malignant cells cluster separately.
-# first save the shh.riem object
+# save the shh.riem object
 saveRDS(shh.riem, file = "./outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
 ```
 
@@ -154,6 +154,17 @@ saveRDS(shh.riem, file = "./outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMa
 # load shh.riem - unclustered and not normalised
 shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
 ```
+
+****Expression of granule differentiation markers in SHH-MB subset including non-malignant cells****
+```{r eval=FALSE, echo=FALSE}
+Idents(shh.riem2) <- "geo_sample_id"
+```
+
+```{r eval=FALSE, echo=FALSE}
+features <- c("NEUROD1", "RBFOX3", "RTN1")
+DotPlot(shh.riem2, features = features)
+```
+
 
 SECTION END
 ##################################################################################################################
@@ -188,9 +199,13 @@ shh.riem2.clust <- SCTransform(shh.riem2, vars.to.regress = "CC.difference",
   FindClusters(verbose=FALSE, resolution = 0.5)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # save the shh.riem2.clust object - this Seurat object is cell cycle difference regressed, 
 saveRDS(shh.riem2.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CcdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.riem2.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CcdiffRegressed.SCT.clustered.rds")
 ```
 
 
@@ -200,14 +215,10 @@ Idents(shh.riem2.clust) <- "coarse_cell_type"
 DimPlot(shh.riem2.clust, label = TRUE, repel = TRUE)
 ```
 
-```{r eval=FALSE, echo=FALSE, fig.height=4, fig.width=8}
-# OCT4=POU5F1, BRN2=POU3F2
-VlnPlot(shh.riem2.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
-```
-
 ```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=12}
+# interesting to note POU5F1 (OCT4) is not expressed
 Idents(shh.riem2.clust) <- "orig.ident"
-VlnPlot(shh.riem2.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+VlnPlot(shh.riem2.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4", "POU5F1"))
 ```
 
 SECTION END
@@ -215,6 +226,9 @@ SECTION END
 
 ##################################################################################################################
 ***Subset individual SHH-MB and include non-malignant cells***
+
+****Patient SHH-MB 1224****
+TP53 WT
 ```{r eval=FALSE, echo=FALSE}
 # this object is unclustered and not normalised
 shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
@@ -222,7 +236,7 @@ shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCel
 
 ```{r eval=FALSE, echo=FALSE}
 # subset SHH-MB 1224 (SHH-beta, infant), includes malignant and non-malignant cells
-Idents(riem.seu.obj) <- "orig.ident"
+Idents(shh.riem2) <- "orig.ident"
 shh.1224 <- subset(shh.riem2, subset = orig.ident == "1224")
 ```
 
@@ -253,24 +267,1487 @@ shh.1224.clust <- SCTransform(shh.1224, vars.to.regress = "CC.difference",
   FindClusters(verbose=FALSE, resolution = 0.5)
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 saveRDS(shh.1224.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1224.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 shh.1224.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1224.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
 ```
 
 
 
 ```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
-# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+# check CSC markers: expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
 Idents(shh.1224.clust) <- "coarse_cell_type"
 VlnPlot(shh.1224.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
 ```
 
+****Patient SHH-MB 1235****
+TP53 WT, co-expression of ERBB4 and SOX2
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1235 (SHH-beta, infant), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.1235 <- subset(shh.riem2, subset = orig.ident == "1235")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.1235) # 562 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1235 <- NormalizeData(shh.1235)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.1235 <- CellCycleScoring(shh.1235,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.1235$CC.difference <- shh.1235$S.Score - shh.1235$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1235.clust <- SCTransform(shh.1235, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.1235.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1235.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1235.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1235.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.1235.clust) <- "coarse_cell_type"
+VlnPlot(shh.1235.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+****Patient SHH-MB 1325****
+TP53 WT, SOX2 and ERBB4 co-expressed by malignant cells
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1235 (SHH-beta, infant), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.1325 <- subset(shh.riem2, subset = orig.ident == "1325")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.1325) # 657 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1325 <- NormalizeData(shh.1325)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.1325 <- CellCycleScoring(shh.1325,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.1325$CC.difference <- shh.1325$S.Score - shh.1325$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1325.clust <- SCTransform(shh.1325, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.1325.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1325.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1325.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1325.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.1325.clust) <- "coarse_cell_type"
+VlnPlot(shh.1325.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+****Patient SHH-MB 1397****
+TP53 mutant, SOX2 expressed by malignant cells, ERBB4 is weaker
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1397 (SHH-A, child, adult), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.1397 <- subset(shh.riem2, subset = orig.ident == "1397")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.1397) # 279 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1397 <- NormalizeData(shh.1397)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.1397 <- CellCycleScoring(shh.1397,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.1397$CC.difference <- shh.1397$S.Score - shh.1397$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1397.clust <- SCTransform(shh.1397, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.1397.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1397.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1397.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1397.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.1397.clust) <- "coarse_cell_type"
+VlnPlot(shh.1397.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+****Patient SHH-MB 1416****
+TP53 WT, SOX2, ERBB4 is lower
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1416 (SHH-alpha/beta), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.1416 <- subset(shh.riem2, subset = orig.ident == "1416")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.1416) # 317 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1416 <- NormalizeData(shh.1416)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.1416 <- CellCycleScoring(shh.1416,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.1416$CC.difference <- shh.1416$S.Score - shh.1416$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1416.clust <- SCTransform(shh.1416, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.1416.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1416.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.1416.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1416.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.1416.clust) <- "coarse_cell_type"
+VlnPlot(shh.1416.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
 
 
+****Patient SHH-MB 801****
+TP53 Mutant, SOX2 expressed by malignant cells, OTX2 expressed by malignant cells, ERBB4 is low
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 801 (SHH-alpha, child, adult), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.801 <- subset(shh.riem2, subset = orig.ident == "801")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.801) # 258 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.801 <- NormalizeData(shh.801)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.801 <- CellCycleScoring(shh.801,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.801$CC.difference <- shh.801$S.Score - shh.801$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.801.clust <- SCTransform(shh.801, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.801.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-801.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.801.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-801.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.801.clust) <- "coarse_cell_type"
+VlnPlot(shh.801.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+****Patient SHH-MB 831****
+TP53 WT, sparse expression of most factors
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 801 (SHH-beta, infant), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.831 <- subset(shh.riem2, subset = orig.ident == "831")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.831) # 454 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.831 <- NormalizeData(shh.831)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.831 <- CellCycleScoring(shh.831,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.831$CC.difference <- shh.831$S.Score - shh.831$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.831.clust <- SCTransform(shh.831, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.831.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-831.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.831.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-831.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.831.clust) <- "coarse_cell_type"
+VlnPlot(shh.831.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+
+****Patient SHH-MB 877****
+TP53 WT; SOX2, OTX2 and ZIC2 expression strong, ERBB4 and other gene expression sparse
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 877 (SHH-B, SHH-A), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.877 <- subset(shh.riem2, subset = orig.ident == "877")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.877) # 150 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.877 <- NormalizeData(shh.877)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.877 <- CellCycleScoring(shh.877,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.877$CC.difference <- shh.877$S.Score - shh.877$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.877.clust <- SCTransform(shh.877, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.877.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-877.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.877.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-877.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.877.clust) <- "coarse_cell_type"
+VlnPlot(shh.877.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+
+****Patient SHH-MB 898****
+TP53 WT, strong SOX2, POU3F2 and  expression, ERBB4 expression sparse (but strongest in malignant compartment)
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 898 (SHH-B, infant), includes malignant and non-malignant cells
+Idents(shh.riem2) <- "orig.ident"
+shh.898 <- subset(shh.riem2, subset = orig.ident == "898")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.898) # 98 cells in total (and 23,347 genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.898 <- NormalizeData(shh.898)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.898 <- CellCycleScoring(shh.898,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.898$CC.difference <- shh.898$S.Score - shh.898$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.898.clust <- SCTransform(shh.898, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.898.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-898.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.898.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-898.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=7, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+Idents(shh.898.clust) <- "coarse_cell_type"
+VlnPlot(shh.898.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2", "ERBB4"))
+```
+
+****Summarise the above expression in a heatmap****
+Show the malignant and non-malignant cells in the heatmap. All SHH-MB samples in one heatmap.
+```{r eval=FALSE, echo=FALSE}
+# load the clustered dataset
+shh.riem2.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CcdiffRegressed.SCT.clustered.rds")
+
+Idents(shh.riem2.clust) <- "coarse_cell_type"
+
+markers.shh.riem2 <- FindAllMarkers(shh.riem2.clust,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(markers.shh.riem2) # 4720 differentially expressed UP-regulated genes across clusters
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(markers.shh.riem2) # there is already a "gene" column
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the markers file - all patient SHH-MB, malignant and non-malignant cells
+saveRDS(markers.shh.riem2, file = "./outputs50K/Riemondy_outputs/DEgenesUpregulated.CoarseCellType.SCT.clustered.maligANDnonMalig.AllpatientSHHMB.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapCSCgenesSHHMBmalignantVSnonMalignantCells, fig.height=10, fig.width=15}
+# load the object - includes malignant and non-malignant cells
+# overall look at CSC transcription factors across all SHH-MB in this dataset
+shh.riem2.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.CcdiffRegressed.SCT.clustered.rds")
+
+# ERBB4 is sometimes expressed in the same cluster as the other factors, sometimes not. No consistent relationship.
+# TBX6 is barely expressed.
+
+features <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2")
+
+shh.riem2.scaled <- ScaleData(shh.riem2.clust, 
+                              features = features,
+                              verbose = FALSE)
+
+DoHeatmap(shh.riem2.scaled, features = features, size = 10, 
+          slot = "scale.data", assay = NULL, group.by = "ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 35), legend.title = element_text(size=20), legend.text=element_text(size=15))
+```
+
+
+SECTION END
+##################################################################################################################
+
+##################################################################################################################
+***Subset and cluster individual patient SHH-MB, and EXclude all non-malignant cells***
+```{r eval=FALSE, echo=FALSE}
+# load shh.riem2 - unclustered and not normalised
+shh.riem2 <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.maligANDnonMaligCells.filteredCellsGenesMitoLessThanTenPrecent.unclusteredSeuratObj.rds")
+
+# subset the malignant cells only
+shh.malig.riem <- subset(shh.riem2, subset = coarse_cell_type == "malignant")
+
+dim(shh.malig.riem) # 1964 cells, 23,347 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.riem, file = "./outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+****Expression of granule differentiation markers in SHH-MB subset EXcluding non-malignant cells****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.riem <- NormalizeData(shh.malig.riem)
+shh.malig.riem <- ScaleData(shh.malig.riem)
+Idents(shh.malig.riem) <- "geo_sample_id"
+```
+
+```{r eval=FALSE, echo=FALSE, DotplotGranuleDiffGenesRiemSHHmaligCellsOnly9samples, fig.height=5, fig.width=8}
+features <- c("NEUROD1", "RBFOX3", "RTN1")
+DotPlot(shh.malig.riem, features = features) +
+  RotatedAxis() +
+  FontSize(x.text = 15, y.text = 12, y.title = 15) +
+  theme(axis.title.x = element_blank())
+```
+
+Patient SHH-MB 1224 malignant only - only 16 cells, not clustered.
+
+****Patient SHH-MB 1235 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1235
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.1235 <- subset(shh.malig.riem, subset = orig.ident == "1235")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.1235) # 358 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1235 <- NormalizeData(shh.malig.1235)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.1235 <- CellCycleScoring(shh.malig.1235,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.1235$CC.difference <- shh.malig.1235$S.Score - shh.malig.1235$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1235.clust <- SCTransform(shh.malig.1235, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.1235.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1235.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1235.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1235.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=4, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.1235.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB1235cscFactorsMaligCells, fig.height=17, fig.width=22}
+p1a <- VlnPlot(shh.malig.1235.clust, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(shh.malig.1235.clust, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(shh.malig.1235.clust, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(shh.malig.1235.clust, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(shh.malig.1235.clust, 
+        features = c("SRRT")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(shh.malig.1235.clust, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+
+****Patient SHH-MB 1325 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1325 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.1325 <- subset(shh.malig.riem, subset = orig.ident == "1325")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.1325) # 538 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1325 <- NormalizeData(shh.malig.1325)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.1325 <- CellCycleScoring(shh.malig.1325,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.1325$CC.difference <- shh.malig.1325$S.Score - shh.malig.1325$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1325.clust <- SCTransform(shh.malig.1325, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.1325.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1325.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1325.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1325.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB1325cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.1325.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+****Patient SHH-MB 1397 malignant only****
+harbour TP53 mutation
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1325 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.1397 <- subset(shh.malig.riem, subset = orig.ident == "1397")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.1397) # 198 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1397 <- NormalizeData(shh.malig.1397)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.1397 <- CellCycleScoring(shh.malig.1397,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.1397$CC.difference <- shh.malig.1397$S.Score - shh.malig.1397$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1397.clust <- SCTransform(shh.malig.1397, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.1397.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1397.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1397.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1397.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB1397cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of OTX2 negligible
+VlnPlot(shh.malig.1397.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+*****Test whether TP53 mutation affects NEUROD1 expression in SHH-MB 1397*****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1397.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1397.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB1397neuroD1MaligCells, fig.height=3, fig.width=12}
+# expression of OTX2 negligible
+VlnPlot(shh.malig.1397.clust, features = c("NEUROD1", "RTN1", "RBFOX3"))
+```
+
+****Patient SHH-MB 1416 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1325 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.1416 <- subset(shh.malig.riem, subset = orig.ident == "1416")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.1416) # 144 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1416 <- NormalizeData(shh.malig.1416)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.1416 <- CellCycleScoring(shh.malig.1416,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.1416$CC.difference <- shh.malig.1416$S.Score - shh.malig.1416$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1416.clust <- SCTransform(shh.malig.1416, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.1416.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-1416.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1416.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1416.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB1416cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.1416.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+
+****Patient SHH-MB 801 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 801 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.801 <- subset(shh.malig.riem, subset = orig.ident == "801")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.801) # 237 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.801 <- NormalizeData(shh.malig.801)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.801 <- CellCycleScoring(shh.malig.801,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.801$CC.difference <- shh.malig.801$S.Score - shh.malig.801$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.801.clust <- SCTransform(shh.malig.801, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.801.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-801.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.801.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-801.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=4, fig.width=10}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.801.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB801cscFactorsMaligCells, fig.height=17, fig.width=22}
+p1a <- VlnPlot(shh.malig.801.clust, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(shh.malig.801.clust, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(shh.malig.801.clust, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(shh.malig.801.clust, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(shh.malig.801.clust, 
+        features = c("SRRT")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(shh.malig.801.clust, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+*****Test whether TP53 mutation affects NEUROD1 expression in SHH-MB 801*****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.801.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-801.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB801neuroD1MaligCells, fig.height=3, fig.width=12}
+# expression of OTX2 negligible
+VlnPlot(shh.malig.801.clust, features = c("NEUROD1", "RTN1", "RBFOX3"))
+```
+
+****Patient SHH-MB 831 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 831 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.831 <- subset(shh.malig.riem, subset = orig.ident == "831")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.831) # 264 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.831 <- NormalizeData(shh.malig.831)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.831 <- CellCycleScoring(shh.malig.831,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.831$CC.difference <- shh.malig.831$S.Score - shh.malig.831$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.831.clust <- SCTransform(shh.malig.831, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.831.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-831.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.831.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-831.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB831cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.831.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+
+****Patient SHH-MB 877 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 877 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.877 <- subset(shh.malig.riem, subset = orig.ident == "877")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.877) # 143 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.877 <- NormalizeData(shh.malig.877)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.877 <- CellCycleScoring(shh.malig.877,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.877$CC.difference <- shh.malig.877$S.Score - shh.malig.877$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.877.clust <- SCTransform(shh.malig.877, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.877.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-877.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.877.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-877.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB877cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.877.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+****Patient SHH-MB 898 malignant only****
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 877 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.898 <- subset(shh.malig.riem, subset = orig.ident == "898")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.898) # 66 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.898 <- NormalizeData(shh.malig.898)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+shh.malig.898 <- CellCycleScoring(shh.malig.898,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+shh.malig.898$CC.difference <- shh.malig.898$S.Score - shh.malig.898$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.898.clust <- SCTransform(shh.malig.898, vars.to.regress = "CC.difference", 
+                          method = "glmGamPoi",
+                          vst.flavor = "v2",
+                          verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(shh.malig.898.clust, file = "./outputs50K/Riemondy_outputs/humanSHHMB-898.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+shh.malig.898.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-898.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotRiemSHHMB898cscFactorsMaligCells, fig.height=9, fig.width=22}
+# expression of SOX2 and OTX2 very low, and expression of GLI2, SRRT and ERBB4 is low
+VlnPlot(shh.malig.898.clust, features = c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2"))
+```
+
+
+SECTION END
+##################################################################################################################
+
+##################################################################################################################
+***Percentage of cells which have a CSC-like profile in each patient SHH-MB***
+TP53 mutant samples (x2) 19.69% and 11.39% (relatively high)
+The range for TP53 WT samples (x6) is: 4.16% to 20.28% 
+
+****Patient SHH-MB 1235 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1235.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1235.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "SRRT", "GLI2")
+
+# for each of the 6 genes (in rows) this code calculates a Boolean (T/F) of whether that gene is expressed at less (F) or more (T) than a threshold
+expressed <- shh.malig.1235.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed) # number of cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this sums all the TRUE values in a column (cell): if colsums(expressed) is the same as the number of genes of interest (my_genes), this column (cell) will have a TRUE value
+# colSums(expressed): This function calculates the sum of values in each column of the expressed matrix. If 'expressed' is a logical matrix (where TRUE represents a gene being expressed and FALSE represents it not being expressed), then colSums will count the number of TRUE values (i.e., expressed genes) in each column (each cell in your dataset).
+# length(my_genes): This gives the total number of genes you are interested in.
+# colSums(expressed) == length(my_genes): This line compares the sum of expressed genes in each cell to the total number of genes of interest. It returns TRUE for a cell if the number of expressed genes (from your list of genes) in that cell is equal to the total number of genes in my_genes. Otherwise, it returns FALSE.
+# So, for each cell in your dataset, you get a TRUE or FALSE value indicating whether that cell expresses all the genes in your my_genes list. The result is a logical vector where each element corresponds to a cell in your dataset.
+
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add up the total number of cells that express ALL of the genes in 'my_genes' 
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the percent of CSC-like cells out of all malignant cells
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 1325 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1325.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1325.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "SRRT", "GLI2")
+
+expressed <- shh.malig.1325.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 1397 malignant only****
+TP53 mutant
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1397.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1397.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "SRRT", "GLI2")
+
+expressed <- shh.malig.1397.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 1416 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.1416.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-1416.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "SRRT", "GLI2")
+
+expressed <- shh.malig.1416.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 801 malignant only****
+TP53 mutant
+```{r eval=FALSE, echo=FALSE}
+shh.malig.801.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-801.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2")
+
+expressed <- shh.malig.801.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 831 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.831.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-831.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "SRRT", "GLI2")
+
+expressed <- shh.malig.831.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 877 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.877.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-877.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2")
+
+expressed <- shh.malig.877.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+****Patient SHH-MB 898 malignant only****
+```{r eval=FALSE, echo=FALSE}
+shh.malig.898.clust <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB-898.MaligCellsOnly.filteredCellsGenesMitoLessThanTenPrecent.CCdiffRegressed.SCT.clustered.rds")
+
+my_genes <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT")
+
+expressed <- shh.malig.898.clust$RNA@data[my_genes, ] > 0 # "0" is expression threshold
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(expressed)
+```
+
+```{r eval=FALSE, echo=FALSE}
+cells_express_all_myGenes <- colSums(expressed) == length(my_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sum(cells_express_all_myGenes) / ncol(expressed) * 100
+```
+
+Patient SHH-MB 1224 malignant only - only 16 cells, not clustered and not analysed further
+```{r eval=FALSE, echo=FALSE}
+# this object is unclustered and not normalised
+shh.malig.riem <- readRDS("outputs50K/Riemondy_outputs/humanSHHMB.malignantOnly.filteredCellsGenesMitoLessThan10percent.UNclustered.seurat.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset SHH-MB 1224 
+Idents(shh.malig.riem) <- "orig.ident"
+shh.malig.1224 <- subset(shh.malig.riem, subset = orig.ident == "1224")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(shh.malig.1224) # 16 cells only!
+```
+
+
+SECTION END
+##################################################################################################################
+
+##################################################################################################################
+
+***Group3, group4 and WNT subtype SOX2 gene signature expression***
+SHH-MB not included
+```{r eval=FALSE, echo=FALSE}
+# load the above object - contains all subtypes of patient MB!
+riem.seu.obj <- readRDS("outputs50K/Riemondy_outputs/humanMB.allGroups.filteredCellsGenes.SeuratObject.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# determine mitochondrial percentage - add this as a metadata column to shh.riem
+riem.seu.obj[["percent.mt"]] <- PercentageFeatureSet(riem.seu.obj, pattern = "^MT-")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# choose a 10% cut-off for mitochondrial gene expression (because of this paper, doi: 10.1093/bioinformatics/btaa751)
+riem.seu.obj <- subset(riem.seu.obj, subset = percent.mt < 10)
+ncol(riem.seu.obj)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(riem.seu.obj@meta.data$subgroup)
+```
+
+```{r eval=FALSE, echo=FALSE}
+riem.seu.obj.noSHH <- subset(riem.seu.obj, subset = subgroup != "SHH")
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(riem.seu.obj.noSHH)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(riem.seu.obj.noSHH, file = "./outputs50K/Riemondy_outputs/Gp3.Gp4.Wnt.MBsubset.LessThan10PercentMito.Unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapNonSHHMBSox2Network, fig.height=10, fig.width=25}
+# much weaker expression of CSC-like factors compared to SHH-MB subtype
+riem.seu.obj.noSHH <-  readRDS("outputs50K/Riemondy_outputs/Gp3.Gp4.Wnt.MBsubset.LessThan10PercentMito.Unclustered.rds")
+Idents(riem.seu.obj.noSHH) <- "coarse_cell_type"
+features <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2")
+
+riem.seu.obj.noSHH.scaled <- ScaleData(riem.seu.obj.noSHH, 
+                              features = features,
+                              verbose = FALSE)
+
+DoHeatmap(riem.seu.obj.noSHH.scaled, features = features, size = 10, 
+          slot = "scale.data", assay = NULL, group.by = "ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 35), legend.title = element_text(size=20), legend.text=element_text(size=15))
+```
+
+
+SECTION END
+##################################################################################################################
+
+##################################################################################################################
+***CSC-like Module Score for CSC factors in MB subgroups***
+I adapted code from here: https://romanhaa.github.io/projects/scrnaseq_workflow/#expression-of-individual-genes
+This section generates violin plots of module scores of the SOX2 network across subtypes of medulloblastoma. Only malignant cells are included in the analysis.
+```{r eval=FALSE, echo=FALSE}
+# load the above object - contains all subtypes of patient MB!
+riem.seu.obj <- readRDS("outputs50K/Riemondy_outputs/humanMB.allGroups.filteredCellsGenes.SeuratObject.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# determine mitochondrial percentage - add this as a metadata column to shh.riem
+riem.seu.obj[["percent.mt"]] <- PercentageFeatureSet(riem.seu.obj, pattern = "^MT-")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# choose a 10% cut-off for mitochondrial gene expression (because of this paper, doi: 10.1093/bioinformatics/btaa751)
+riem.seu.obj <- subset(riem.seu.obj, subset = percent.mt < 10)
+ncol(riem.seu.obj)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# exclude all non-malignant cells
+malig.riem <- subset(riem.seu.obj, subset = coarse_cell_type == "malignant")
+```
+
+```{r eval=FALSE, echo=FALSE}
+ncol(malig.riem)
+```
+
+```{r eval=FALSE, echo=FALSE}
+malig.riem <- SCTransform(malig.riem, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(malig.riem, file = "./outputs50K/Riemondy_outputs/malignantOnly.human.AllMB.lessThan10percentMito.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+malig.riem <- readRDS("outputs50K/Riemondy_outputs/malignantOnly.human.AllMB.lessThan10percentMito.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get module score for expression of these genes
+
+gene_network <- c("SOX2", "POU3F2", "ZIC2", "OTX2", "SRRT", "GLI2")
+
+csc.malig.riem <- AddModuleScore(
+  malig.riem,
+  features = list(gene_network),
+  name = 'SOX2_genes_score',
+  assay = 'SCT'
+)
+
+module_scores <- csc.malig.riem@meta.data %>%
+  group_by(subgroup) %>%
+  tally()
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note 'test_mod_score1' is the Seurat name of this metadata column
+head(csc.malig.riem@meta.data) 
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotGGplotCSCmoduleScoresAllMB}
+csc.malig.riem@meta.data %>%
+  ggplot(
+    aes(x = subgroup,
+        y = SOX2_genes_score1,
+        fill = subgroup
+    )
+  ) +
+  geom_violin(draw_quantiles = c(0.5), scale = 'area', trim = FALSE) +
+  geom_text(
+    data = module_scores,
+    aes(
+      x = subgroup,
+      y = -Inf,
+      label = paste0('n = ', format(n, big.mark = ',', trim = TRUE)),
+      vjust = -1
+    )
+  ) +
+  theme_bw() +
+  scale_x_discrete() +
+  scale_y_continuous(name = 'Module score', labels = scales::comma, expand = c(0.08, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 15),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 15),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    legend.position = 'none'
+  )
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+SECTION END
+##################################################################################################################
 
 
 
