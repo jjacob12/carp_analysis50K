@@ -1,0 +1,1500 @@
+---
+title: "DAOY-2D_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "2023-01-26"
+output: html_document
+---
+
+***scRNA-seq of DAOY 2D sample***
+This file was written to check gene expression in the DAOY-2D sample and to prepare the sample for downstream integration
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/DAOY_2D/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(presto)
+library(msigdbr)
+library(fgsea)
+library(RColorBrewer)
+library(org.Hs.eg.db)
+library(DOSE)
+library(clustree)
+library(tidyverse)
+library(magrittr)
+library(data.table)
+library(patchwork)
+})
+```
+
+Type of analysis: filtering cells and genes according to quality thresholds, clustering of the DAOY monolayer sample, proliferation scoring of clusters, marker identification, pathway enrichment of Seurat clusters, attempt to reduce the number of Seurat clusters (by lowering resolution argument in 'FindClusters' - decision made to proceed with greater rather than fewer clusters). Separate analyses were performed EXcluding and INcluding mitochondrial genes, the results of which were the same.
+
+###########################################################################################################
+***Generate Seurat object, filter the genes and cells, cluster the cells***
+```{r eval=FALSE, echo=FALSE}
+# load the data from scratch
+# load the DAOY-2D raw data (from "working_data" folder)
+data_dir <- "./working_data/DAOY-2D/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. n = 2922 cells (dyMono.data)
+dyMono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+
+# create the seurat object, keep genes expressed in 10 or more cells
+dyMono <- CreateSeuratObject(counts = dyMono.data,
+                          min.cells = 10, min.genes=2000,  # min.genesset high as this sample was                                                               more deeply sequenced.
+                          project = "dyMono")
+
+dim(dyMono) # 24,957 genes and 2922 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dyMono), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dyMono[mito.genes, ])/Matrix::colSums(dyMono)
+
+# add the mitochondrial gene percent to the metadata
+dyMono <- 
+  AddMetaData(object = dyMono, metadata = percent.mito, col.name = "percent.mito")
+
+# remove mitochondrial genes 
+dyMono <- dyMono[ ! grepl("^MT-", rownames(dyMono)), ]
+
+dim(dyMono) # 24,944 genes and 2922 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+dyMono <- subset(dyMono, subset = percent.mito < 0.1)
+dim(dyMono) # reduced to 24,944 genes and 2633 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the NON-normalised, NON-clustered seurat object
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+dyMono <- NormalizeData(dyMono)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyMono <- CellCycleScoring(dyMono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyMono$CC.difference <- dyMono$S.Score - dyMono$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+dyMono.input.integration <- SCTransform(dyMono, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# saved the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(dyMono.input.integration, "./outputs50K/DAOY_2D/DAOYmono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object.
+dyMono <- readRDS("outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotDAOYmonoRepUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(dyMono, label = TRUE, pt.size = 1, label.size = 4)
+```
+
+SECTION END
+#############################################################################################
+
+#############################################################################################
+***Repeat for min.genes=200 when creating Seurat object***
+Repeat the above this time using the usual filtering, i.e. when creating the Seurat object set min. genes = 200 (instead of 2000)
+```{r eval=FALSE, echo=FALSE}
+# load the data from scratch
+# load the DAOY-2D raw data (from "working_data" folder)
+data_dir <- "./working_data/DAOY-2D/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+
+# note these are .gz files which can be directly read. n = 2922 cells (dyMono.data)
+dyMono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+# create the seurat object, keep genes expressed in 10 or more cells
+dyMono <- CreateSeuratObject(counts = dyMono.data,
+                          min.cells = 10, min.genes=200,  # min.genes set to usual level
+                          project = "dyMono")
+
+dim(dyMono) # 24,957 genes and 2922 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes and plot percent mitochondrial gene expression
+dyMono[["percent.mt"]] <- PercentageFeatureSet(dyMono, pattern = "^MT-")
+
+VlnPlot(dyMono, features = "percent.mt")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+dyMono <- subset(dyMono, subset = percent.mt < 10)
+dim(dyMono) # reduced to 24,957 genes and 2640 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes 
+dyMono <- dyMono[ ! grepl("^MT-", rownames(dyMono)), ]
+
+dim(dyMono) # reduced to 24,944 genes and still 2640 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dyMono,
+        file = "./outputs50K/DAOY_2D/MinGenes200.filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+dyMono <- NormalizeData(dyMono)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyMono <- CellCycleScoring(dyMono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyMono$CC.difference <- dyMono$S.Score - dyMono$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# apply sctransform and cluster the cells
+dyMono <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+So even with min.genes=200 the UMAP plot looks much the same (with one more cluster) as the UMAP plot when min.genes=2000.
+```{r eval=FALSE, echo=FALSE, DimplotDAOYmonoRepUmapSCTransform, fig.height=6, fig.width=10}
+DimPlot(dyMono, label = TRUE, pt.size = 1, label.size = 4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dyMono,
+        file = "./outputs50K/DAOY_2D/MinGenes200.filt.MitoCellsGenes.RiboRetained.SCT.clustered.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono <- readRDS("outputs50K/DAOY_2D/MinGenes200.filt.MitoCellsGenes.RiboRetained.SCT.clustered.seurat.DaoyMonolayer.rds")
+```
+
+SECTION END
+##############################################################################################
+
+
+##############################################################################################
+***Compute cell proliferation module score for DAOY monolayer cells***
+(min.genes=2000)
+The dyMono object should consist of cells with < 10% mitochondrial gene expression and in which the mitochondrial genes have been excluded. These genes excluded because they appear recurrently in Seurat clusters from different samples and make cell state identification or cell type classification more difficult.
+```{r eval=FALSE, echo=FALSE}
+# these cell cycle genes are already in Seurat v4.
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+prolif.genes <- list(c(s.genes, g2m.genes))
+```
+
+```{r eval=FALSE, echo=FALSE, AddModuleScoreProlifernDAOYmonolayer, fig.height=6, fig.width=10}
+# make a feature plot superimposing cell proliferation scores on Seurat clusters
+phase.dyMono <- AddModuleScore(dyMono,
+                        features = prolif.genes,
+                        name = "prolif.genes")
+FeaturePlot(phase.dyMono, features = 'prolif.genes1', label = TRUE, repel = TRUE, pt.size = 1,
+            label.size = 4) +
+   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) +
+  labs(title = "")
+```
+
+SECTION END
+############################################################################################
+
+############################################################################################
+***Gene expression and cluster markers in DAOY-2D cells***
+(min.genes=2000)
+```{r eval=FALSE, echo=FALSE}
+# rough-and-ready violin plots of gene expression for a quick look
+VlnPlot(dySpher, features = c("CNTN1", "CNTN2"))
+```
+
+```{r eval=FALSE, echo=FALSE, VlnPlotGranuleGenesDAOYmono, fig.height=17, fig.width=22}
+# plot expression of specific genes with better formatting
+p1a <- VlnPlot(dyMono,
+               features = "MEIS1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(dyMono,
+               features = "MEIS2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(dyMono,
+               features = "SATB2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(dyMono,
+               features = "ZIC1") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(dyMono,
+               features = "ZIC2") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(dyMono,
+              features = "JKAMP") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster - slow to run!
+dyMono.POSmarkers <- 
+  FindAllMarkers(object = dyMono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+Cluster 5 is enriched for ribosome genes
+```{r eval=FALSE, echo=FALSE}
+dyMono.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r eval=FALSE, echo=FALSE}
+#ncheck markers of interest - None of these five genes is expressed
+dyMono.POSmarkers %>%
+  filter(gene %in% c("NEUROD1", "CNTN1", "CNTN2", "MEIS1", "DCX"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the positive markers of DAOY-2D (rep)
+saveRDS(dyMono.POSmarkers, 
+        file = "./outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the positive markers of DAOY-2D (rep)
+dyMono.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load dyMono.POSmarkers seurat object above, then only run this chunk
+# find the top 10 markers of each Seurat cluster
+dyMono.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this step is important to avoid a warning re omission of specific genes of interest in the top 10 list of markers from the scale data slot
+# see https://github.com/satijalab/seurat/issues/1369
+dyMono <- ScaleData(object = dyMono, features = rownames(dyMono)) 
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapDaoyMonoTop10markers5clustersRes0.5, fig.height=8, fig.width=10}
+# generate a heatmap for top 10 genes of each cluster
+DoHeatmap(dyMono, features = top10$gene) + guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
+```
+
+END OF SECTION
+############################################################################################
+
+############################################################################################
+***FGSEA to find gene ontology pathway enrichment applied to cell clusters DAOY-2D (rep)***
+(for min.genes=2000)
+```{r eval=FALSE, echo=FALSE}
+# prepare the data for gProfiler (web app) input. Use PRESTO package which performs a fast Wilcoxon rank sum test to rank the genes in Seurat clusters
+dyMono.genes.presto <- wilcoxauc(dyMono, 'seurat_clusters')
+nrow(dyMono.genes.presto)
+dplyr::count(dyMono.genes.presto, group)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate MSigDB gene sets - Gene Ontology biological pathways
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+
+****Cluster 0 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust0 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust0) # 9 genes only!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert dataframe column into a vector with 'deframe'
+ranks.clus0 <- deframe(dyMono.genes.presto.clust0)
+head(ranks.clus0)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+# note: when logFC > 0.25 scoreType must be 'pos'. This will show only positive enrichment scores.
+fgseaRes.clus0.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus0, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus0.GOBP <- fgseaRes.clus0.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus0.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+****Cluster 1 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust1 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust1) # 658 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus1 <- deframe(dyMono.genes.presto.clust1)
+head(ranks.clus1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus1.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus1, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - enriched for single pathway only: cell-cell adhesion
+fgseaResTidy.clus1.GOBP <- fgseaRes.clus1.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus1.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus1.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster1.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+****Cluster 2 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust2 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust2) # 555 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(dyMono.genes.presto.clust2)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus2.GOBP <- fgseaRes.clus2.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus2.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+****Cluster 3 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust3 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust3) # 570 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- deframe(dyMono.genes.presto.clust3)
+head(ranks.clus3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus3.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus3.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list! fwrite requires 'data.table' package
+# fwrite converts a dataframe to a csv file.
+fwrite(fgseaResTidy.clus3.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster3.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+*****Cluster 4 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust4 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "4" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust4) # 803 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus4 <- deframe(dyMono.genes.presto.clust4)
+head(ranks.clus4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus4.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus4, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus4.GOBP <- fgseaRes.clus4.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus4.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+
+*****Cluster 5 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust5 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "5" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust5) # 750 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus5 <- deframe(dyMono.genes.presto.clust5)
+head(ranks.clus5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus5.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus5, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - enriched for protein synthesis pathways
+fgseaResTidy.clus5.GOBP <- fgseaRes.clus5.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus5.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus5.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster5.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+END OF SECTION
+############################################################################################
+
+
+############################################################################################
+***Reduce the number of clusters in DAOY-2D (repeat) sample***
+(for min.genes=2000)
+As can be seen from the above heatmap the res=0.5 clustering seems to generate too many clusters without enrichment for specific pathways. For example, cluster 2 has many genes in common with cluster 1. Also cluster 3 and cluster 5 share many markers in common. Try resolution=0.1 and make a new heatmap with res = 0.1 chosen.
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.res0.1 <- SCTransform(dyMono, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.1)
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotDAOYmonoRepUmapSCTransformRes0.1, fig.height=6, fig.width=10}
+DimPlot(dyMono.res0.1, label = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dyMono.res0.1, 
+        file = "./outputs50K/DAOY_2D/DAOYmono.MitoCellsGenesFilt.RiboRetained.SCT.Res0.1.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster - slow to run
+dyMono.res0.1.POSmarkers <- 
+  FindAllMarkers(object = dyMono.res0.1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.res0.1.POSmarkers %>%
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this clustering is better than res=0.5 clustering which over-clusters the sample
+saveRDS(dyMono.res0.1.POSmarkers,
+        file = "./outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.Res0.1.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.res0.1.POSmarkers <- readRDS("outputs50K/DAOY_2D/POS.markers.RiboRetained.DAOYmonolayerRep.SCT.Res0.1.clustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.res0.1.POSmarkers %>% 
+  group_by(cluster) %>%
+    top_n(n = 20, wt = avg_log2FC) -> top20
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this step is important to avoid a warning re omission of specific genes of interest in the top 10 list of markers from the scale data slot
+# see https://github.com/satijalab/seurat/issues/1369
+dyMono.res0.1.scaled <- ScaleData(object = dyMono.res0.1, features = rownames(dyMono.res0.1)) 
+```
+
+Note that cluster 2 genes visually have the least expression difference compared to cluster 0 and cluster 1
+```{r eval=FALSE, echo=FALSE, HeatmapDaoyMonoTop20markers5clustersRes0.1, fig.height=8, fig.width=10}
+DoHeatmap(dyMono.res0.1.scaled, features = top20$gene) + guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# prepare the data for gProfiler (web app) input, run PRESTO
+dyMono.res0.1.genes.presto <- wilcoxauc(dyMono.res0.1, 'seurat_clusters')
+nrow(dyMono.res0.1.genes.presto)
+dplyr::count(dyMono.res0.1.genes.presto, group)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.res0.1.genes.presto.clust0 <- dyMono.res0.1.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.1.genes.presto.clust0) # 1131 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# gPROFILER input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dyMono.res0.1.genes.presto.clust0, 
+         "./outputs50K/DAOY_2D/daoyMono.res0.1.cluster0.genes.RiboRetained.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.res0.1.genes.presto.clust1 <- dyMono.res0.1.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.1.genes.presto.clust1) # 550 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# I did not pursue this further by running the PRESTO output through FGSEA to look for enriched pathways at this resolution (0.1)
+# gPROFILER input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app if deemed necessary later.
+write.csv(dyMono.res0.1.genes.presto.clust1, 
+          "./outputs50K/DAOY_2D/daoyMono.res0.1.cluster1.genes.RiboRetained.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.res0.1.genes.presto.clust2 <- dyMono.res0.1.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.res0.1.genes.presto.clust2) # 9 genes only, WHICH ARE NOT WORTH SAVING!
+```
+
+END OF SECTION
+############################################################################################
+
+############################################################################################
+***FGSEA to find gene ontology pathway enrichment applied to cell clusters DAOY-2D (rep)***
+(for min.genes=200)
+```{r eval=FALSE, echo=FALSE}
+# load the data for CreateSeuratObject min.genes=200
+dyMono <- readRDS("outputs50K/DAOY_2D/MinGenes200.filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# prepare the data for gProfiler (web app) input. Use PRESTO package which performs a fast Wilcoxon rank sum test to rank the genes in Seurat clusters
+dyMono.genes.presto <- wilcoxauc(dyMono, 'seurat_clusters')
+nrow(dyMono.genes.presto)
+dplyr::count(dyMono.genes.presto, group)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate MSigDB gene sets - Gene Ontology biological pathways
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+
+****Cluster 0 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust0 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust0) # 9 genes only, so no need to run fgsea function!
+```
+
+****Cluster 1 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust1 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust1) # 911 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus1 <- deframe(dyMono.genes.presto.clust1)
+head(ranks.clus1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus1.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus1, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data 
+fgseaResTidy.clus1.GOBP <- fgseaRes.clus1.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus1.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # only 1 pathway is enriched ('cell-cell adhesion' padj = 0.0148)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus1.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster1.minGenes200.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+****Cluster 2 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust2 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust2) # 540 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(dyMono.genes.presto.clust2)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus2.GOBP <- fgseaRes.clus2.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus2.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus2.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster2.minGenes200.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+****Cluster 3 FGSEA****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust3 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust3) # 787 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- deframe(dyMono.genes.presto.clust3)
+head(ranks.clus3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus3.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus3.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list! fwrite requires 'data.table' package
+# fwrite converts a dataframe to a csv file.
+fwrite(fgseaResTidy.clus3.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster3.minGenes200.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+*****Cluster 4 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust4 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "4" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust4) # 580 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus4 <- deframe(dyMono.genes.presto.clust4)
+head(ranks.clus4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus4.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus4, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data 
+fgseaResTidy.clus4.GOBP <- fgseaRes.clus4.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus4.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are multiple enriched pathways (padj < 0.05) - top 10 pathways all related to protein synthesis
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list! fwrite requires 'data.table' package
+# fwrite converts a dataframe to a csv file.
+fwrite(fgseaResTidy.clus4.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster4.minGenes200.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+*****Cluster 5 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust5 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "5" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust5) # 751 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus5 <- deframe(dyMono.genes.presto.clust5)
+head(ranks.clus5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus5.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus5, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus5.GOBP <- fgseaRes.clus5.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus5.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are multiple enriched pathways (padj < 0.05) - top pathways all related to protein synthesis again
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus5.GOBP, 
+       file = "./outputs50K/DAOY_2D/cluster5.minGenes200.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+*****Cluster 6 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust6 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "6" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust6) # only 23 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus6 <- deframe(dyMono.genes.presto.clust6)
+head(ranks.clus6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus6.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus6, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.clus6.GOBP <- fgseaRes.clus6.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus6.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # no enriched pathways
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Alternate workflow with removal of cells with > 10% mitochondrial gene expression, RETENTION of mitochondrial genes (WITHOUT regression)***
+Gives essentially the same result as when mitochondrial genes are retained!
+```{r eval=FALSE, echo=FALSE}
+# load the gene expression matrix and create the Seurat object first, then run below code
+# identify mitochondrial genes
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dyMono), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dyMono[mito.genes, ])/Matrix::colSums(dyMono)
+
+# add the mitochondrial gene percent to the metadata
+dyMono <- 
+  AddMetaData(object = dyMono, metadata = percent.mito, col.name = "percent.mito")
+
+# remove all cells with percent.mito > 10%
+dyMono <- subset(dyMono, subset = percent.mito < 0.1)
+dim(dyMono) # reduced to 24,944 genes and 2633 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the NON-normalised, NON-clustered seurat object. Only cells with < 10% mitochondrial genes have been retained. Ribosome genes retained. In the retained cells, mitochondrial genes were NOT regressed during the sctransform step.
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/MITO_RETAIN/filt.MitoCellsGenes.RiboRetained.MitoRetainedUNregressed.seurat.DaoyMonolayerRep.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# normalise object before running cell cycle scores as per Seurat github issue: https://github.com/satijalab/seurat/issues/1679
+dyMono <- NormalizeData(dyMono)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyMono <- CellCycleScoring(dyMono,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyMono$CC.difference <- dyMono$S.Score - dyMono$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object is input for integration - already SCTransformed, CCdiff regressed, and RunPCA()
+dyMono.input.integration <- SCTransform(dyMono, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# saved the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow, should that prove necessary
+saveRDS(dyMono.input.integration, "./outputs50K/DAOY_2D/MITO_RETAIN/DAOYmono.inputIntegration.RiboRetained.MitoRetainedUNregressed.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono <- SCTransform(dyMono, vars.to.regress = "CC.difference", 
+                      method = "glmGamPoi",
+                      vst.flavor = "v2",
+                      verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE, resolution = 0.5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(dyMono, file = "./outputs50K/DAOY_2D/MITO_RETAIN/DAOYmono.MitoCellsGenesFilt.RiboRetained.MitoRetainedUNregressed.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotDAOYmonoRepUmapMitochGenesRetainedSCTransform, fig.height=6, fig.width=10}
+# there are 8 clusters (0-7) instead of 7 clusters (0-6) with removal of mitoch genes
+DimPlot(dyMono, label = TRUE, pt.size = 1, label.size = 4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster - slow to run!
+dyMono.POSmarkers <- 
+  FindAllMarkers(object = dyMono, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.POSmarkers %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 30)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the positive markers of DAOY-2D (rep)
+saveRDS(dyMono.POSmarkers, 
+        file = "./outputs50K/DAOY_2D/MITO_RETAIN/POS.markers.RiboRetained.MitoRetainedUNregressed.DAOYmonolayerRep.SCT.clustered.rds")
+```
+
+
+****FGSEA to find gene ontology pathway enrichment applied to cell clusters DAOY-2D (rep)****
+(for min.genes=2000)
+```{r eval=FALSE, echo=FALSE}
+# prepare the data for gProfiler (web app) input. Use PRESTO package which performs a fast Wilcoxon rank sum test to rank the genes in Seurat clusters
+dyMono.genes.presto <- wilcoxauc(dyMono, 'seurat_clusters')
+nrow(dyMono.genes.presto)
+dplyr::count(dyMono.genes.presto, group)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate MSigDB gene sets - Gene Ontology biological pathways
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+*****Cluster 0 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust0 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "0" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust0) # 844 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert dataframe column into a vector with 'deframe'
+ranks.clus0 <- deframe(dyMono.genes.presto.clust0)
+head(ranks.clus0)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+# note: when logFC > 0.25 scoreType must be 'pos'. This will show only positive enrichment scores.
+fgseaRes.clus0.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus0, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - only 1 enriched pathway: cell-dell adhesion, padj only 0.01008
+fgseaResTidy.clus0.GOBP <- fgseaRes.clus0.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus0.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus0.GOBP, 
+       file = "./outputs50K/DAOY_2D/MITO_RETAIN/cluster0.MitoRetainUNregressed.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+*****Cluster 1 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust1 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "1" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust1) # 506 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus1 <- deframe(dyMono.genes.presto.clust1)
+head(ranks.clus1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus1.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus1, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus1.GOBP <- fgseaRes.clus1.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus1.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+*****Cluster 2 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust2 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "2" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust2) # 684 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus2 <- deframe(dyMono.genes.presto.clust2)
+head(ranks.clus2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus2.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus2.GOBP <- fgseaRes.clus2.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus2.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+*****Cluster 3 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust3 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "3" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust3) # 569 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus3 <- deframe(dyMono.genes.presto.clust3)
+head(ranks.clus3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus3.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus3, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - enriched for protein synthesis (cytoplasmic translation)
+fgseaResTidy.clus3.GOBP <- fgseaRes.clus3.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus3.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list! fwrite requires 'data.table' package
+# fwrite converts a dataframe to a csv file.
+fwrite(fgseaResTidy.clus3.GOBP, 
+       file = "./outputs50K/DAOY_2D/MITO_RETAIN/cluster3.MitoRetainUNregressed.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+*****Cluster 4 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust4 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "4" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust4) # 9 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus4 <- deframe(dyMono.genes.presto.clust4)
+head(ranks.clus4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus4.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus4, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus4.GOBP <- fgseaRes.clus4.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus4.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>%
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+
+*****Cluster 5 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust5 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "5" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust5) # 4 genes only
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus5 <- deframe(dyMono.genes.presto.clust5)
+head(ranks.clus5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus5.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus5, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus5.GOBP <- fgseaRes.clus5.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus5.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+
+*****Cluster 6 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust6 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "6" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust6) # 20 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus6 <- deframe(dyMono.genes.presto.clust6)
+head(ranks.clus6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus6.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus6, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus6.GOBP <- fgseaRes.clus6.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus6.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+
+*****Cluster 7 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust7 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "7" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust7) # 758 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus7 <- deframe(dyMono.genes.presto.clust7)
+head(ranks.clus7)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus7.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus7, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - cytoplasmic translation/protein synthesis
+fgseaResTidy.clus7.GOBP <- fgseaRes.clus7.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus7.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus7.GOBP, 
+       file = "./outputs50K/DAOY_2D/MITO_RETAIN/cluster7.MitoRetainUNregressed.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+
+*****Cluster 7 FGSEA*****
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list
+dyMono.genes.presto.clust7 <- dyMono.genes.presto %>% 
+  dplyr::filter(group == "7" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyMono.genes.presto.clust7) # 750 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus7 <- deframe(dyMono.genes.presto.clust7)
+head(ranks.clus7)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.clus7.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus7, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data - NO enriched pathways!
+fgseaResTidy.clus7.GOBP <- fgseaRes.clus7.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.clus7.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(10) # there are no enriched pathways in this cluster, nothing to save!
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.clus7.GOBP, 
+       file = "./outputs50K/DAOY_2D/MITO_RETAIN/cluster7.MitoRetainUNregressed.DAOYmono.multifgsea.presto.GOBiolProcessGenes.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+SECTION END
+############################################################################################################
+
