@@ -1,0 +1,754 @@
+---
+title: "DAOY-CBO_Seurat_EXPLORE1_50K"
+author: "JJ"
+date: "12/08/2022"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/DAOY-CBO/figures/")
+```
+
+```{r libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(SeuratWrappers)
+library(glmGamPoi)
+library(magrittr)
+library(RColorBrewer)
+library(Matrix)
+library(patchwork)
+library(monocle3)
+library(ReactomePA)
+library(msigdbr)
+library(fgsea)
+library(enrichplot)
+library(presto)
+library(org.Hs.eg.db)
+library(DOSE)
+library(heatmap3)
+library(reshape2)
+library(qlcMatrix)
+library(tidyverse)
+})
+```
+
+Type of analysis: clustering and annotation of the sample, identification of DAOY malignant clusters and differential expression of malignant cluster markers, functional geneset enrichment
+
+
+***Creation and clustering of the Seurat object***
+```{r eval=FALSE, echo=FALSE}
+# load the DAOY-CBO raw data
+data_dir <- "./working_data/DAOY-CBO/"   # the dot is current dir and is essential!
+list.files(data_dir) # should show matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note these are .gz files which can be directly read. There are 3654 cells and 36,601 genes.
+dyCbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo <- CreateSeuratObject(counts = dyCbo.data,
+                          min.cells = 10, min.genes=200, # note min.cells = 10
+                          project = "dyCbo")
+
+dim(dyCbo) # 21,928 genes and 3654 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# identify mitochondrial genes and calculate percent
+mito.genes <- grep(pattern = "^MT", x = rownames(x = dyCbo), value = TRUE)
+percent.mito <- 
+  Matrix::colSums(dyCbo[mito.genes, ])/Matrix::colSums(dyCbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# add the mitochondrial gene percent to the metadata
+dyCbo <- 
+  AddMetaData(object = dyCbo, metadata = percent.mito, col.name = "percent.mito")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove mitochondrial genes (this is acceptable: e.g. see https://nbisweden.github.io/excelerate-scRNAseq/session-qc/Quality_control.html)
+
+# remove mitochondrial genes 
+dyCbo <- dyCbo[ ! grepl("^MT-", rownames(dyCbo)), ]
+dim(dyCbo)  # 21,915 genes, 3654 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove all cells with percent.mito > 10%
+dyCbo <- subset(dyCbo, subset = percent.mito < 0.1)
+dim(dyCbo) # 21,915 genes and 3037 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the above object
+saveRDS(dyCbo,
+        file = "./outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object, which has only been through gene and cell filtering
+dyCbo <- readRDS("outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load cell cycle genes, calculate cell-cycle difference in advance of regressing out CC difference
+
+# include normalisation step of dyCbo before cell cycle scoring as per github issue: https://github.com/satijalab/seurat/issues/1679
+dyCbo <- NormalizeData(dyCbo)
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+# calculate CC difference
+dyCbo <- CellCycleScoring(dyCbo,
+                g2m.features = g2m.genes,
+                s.features = s.genes)
+dyCbo$CC.difference <- dyCbo$S.Score - dyCbo$G2M.Score
+```
+
+```{r eval=FALSE, echo=FALSE}
+# regressing out nUMI, percent.mito, percent.ribo in addition to CC.difference made cluster assignment
+# harder so stick to only regressing CC.difference!!
+# this object as input for SCTransform integration, UN-clustered
+dyCbo.input.integration <- SCTransform(dyCbo, 
+                   vars.to.regress = "CC.difference",
+                   method = "glmGamPoi",
+                   vst.flavor = "v2",
+                   verbose = FALSE) %>% 
+  RunPCA(npcs = 30, verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the SCTransformed object, CC difference regressed, PCA reduction, as input for integrated workflow
+saveRDS(dyCbo.input.integration, "./outputs50K/DAOY-CBO/DaoyCbo.inputIntegration.RiboGenesNotRemoved.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotClusterMapDaoyCbo, fig.height=6, fig.width=10}
+# this object is fully SCTransformed and clustered
+dyCbo.clust <- SCTransform(dyCbo, vars.to.regress = "CC.difference", method = "glmGamPoi", verbose = FALSE) %>% 
+  RunPCA(verbose = FALSE) %>% 
+  RunUMAP(dims=1:30, verbose=FALSE) %>% 
+  FindNeighbors(dims=1:30, verbose=FALSE) %>% 
+  FindClusters(verbose=FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the clustered, SCTransformed object above
+saveRDS(dyCbo.clust, file = "./outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the above object, ribosome genes included
+dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=10}
+DimPlot(dyCbo.clust, label = TRUE, repel = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dyCbo.clust$seurat_clusters)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Identify ribosomal genes: I have checked that there are ribosomal gene names beginning with RP, RPL and RPS
+ribosomal_genes <- grep("^RP|^RPL|^RPS", x = rownames(x = dyCbo), value = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+length(ribosomal_genes)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster with ribosome genes EXCLUDED - not recommended!
+dyCbo.markers.test <- FindAllMarkers(object = dyCbo.clust,
+                                features = setdiff(rownames(x = dyCbo), ribosomal_genes), 
+                                only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use  - NOT USED for downstream analysis
+saveRDS(dyCbo.markers.test, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.DAOYcbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in DAOY-CBO folder as csv file also
+write.csv(dyCbo.markers.test, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.DAOYcbo.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get the markers of each cluster with ribosome genes INCLUDED
+dyCbo.markers.test.2 <- FindAllMarkers(object = dyCbo.clust,
+                                only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# look at the top markers of DAOY-CBO clusters
+dyCbo.markers.test.2 %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::slice_head(n = 30)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use
+saveRDS(dyCbo.markers.test.2, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the markers of each cluster in DAOY-CBO folder as csv file also
+write.csv(dyCbo.markers.test.2, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note ribosome genes retained
+dyCbo.markers.test.2 <- read.csv("outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# note strong expression of PTCH1 in cluster 9
+dyCbo.markers.test.2 %>%
+  dplyr::filter(cluster == "9") %>% 
+  slice_head(n = 40)
+```
+
+SECTION END
+##############################################################################################
+
+##############################################################################################
+***Pseudotime analysis of DAOY-CBO, DAOY-only cell clusters 9 and 13***
+```{r eval=FALSE, echo=FALSE}
+Idents(dyCbo.clust) <- "seurat_clusters"
+dyCbo.clust.sub <- subset(dyCbo.clust, idents = c("9", "13")) %>% 
+  ScaleData()
+```
+
+```{r eval=FALSE, echo=FALSE}
+DimPlot(dyCbo.clust.sub)
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=6, fig.width=10}
+cds <- as.cell_data_set(dyCbo.clust.sub)
+cds <- cluster_cells(cds)
+p1 <- plot_cells(cds, show_trajectory_graph = FALSE)
+p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE)
+wrap_plots(p1, p2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo.clust.sub <- as.Seurat(cds, assay = NULL)
+cds <- as.cell_data_set(dyCbo.clust.sub)
+cds <- learn_graph(cds)
+plot_cells(cds, label_groups_by_cluster = FALSE, label_leaves = FALSE, label_branch_points = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# trying to computationally select the root cells did not work, and the code below was to try and do this computationally - 
+# cluster1.cells <- WhichCells(object = dyCbo.clust.sub, idents = 1)
+# cds <- order_cells(cds, root_cells = cluster1.cells)
+cds <- order_cells(cds)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(cds,
+        file = "./outputs50K/DAOY-CBO/pseudotime.DAOYonlyCluster9Cluster13subset.DAOYcbo.monocle3object.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+cds <- readRDS("outputs50K/DAOY-CBO/pseudotime.DAOYonlyCluster9Cluster13subset.DAOYcbo.monocle3object.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, PlotcellsMonocle3subsetDAOYonlyDAOYcboClusters9and13, fig.height=4, fig.width=4}
+plot_cells(cds, color_cells_by = "pseudotime", label_cell_groups = FALSE, label_leaves = FALSE, 
+    label_branch_points = FALSE, cell_size = 1, show_trajectory_graph = FALSE)
+```
+
+SECTION END
+##############################################################################################
+
+##############################################################################################
+***Transcriptomic comparison of annotated DAOY-CBO and CBO datasets at CLUSTER level***
+code from: https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/Tutorial.md
+First, we need to calculate the average transcriptome profiles for every annotated cell type in the reference data set and every cell cluster in the query data set. UMAP plots of the annotated cell types is shown below.
+
+****Cluster annotation****
+```{r eval=FALSE, echo=FALSE}
+# load the object, ribosome genes included, mitochondrial genes removed as their inclusion makes cell type annotation more difficult
+dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# THIS IS THE BEST ANNOTATION SO FAR (May 2023)
+# continue to replace the cluster numbers with the identity of each cluster
+new.cluster.ids <- c("Roof Plate_1", "IVth ventricle/CP", "RL-derived_2", 
+                     "Purkinje cells_2", "Granule neurons", "Purkinje cells_1", "Glia-like",
+                     "Roof plate_2", "Uncertain", "DAOY_cluster_9", 
+                     "Granule precursors", "Oligodendrocytes", "Ciliated cells", "DAOY_cluster_13", 
+                     "DAOY_cluster_14")
+
+names(new.cluster.ids) <- levels(dyCbo.clust)
+dyCbo.annotate <- RenameIdents(dyCbo.clust, new.cluster.ids)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- dyCbo.annotate@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create celltype column
+metadata$celltype <- NA
+metadata$celltype[which(metadata$seurat_clusters == "0")] <- "Roof Plate_1"
+metadata$celltype[which(metadata$seurat_clusters == "1")] <- "IVth ventricle/CP"
+metadata$celltype[which(metadata$seurat_clusters == "2")] <- "RL-derived_2"
+metadata$celltype[which(metadata$seurat_clusters == "3")] <- "Purkinje cells_2"
+metadata$celltype[which(metadata$seurat_clusters == "4")] <- "Granule neurons"
+metadata$celltype[which(metadata$seurat_clusters == "5")] <- "Purkinje cells_1"
+metadata$celltype[which(metadata$seurat_clusters == "6")] <- "Glia-like"
+metadata$celltype[which(metadata$seurat_clusters == "7")] <- "Roof plate_2"
+metadata$celltype[which(metadata$seurat_clusters == "8")] <- "Uncertain"
+metadata$celltype[which(metadata$seurat_clusters == "9")] <- "DAOY_cluster_9"
+metadata$celltype[which(metadata$seurat_clusters == "10")] <- "Granule precursors"
+metadata$celltype[which(metadata$seurat_clusters == "11")] <- "Oligodendrocytes"
+metadata$celltype[which(metadata$seurat_clusters == "12")] <- "Ciliated cells"
+metadata$celltype[which(metadata$seurat_clusters == "13")] <- "DAOY_cluster_13"
+metadata$celltype[which(metadata$seurat_clusters == "14")] <- "DAOY_cluster_14"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo.annotate@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the file
+saveRDS(dyCbo.annotate, 
+        file = "./outputs50K/DAOY-CBO/DaoyCbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the annotated object
+dyCbo.annotate <- 
+  readRDS("outputs50K/DAOY-CBO/DaoyCbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotDAOYcboAnnotated, fig.height=6, fig.width=10}
+DimPlot(dyCbo.annotate, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 1,
+        label.size = 4) +
+  theme(legend.position = "none")
+```
+
+SECTION END
+##############################################################################################
+
+##############################################################################################
+***Gene expression in malignant DAOY clusters***
+```{r eval=FALSE, echo=FALSE}
+Idents(dyCbo.clust) <- "seurat_clusters"
+dyOnly.dyCbo.2 <- subset(dyCbo.clust, idents = c("9", "13", "14"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
+dyOnly.dyCbo.2.rescaled <- ScaleData(dyOnly.dyCbo.2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save all the malignant clusters 9,13,14 - with ribosome genes retained
+saveRDS(dyOnly.dyCbo.2, 
+        file = "./outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyOnly.dyCbo.2 <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyOnly.dyCbo.2.rescaled <- ScaleData(dyOnly.dyCbo.2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# cluster 8 = 136 cells, cluster 13 = 74 cells, cluster 14 = 55 cells
+table(dyOnly.dyCbo.2.rescaled$seurat_clusters)
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=14, fig.width=12}
+# analyse candidate CSC-like gene expression
+VlnPlot(dyOnly.dyCboAnnot.rescaled,
+        features = c("SOX2", "POU3F2","FABP7", "ERBB4", "OTX2", "ZIC2", "GLI2", "PTCH1", "PAX6"))
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=10}
+VlnPlot(dyOnly.dyCbo.2.rescaled,
+        features = c("SOX2", "POU3F2","FABP7", "ERBB4", "OTX2", "ZIC2", "GLI2", "PTCH1", "PAX6"))
+```
+
+SECTION END
+##############################################################################################
+
+##############################################################################################
+***Malignant clusters - annotations and gene expression***
+Malignant clusters are 9, 13, 14. Only 1 NEUROD1+ cluster which is non-malignant.
+
+```{r eval=FALSE, echo=FALSE}
+dyOnly.dyCboAnnotate <- subset(dyCbo.annotate, 
+                               idents = c("DAOY_cluster_9",
+                                          "DAOY_cluster_13",
+                                          "DAOY_cluster_14"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# should rescale the object after subsetting (see https://github.com/satijalab/seurat/issues/2365)
+dyOnly.dyCboAnnot.rescaled <- ScaleData(dyOnly.dyCboAnnotate)
+```
+
+```{r eval=FALSE, echo=FALSE}
+new.cluster.ids.subset <- c("DAOY_cluster_9", "DAOY_cluster_13", "DAOY_cluster_14")
+names(new.cluster.ids.subset) <- levels(dyOnly.dyCboAnnot.rescaled)
+dyOnly.dyCboAnnot.rescaled <- RenameIdents(dyOnly.dyCboAnnot.rescaled, new.cluster.ids.subset)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# cluster 9 = 138 cells, cluster 13 = 73 cells, cluster 14 = 60 cells
+table(dyOnly.dyCboAnnot.rescaled$seurat_clusters)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save all the malignant clusters 8,13,14
+saveRDS(dyOnly.dyCboAnnot.rescaled, 
+        file = "./outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the subsetted object
+dyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
+```
+
+****Expression of the SOX2 regulatory network in DAOY cells in co-culture with organoid****
+```{r eval=FALSE, echo=FALSE, ViolinPlotSOX2NetworkDaoyOnlyDaoyCbo, fig.height=17, fig.width=22}
+# ARS2/SRRT is not expressed (ARS2 and SRRT are same gene), also POU5F1 (OCT4) not expressed but other POU domain factors are, e.g.POU3F2
+p1a <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("FABP7")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("ZIC2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("SOX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("OTX2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("POU3F2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("GLI2")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, DAOY-cocultViolinPlotSox2NesErbb4DaoyOnlyDaoyCbo, fig.height=17, fig.width=22}
+p2a <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("ERBB4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2b <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("NES")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2c <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("PTCH1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2d <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2e <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("NRG3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2f <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
+        features = c("DCX")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
+```
+
+```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1DAOYcbo, fig.height=17, fig.width=27}
+# expression of malignant cluster markers
+p3a <- VlnPlot(dyCbo.annotate, 
+        features = c("PTCH1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3b <- VlnPlot(dyCbo.annotate, 
+        features = c("MEIS1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3c <- VlnPlot(dyCbo.annotate, 
+        features = c("POU3F4")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3d <- VlnPlot(dyCbo.annotate, 
+        features = c("FGFBP3")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3e <- VlnPlot(dyCbo.annotate, 
+        features = c("TWIST1")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+p3f <- VlnPlot(dyCbo.annotate, 
+        features = c("LHX9")) +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
+```
+
+```{r eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
+# cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
+# malignant clusters are cluster 8 (n=137 cells), cluster 12 (n=77 cells), and cluster 13 (n=55 cells)
+# little or no expression of ATOH1 and FUT4
+VlnPlot(dyCbo.annotate, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX", "ATOH1"))
+```
+
+SECTION END
+##############################################################################################
+
+##############################################################################################
+***Gene set enrichment analysis (GSEA) using FGSEA and PRESTO***
+from: https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_05_dge.html#Gene_Set_Enrichment_Analysis_(GSEA) and https://crazyhottommy.github.io/scRNA-seq-workshop-Fall-2019/scRNAseq_workshop_3.html
+The first website uses the output of Seurat FindMarkers() to generate the gene list, but this does not use all genes. Note that the arguments are different from the standard ones used to generate DEG list. Presto is good package to use, ranks genes very fast for Gene Set Enrichment analysis, but fgsea is prone to crashing with RAM set to 15 Gb and 1 core. Use 18 Gb RAM and 1 core for analysis and when knitting the file.
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo.genes.presto <- wilcoxauc(dyCbo.clust, 'seurat_clusters')
+head(dyCbo.genes.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dyCbo.genes.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# we have all the genes for each cluster
+dplyr::count(dyCbo.genes.presto, group)
+```
+
+****Cluster 9 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
+```{r eval=FALSE, echo=FALSE}
+# order the gene list
+# the presto gene list puts ERBB4 at the top, and SOX2 is the 35th listed gene
+dyCbo.genes.presto %>%
+  dplyr::filter(group == "9") %>%
+  dplyr::arrange(desc(logFC), desc(auc)) %>%
+  head(10)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl9.markers.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "9" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(dyCbo.cl9.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster9.markers.aucRanked.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# gProfiler input - Filezilla to download the file to my Mac and then copy and paste the ordered list
+# of genes into gProfiler web app
+write.csv(dyCbo.cl9.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.daoy.cluster9.UPgenes.presto.gProfilerInput.csv", quote = F)
+```
+
+---------------------------------------------------------------------------------------------------------
+****Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
+```{r eval=FALSE, echo=FALSE}
+dyCbo.genes.presto %>%
+  dplyr::filter(group == "13") %>%
+  dplyr::arrange(desc(logFC), desc(auc))
+
+clust13.genes.presto <- dyCbo.genes.presto %>%
+  dplyr::filter(group == "13") %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+  
+head(clust13.genes.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus13 <- deframe(clust13.genes.presto)
+head(ranks.clus13)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo.cl13.UPgenes.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "13" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyCbo.cl13.UPgenes.presto) # 581 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(dyCbo.cl13.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.cluster13.UPgenes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl13.markers.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "13" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dyCbo.cl13.markers.presto) # 581 markers
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(dyCbo.cl13.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster13.markers.aucRanked.csv", quote = F)
+```
+
+****Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
+```{r eval=FALSE, echo=FALSE}
+dyCbo.genes.presto %>%
+  dplyr::filter(group == "14") %>%
+  arrange(desc(logFC), desc(auc))
+
+clust14.genes.presto <- dyCbo.genes.presto %>%
+  dplyr::filter(group == "14") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+  
+head(clust14.genes.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.clus14 <- deframe(clust14.genes.presto)
+head(ranks.clus14)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCbo.cl14.UPgenes.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "14" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+nrow(dyCbo.cl14.UPgenes.presto) # 1132 genes as input for gProfiler
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(dyCbo.cl14.UPgenes.presto, 
+          "./outputs50K/DAOY-CBO/daoyCbo.cluster14.UPgenes.presto.gProfilerInput.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# filter and order the gene list for CLUSTER MARKERS
+dyCbo.cl14.markers.presto <- dyCbo.genes.presto %>% 
+  dplyr::filter(group == "14" & logFC > 0.25) %>%
+  dplyr::arrange(desc(auc)) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dyCbo.cl14.markers.presto) # 1132 markers
+```
+
+```{r eval=FALSE, echo=FALSE}
+write.csv(dyCbo.cl14.markers.presto,
+          file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster14.markers.aucRanked.csv", quote = F)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+SECTION END
+##################################################################################################################
+
