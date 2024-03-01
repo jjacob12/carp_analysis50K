@@ -1,0 +1,142 @@
+---
+title: "Overall_QC_all_samples"
+author: "JJ"
+date: "2024-01-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/INTEGRATE/figures_both/")
+```
+
+```{r}
+suppressPackageStartupMessages({
+library(Seurat)
+library(Matrix)
+library(ggplot2)
+})
+```
+
+Type of analysis: inspection and QC of all datasets
+
+Data was stored in a single folder, GEO_files on BMRC cluster in preparation for upload to NCBI GEO. This was done using the Terminal and BASH script is documented in One-Note
+
+
+#############################################################################################
+***Inspection and QC of datasets***
+
+```{r eval=FALSE, echo=FALSE}
+# load all the files
+data_dir <- "./working_data/DAOY-2D/"
+dyMono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+dyMono <- CreateSeuratObject(counts = dyMono.data, project = "dyMono")
+
+data_dir <- "./working_data/ONS76-2D/"
+o76mono.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+o76mono <- CreateSeuratObject(counts = o76mono.data, project = "ons76mono")
+
+data_dir <- "./working_data/DAOY-SPHER/"
+dySpher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+dySpher <- CreateSeuratObject(counts = dySpher.data, project = "dySpher")
+
+data_dir <- "./working_data/ONS76-SPHER/"
+o76spher.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+o76spher <- CreateSeuratObject(counts = o76spher.data, project = "ons76spher")
+
+data_dir <- "./working_data/DAOY-CBO/"
+dyCbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+dyCbo <- CreateSeuratObject(counts = dyCbo.data, project = "dyCbo")
+
+data_dir <- "./working_data/ONS76-CBO/"
+o76cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                      features = paste0(data_dir, "features.tsv.gz"), 
+                      cells = paste0(data_dir, "barcodes.tsv.gz"))
+o76cbo <- CreateSeuratObject(counts = o76cbo.data, project = "o76cbo")
+
+data_dir <- "./working_data/CBO/"
+cbo.data <- ReadMtx(mtx = paste0(data_dir, "matrix.mtx.gz"),
+                         features = paste0(data_dir, "features.tsv.gz"), 
+                         cells = paste0(data_dir, "barcodes.tsv.gz"))
+cbo <- CreateSeuratObject(counts = cbo.data, project = "cbo")
+
+allData <- merge(dyMono, c(o76mono, dySpher, o76spher, dyCbo, o76cbo, cbo),    add.cell.ids=c("dyMono","o76mono","dySpher","o76spher","dyCbo","o76cbo", "cbo"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# for GEO upload save allData as the following (in new folder GEO_files):
+saveRDS(allData,
+        file = "./outputs50K/overallQC_all_samples/all_samples_raw_counts_seuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+allData <- readRDS("outputs50K/overallQC_all_samples/all_samples_raw_counts_seuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# clear memory
+rm(dyMono.data, dyMono, o76mono.data, o76mono, dySpher.data, dySpher, o76spher.data, o76spher,
+   dyCbo.data, dyCbo, o76cbo.data, o76cbo, cbo.data, cbo)
+gc()
+```
+
+```{r eval=FALSE, echo=FALSE}
+as.data.frame(allData@assays$RNA@counts[1:5,1:2])
+```
+
+```{r eval=FALSE, echo=FALSE}
+allData <- PercentageFeatureSet(allData, "^MT-", col.name = "percent_mito")
+allData <- PercentageFeatureSet(allData, "^RP[SL]", col.name = "percent_ribo")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotUniqueGenes, fig.height=6, fig.width=6}
+# "nFeature_RNA","nCount_RNA","percent_mito","percent_ribo"
+VlnPlot(allData, group.by= "orig.ident", features = "nFeature_RNA", pt.size = 0.1) + 
+  NoLegend() +
+  scale_x_discrete(labels=c('org', 'DAOY-org co-culture', 'DAOY-monolayer', 'DAOY-spheroid', 'ONS76-org co-culture',
+                            'ONS76-monolayer', 'ONS76-spheroid')) +
+  xlab("") +
+  labs(title = "unique genes")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotRNAmolecules, fig.height=6, fig.width=6}
+# feats <- c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo")
+VlnPlot(allData, group.by= "orig.ident", features = "nCount_RNA", pt.size = 0.1) + 
+  NoLegend() +
+  scale_x_discrete(labels=c('org', 'DAOY-org co-culture', 'DAOY-monolayer', 'DAOY-spheroid', 'ONS76-org co-culture', 'ONS76-monolayer', 'ONS76-spheroid')) +
+  xlab("") +
+  labs(title = "total RNA molecules")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotPercentMito, fig.height=6, fig.width=6}
+VlnPlot(allData, group.by= "orig.ident", features = "percent_mito", pt.size = 0.1) +
+  geom_hline(yintercept=10,linetype=2) +
+  NoLegend() +
+  scale_x_discrete(labels=c('org', 'DAOY-org co-culture', 'DAOY-monolayer', 'DAOY-spheroid', 'ONS76-org co-culture', 'ONS76-monolayer', 'ONS76-spheroid')) +
+  xlab("") +
+  labs(title = "percent mitochondrial genes")
+```
+
+```{r ViolinPlotPercentRibo, fig.height=6, fig.width=6}
+VlnPlot(allData, group.by= "orig.ident", features = "percent_ribo", pt.size = 0.1) + 
+  NoLegend() +
+  scale_x_discrete(labels=c('org', 'DAOY-org co-culture', 'DAOY-monolayer', 'DAOY-spheroid', 'ONS76-org co-culture', 'ONS76-monolayer', 'ONS76-spheroid')) +
+  xlab("") +
+  labs(title = "percent ribosomal genes")
+```
+
+
+
