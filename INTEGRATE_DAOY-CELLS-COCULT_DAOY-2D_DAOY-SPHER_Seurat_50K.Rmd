@@ -1,0 +1,1365 @@
+---
+title: "INTEGRATE_DAOY-CBO_DAOY-SPHER_DAOY-2D_50K.Rmd"
+author: "JJ"
+date: "04/11/2022"
+output: html_document
+---
+
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE,
+                      fig.path = "./outputs50K/INTEGRATE/figures_DAOY/")
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+library(Seurat)
+library(glmGamPoi)
+library(msigdbr)
+library(fgsea)
+library(presto)
+library(org.Hs.eg.db)
+library(DOSE)
+library(Matrix)
+library(patchwork)
+library(EnhancedVolcano)
+library(tidyverse)
+})
+```
+
+Type of analysis: Merge and/or integrate multiple samples containing DAOY cells and control cerebellar organoid cells, find unique gene markers of cells in the different conditions, geneset enrichment analysis of DAOY-spheroid and monolayer samples. Visualisations are with heatmaps, violin plots, volcano plots, barplots.
+
+
+***Merge then Integration of DAOY-2D and DAOY-spheroid samples***
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# DAOY-2D dataset
+dy.2d <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+# DAOY-SPHER dataset
+dy.3d <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
+```
+
+****MERGE:****
+```{r eval=FALSE, echo=FALSE}
+dy.2samples <- merge(dy.2d, 
+                  y = c(dy.3d), 
+                  add.cell.ids = c("dyMono", "dySpher"), 
+                  project = "dy.2samples.merge")
+dy.2samples
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.2samples$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- dy.2samples@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dyMono_"))] <- "DAOY_monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^dySpher_"))] <- "DAOY_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# assign metadata object back to the original seurat object
+dy.2samples@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2samples <- NormalizeData(dy.2samples)
+dy.2samples <- FindVariableFeatures(dy.2samples)
+dy.2samples <- ScaleData(dy.2samples)
+dy.2samples <- RunPCA(dy.2samples, features = VariableFeatures(object = dy.2samples))
+dy.2samples <- RunUMAP(dy.2samples, dims = 1:5, reduction = "pca")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dy.2samples,
+file = "./outputs50K/INTEGRATE/DAOYspher.DAOYmonoRep.RiboRetained.MERGED.PRE-INTEGRATION.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2samples <- readRDS("outputs50K/INTEGRATE/DAOYspher.DAOYmonoRep.RiboRetained.MERGED.PRE-INTEGRATION.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotMergedDAOYSpherMono2samplesPREINTEGRATION, fig.height=6, fig.width=10}
+# this is the pre-integration plot
+DimPlot(dy.2samples, reduction = "umap", group.by = "sample",
+        pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+****INTEGRATION:****
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# DAOY-2D dataset
+dyMono <- readRDS("outputs50K/DAOY_2D/DAOYmono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+# DAOY-SPHER dataset
+dySpher <- readRDS("outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+dy.list <- list(dyMono, dySpher)
+features <- SelectIntegrationFeatures(object.list = dy.list, nfeatures = 3000)
+dy.list <- PrepSCTIntegration(object.list = dy.list, anchor.features = features)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.anchors <- FindIntegrationAnchors(object.list = dy.list, normalization.method = "SCT",
+    anchor.features = features)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2d3d.combined.sct <- IntegrateData(anchorset = dy.anchors, normalization.method = "SCT")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2d3d.combined.sct <- RunPCA(dy.2d3d.combined.sct, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30) %>% 
+  FindNeighbors(reduction = "pca", dims = 1:30) %>% 
+  FindClusters(resolution = 0.3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.2d3d.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# change the orig.ident notation for future plots
+dy.2d3d.combined.sct@meta.data[dy.2d3d.combined.sct@meta.data == "dyMono"] <- "DAOY_monolayer"
+dy.2d3d.combined.sct@meta.data[dy.2d3d.combined.sct@meta.data == "dySpher"] <- "DAOY_spheroid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.2d3d.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the integrated object
+saveRDS(dy.2d3d.combined.sct,
+        file = "./outputs50K/INTEGRATE/DAOYspher.DAOYmono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/DAOYspher.DAOYmono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.2d3d.combined.sct) <- "orig.ident"
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotDAOYSpherMono2samplesINTEGRATED, fig.height=6, fig.width=10}
+# this is the pre-integration plot
+DimPlot(dy.2d3d.combined.sct, reduction = "umap", group.by = "orig.ident",
+        pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinPlotDAOYspherMonoIntegratedGranuleMarkers, fig.height=17, fig.width=22}
+p1a <- VlnPlot(dy.2d3d.combined.sct,
+               features = "MEIS1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(dy.2d3d.combined.sct,
+               features = "CNTN1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(dy.2d3d.combined.sct,
+               features = "SATB2",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(dy.2d3d.combined.sct,
+               features = "ZIC1",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(dy.2d3d.combined.sct,
+               features = "ZIC2",
+               slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(dy.2d3d.combined.sct,
+              features = "JKAMP",
+              slot = 'data',
+              assay = 'RNA') +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+
+```
+
+
+*****Heatmap of DAOY monolayer VS spheroid gene expression using integrated seurat object consisting of monolayer and spheroid samples only*****
+```{r eval=FALSE, echo=FALSE}
+# load the dataset
+dy.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/DAOYspher.DAOYmono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# find Markers
+# from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+
+Idents(dy.2d3d.combined.sct) <- "orig.ident" 
+dy.2d3d.combined.sct <- PrepSCTFindMarkers(dy.2d3d.combined.sct)
+
+dy.2d3d.combined.sct.allMarkers <- FindAllMarkers(dy.2d3d.combined.sct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dy.2d3d.combined.sct.allMarkers) # 5116 differentially expressed UP-regulated genes in the two conditions
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dy.2d3d.combined.sct.allMarkers, 3) # there is already a "gene" column
+```
+
+```{r eval=FALSE, echo=FALSE}
+# avoid rows by converting rows to a column; see also 'Riemondy-NeurOncol_2022...' file for another way to do this.
+dy.2d3d.combined.sct.allMarkers.gene <- dy.2d3d.combined.sct.allMarkers %>% 
+  rownames_to_column(var = "gene_name")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the DEGs which are UP-regulated
+saveRDS(dy.2d3d.combined.sct.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.SCT.DAOYmono.DAOYspher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the markers file - both monolayer and spheroid UP-regulated genes
+dy.2d3d.combined.sct.allMarkers.gene <- 
+  readRDS("outputs50K/INTEGRATE/DEgenesUP.Integrated.SCT.DAOYmono.DAOYspher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dy.2d3d.combined.sct.allMarkers.gene)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# get rid of 1st column of 'gene_name' as this is duplicate information
+dy.2d3d.combined.sct.allMarkers.OneGeneColumnOnly <- dy.2d3d.combined.sct.allMarkers.gene %>% 
+  dplyr::select(-gene_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save above as csv file
+write.csv(dy.2d3d.combined.sct.allMarkers.OneGeneColumnOnly,
+          file = "outputs50K/INTEGRATE/DAOY.DEgeneMARKERS.Integrated.SCT.DAOYmono.DAOYspher.csv",
+          quote = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# compared sorting on p_val_adj and avg_log2FC, and p_val_adj is better
+top20.sorted <- dy.2d3d.combined.sct.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>% 
+  slice_head(n = 20)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.2d3d.combined.sct) <- "orig.ident"
+DefaultAssay(dy.2d3d.combined.sct) <- "RNA"  # in general SCT not the best assay for integrated data - best
+                                        # practice to use RNA assay.
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapSCTassayDAOYintegratedMonoSpher, fig.height=20, fig.width=25}
+# this vignette (https://github.com/satijalab/seurat/issues/4082) is a good reminder of when to 
+# use SCT Assay versus RNA Assay
+dy.2d3d.combined.sct.scaled <- ScaleData(dy.2d3d.combined.sct,
+                                    features = top20.sorted$gene,
+                                    verbose = FALSE)
+DoHeatmap(dy.2d3d.combined.sct.scaled, features = top20.sorted$gene, size = 20, assay = "RNA", group.by = "orig.ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 30), legend.title = element_text(size=20), legend.text=element_text(size=20))
+```
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Monolayer cell FGSEA with two sample integration***
+
+****GO:BP geneset enrichment - DAOY monolayer****
+```{r eval=FALSE, echo=FALSE}
+# load the dataset
+dy.2d3d.combined.sct <- readRDS("outputs50K/INTEGRATE/DAOYspher.DAOYmono.RiboRetained.INTEGRATED.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.2d3d.combined.sct) <- "orig.ident"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# apply presto to the integrated sample
+dy.2d3d.combined.sct.presto <- wilcoxauc(dy.2d3d.combined.sct, 'orig.ident')
+head(dy.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+head(msig.GOBP.hs)
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "DAOY_monolayer") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+mono.genes.dy.2d3d.combined.sct.presto <- dy.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "DAOY_monolayer" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(mono.genes.dy.2d3d.combined.sct.presto) # 864 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.mono.genes.dy.2d3d.combined.sct.presto <- deframe(mono.genes.dy.2d3d.combined.sct.presto)
+head(ranks.mono.genes.dy.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.mono.genes.dy.2d3d.combined.sct.presto.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.mono.genes.dy.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP <- fgseaRes.mono.genes.dy.2d3d.combined.sct.presto.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP, 
+        file = "./outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP, 
+       file = "./outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP <- 
+  readRDS("outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPdaoyMONOIntegratedMonoSpher, fig.height=15, fig.width=25}
+# visualise pathways upregulated in DAOY-2D vs DAOY-spheroid by fgsea
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.GOBP %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
+
+
+****C6 ONCOGENIC GENE SET ENRICHMENT - DAOY monolayer****
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+cancer_geneSets <- msigdbr(species = "human", category = "C6")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_C6 <- cancer_geneSets %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.mono.genes.dy.2d3d.combined.sct.presto.C6 <- 
+  fgseaMultilevel(fgsea_sets_C6, stats = ranks.mono.genes.dy.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6 <- 
+  fgseaRes.mono.genes.dy.2d3d.combined.sct.presto.C6 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6 %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6, 
+        file = "./outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6 <- 
+  readRDS("outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6, 
+       file = "./outputs50K/INTEGRATE/DAOYmonolayer.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.oncogenic_C6.csv")
+```
+
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAoncogenicC6daoyMONOIntegratedMonoSpher, fig.height=10, fig.width=20}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.mono.genes.dy.2d3d.combined.sct.presto.C6 %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title = element_text(size = 30),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white"))
+```
+
+
+****GO:BP geneset enrichment - DAOY spheroid****
+Find the upregulated pathways in DAOY-spheroid vs DAOY-2D sample
+```{r eval=FALSE, echo=FALSE}
+dy.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "DAOY_spheroid") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(6)
+```
+
+```{r eval=FALSE, echo=FALSE}
+spher.genes.dy.2d3d.combined.sct.presto <- dy.2d3d.combined.sct.presto %>%
+  dplyr::filter(group == "DAOY_spheroid" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(spher.genes.dy.2d3d.combined.sct.presto) # 716 genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+ranks.spher.genes.dy.2d3d.combined.sct.presto <- deframe(spher.genes.dy.2d3d.combined.sct.presto)
+head(ranks.spher.genes.dy.2d3d.combined.sct.presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.spher.genes.dy.2d3d.combined.sct.presto.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.spher.genes.dy.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.spher.genes.dy.2d3d.combined.sct.presto.GOBP <- fgseaRes.spher.genes.dy.2d3d.combined.sct.presto.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.spher.genes.dy.2d3d.combined.sct.presto.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fwrite() as a column of the tibble is a list!
+fwrite(fgseaResTidy.spher.genes.dy.2d3d.combined.sct.presto.GOBP, 
+       file = "./outputs50K/INTEGRATE/DAOYspheroid.pathwayEnrichment.integrated.Mono.Spher.multifgsea.presto.GOBP.csv")
+```
+
+
+****C6 ONCOGENIC GENE SET ENRICHMENT - DAOY spheroid****
+Encrechment of pathways in the spheroid sample
+```{r eval=FALSE, echo=FALSE}
+# use dplyr to get the appropriate gene set
+cancer_geneSets <- msigdbr(species = "human", category = "C6")
+```
+
+```{r eval=FALSE, echo=FALSE}
+fgsea_sets_C6 <- cancer_geneSets %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+fgseaRes.spher.genes.dy.2d3d.combined.sct.presto.C6 <- 
+  fgseaMultilevel(fgsea_sets_C6, stats = ranks.spher.genes.dy.2d3d.combined.sct.presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.spher.genes.dy.2d3d.combined.sct.presto.C6 <- 
+  fgseaRes.spher.genes.dy.2d3d.combined.sct.presto.C6 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.spher.genes.dy.2d3d.combined.sct.presto.C6 %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20) # none of pathways are significant so don't save this object
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Merge the DAOY-2D repeat sample, the DAOY-SPHER, DAOY-CBO samples and CBO control***
+Get a DimPlot to check how close the different samples are in UMAP space - the DAOY spheroid sample is closer to the DAOY-CBO sample than to the DAOY-2D(rep) sample.
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# repeat DAOY-2D dataset which was sequenced at much greater depth
+dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+# DAOY-SPHER dataset
+dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
+# DAOY-CBO and CBO datasets
+dyCbo <- readRDS("outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+cbo <- readRDS("outputs50K/CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.cbo.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.4samples <- merge(dy2d.rep, 
+                  y = c(dy3d, dyCbo, cbo), 
+                  add.cell.ids = c("dy2drep", "dy3d", "dyCBO", "cbo"), 
+                  project = "dy4samples.merge")
+dy.4samples
+```
+
+```{r eval=FALSE, echo=FALSE}
+unique(sapply(X = strsplit(colnames(dy.4samples), split = "_"), FUN = "[", 1))
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.4samples$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- dy.4samples@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dy2drep_"))] <- "monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^dy3d_"))] <- "spheroid"
+metadata$sample[which(str_detect(metadata$cells, "^dyCBO_"))] <- "coculture"
+metadata$sample[which(str_detect(metadata$cells, "^cbo_"))] <- "organoid"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.4samples@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy4samples.df <- metadata 
+dy4samples.df$sample <- factor(dy4samples.df$sample, 
+                               levels = c("spheroid", "monolayer", "coculture", "organoid"))
+```
+
+```{r eval=FALSE, echo=FALSE, BarPlotMergedCellCountsDaoyAll, fig.height=7, fig.width=5}
+# plot of cell counts in each sample
+dy4samples.df.barChart <- ggplot(dy4samples.df, aes(x=sample, fill=sample)) +
+  	geom_bar(fill = "grey") +
+  	theme_classic() +
+   theme(axis.title = element_blank(), axis.title.y = element_text(size = 18),
+         axis.text.x = element_text(size = 14, angle = 45, hjust = 1), 
+         axis.text.y = element_text(size = 14)) +
+   NoLegend()
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the bar chart of cell counts
+saveRDS(dy4samples.df.barChart, 
+        file = "./outputs50K/INTEGRATE/BarChartDaoyCellCounts4conditionsMerged.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, BarChartDaoyCellCounts4conditions, fig.height=7, fig.width=5}
+dy4samples.df.barChart <- readRDS("outputs50K/INTEGRATE/BarChartDaoyCellCounts4conditionsMerged.rds")
+dy4samples.df.barChart
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+dy.4samples <- NormalizeData(dy.4samples)
+dy.4samples <- FindVariableFeatures(dy.4samples)
+dy.4samples <- ScaleData(dy.4samples)
+dy.4samples <- RunPCA(dy.4samples, features = VariableFeatures(object = dy.4samples))
+dy.4samples <- RunUMAP(dy.4samples, dims = 1:5, reduction = "pca")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dy.4samples,
+        file = "./outputs50K/INTEGRATE/Daoy4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.4samples <- readRDS("outputs50K/INTEGRATE/Daoy4samplesMerged2dRepSpherCocultCBOpcaUmap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotMergedDyCboSpherCboCNTRL, fig.height=6, fig.width=10}
+DimPlot(dy.4samples, reduction = "umap", group.by = "sample", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***MERGE analysis of DAOY cells computationally extracted from DAOY-CBO, DAOY-SPHER cells and DAOY-2D cells***
+Generate a pre-integration UMAP plot
+```{r eval=FALSE, echo=FALSE}
+# load datasets
+# repeat DAOY-2D dataset which was sequenced at much greater depth
+dy2d.rep <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+# DAOY-SPHER dataset
+dy3d <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
+# DAOY-CBO and CBO datasets
+dyCbo <- readRDS("outputs50K/DAOY-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.DAOYcbo.rds")
+dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+As can be seen from the below, the dyOnly.dyCbo object has a prefix before the cell ID. This must be removed before proceeding
+```{r eval=FALSE, echo=FALSE}
+head(WhichCells(dyOnly.dyCbo))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# store the above cell IDs as a vector
+dyOnly.cellID <- WhichCells(dyOnly.dyCbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset the dyCbo object based on the cell IDs of dyOnly.dyCbo
+dyOnly <- subset(dyCbo, cells = dyOnly.cellID)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# merge the samples
+dy.3samples <- merge(dy2d.rep, 
+                  y = c(dy3d, dyOnly), 
+                  add.cell.ids = c("dy2drep", "dy3d", "dyOnly"), 
+                  project = "dy3samples.merge")
+dy.3samples
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Create metadata dataframe
+metadata <- dy.3samples@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Create sample column
+metadata$sample <- NA
+metadata$sample[which(str_detect(metadata$cells, "^dy2drep_"))] <- "DAOY_monolayer"
+metadata$sample[which(str_detect(metadata$cells, "^dy3d_"))] <- "DAOY_spheroid"
+metadata$sample[which(str_detect(metadata$cells, "^dyOnly_"))] <- "DAOY_coculture"
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples <- NormalizeData(dy.3samples)
+dy.3samples <- FindVariableFeatures(dy.3samples)
+dy.3samples <- ScaleData(dy.3samples)
+dy.3samples <- RunPCA(dy.3samples, features = VariableFeatures(object = dy.3samples))
+dy.3samples <- RunUMAP(dy.3samples, dims = 1:5, reduction = "pca")
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dy.3samples,
+        file = "./outputs50K/INTEGRATE/Daoy3samplesMerged.2dRep.Spher.CocultOnly.pcaUmap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples <- readRDS("outputs50K/INTEGRATE/Daoy3samplesMerged.2dRep.Spher.CocultOnly.pcaUmap.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimPlotMERGEpre-IntegrationDaoyOnlyCocultVsDaoySpherVsDaoy2dRep, fig.height=6, fig.width=10}
+DimPlot(dy.3samples, reduction = "umap", group.by = "sample", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***INTEGRATED analysis of DAOY cells computationally extracted from DAOY-CBO, DAOY-SPHER cells and DAOY-2D cells using SCTransform***
+If the objects being integrated are already SCTransformed, don't run SCTransform again on the integrated objects. Order of SCTransform, Integration, and cell cycle regression: see this Seurat issue comment from Satija "..first thought to suggest calculating scores and regressing directly on each dataset pre-integration..." from issue #5879 https://github.com/satijalab/seurat/issues/5879. I have done just that and saved each condition as a SCTransformed, cell cycle regressed object ready for integration.
+
+```{r eval=FALSE, echo=FALSE}
+# each object already SCTransformed and cell cycle regressed
+dy2d <- readRDS("outputs50K/DAOY_2D/DAOYmono.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+dySpher <- readRDS("outputs50K/DAOY_SPHER/DAOYspher.inputIntegration.RiboRetained.SCTransformed.CCdiffRegressed.PCA.unclustered.rds")
+dyOnly.dyCbo <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.RiboRetained.NoMito.SCT.CCdiffRegressed.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dim(dy2d)
+dim(dySpher)
+dim(dyOnly.dyCbo)
+```
+
+As can be seen from the below, the dyOnly.dyCbo object has a prefix before the cell ID. This must be removed before proceeding
+```{r eval=FALSE, echo=FALSE}
+head(WhichCells(dyOnly.dyCbo))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# store the above cell IDs as a vector
+dyOnly.cellID <- WhichCells(dyOnly.dyCbo)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove the prefixes from the vector cell names and save as a new object of cell IDs
+dyOnly.cellID.corrected <- gsub('dyCbo.data-', '', dyOnly.cellID)
+head(dyOnly.cellID.corrected) # the prefixes have been removed
+```
+
+```{r eval=FALSE, echo=FALSE}
+# rename the cell IDs with the corrected cell names (.ccn = corrected cell names)
+# the object dyOnly.dyCbo.ccn is the one to use going forwards
+dyOnly.dyCbo.ccn <- RenameCells(dyOnly.dyCbo, new.names = dyOnly.cellID.corrected)
+head(WhichCells(dyOnly.dyCbo.ccn))
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(WhichCells(dySpher))
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(WhichCells(dy2d))
+```
+
+
+****Perform the integration using Pearson residuals of the prepared datasets****
+as per this Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+```{r eval=FALSE, echo=FALSE}
+# datasets are as below
+dy.list <- list(dy2d, dySpher, dyOnly.dyCbo)
+features <- SelectIntegrationFeatures(object.list = dy.list, nfeatures = 3000)
+dy.list <- PrepSCTIntegration(object.list = dy.list, anchor.features = features)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.anchors <- FindIntegrationAnchors(object.list = dy.list, normalization.method = "SCT",
+    anchor.features = features)
+dy.combined.sct <- IntegrateData(anchorset = dy.anchors, normalization.method = "SCT")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples.combined.sct <- RunPCA(dy.combined.sct, verbose = FALSE) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30) %>% 
+  FindNeighbors(reduction = "pca", dims = 1:30) %>% 
+  FindClusters(resolution = 0.3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.3samples.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# change the orig.ident notation for future plots - 'DAOY_coculture' refers to DAOY cells extracted from the co-culture and excludes non-malignant cells
+dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dyMono"] <- "DAOY_monolayer"
+dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dySpher"] <- "DAOY_spheroid"
+dy.3samples.combined.sct@meta.data[dy.3samples.combined.sct@meta.data == "dyCbo"] <- "DAOY_coculture"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# DAOY_2Drep = 1935; DAOY-CBO = 269 (malignant cells in co-culture); DAOY-spher = 660 cells
+table(dy.3samples.combined.sct$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the integrated object
+saveRDS(dy.3samples.combined.sct,
+        file = "./outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples.combined.sct <- readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Find differentially expressed genes in DAOY-spheroid vs DAOY-monolayer and produce a Volcano Plot***
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+```
+
+```{r eval=FALSE, echo=FALSE}
+# from Seurat vignette https://satijalab.org/seurat/articles/sctransform_v2_vignette.html
+dy.3samples.combined.sct <- PrepSCTFindMarkers(dy.3samples.combined.sct)
+
+dy.3samples.combined.sct.subset <- 
+  subset(dy.3samples.combined.sct, idents = c("DAOY_spheroid", "DAOY_monolayer"))
+
+
+dySpherV2d.allMarkers <- FindMarkers(dy.3samples.combined.sct.subset,
+                                     assay = "SCT",
+                                     ident.1 = "DAOY_spheroid", ident.2 = "DAOY_monolayer",
+                                    verbose = FALSE,
+                                    recorrect_umi = FALSE,
+                                    logfc.threshold = 0.25 )
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dy.3samples.combined.sct,
+        file = "./outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dySpherV2d.allMarkers)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dySpherV2d.allMarkers.gene <- dySpherV2d.allMarkers %>% 
+  rownames_to_column(var = "gene")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the PrepSCTmarkers object above
+write.csv(dySpherV2d.allMarkers.gene,
+        file = "./outputs50K/INTEGRATE/DEgenesAll.DaoySpherVSMono.Integrated.Doay2drep.DaoySpherDaoyCocolture.csv",
+        quote = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the differential expressed gene list
+dySpherV2d.allMarkers.gene <- 
+  read.csv("outputs50K/INTEGRATE/DEgenesAll.DaoySpherVSMono.Integrated.Doay2drep.DaoySpherDaoyCocolture.csv")
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+dySpherV2d.allMarkers.gene %>% 
+  dplyr::arrange(desc(avg_log2FC)) %>% 
+  head(30)
+```
+
+
+```{r eval=FALSE, echo=FALSE, VolcanoPlotDAOYSpheroidVSmonoDEGsIntegratedObject, fig.height=10, fig.width=15}
+genes.to.label.daoySpherVsMono <- c("MDK", "CRIP1", "IFI27", "PPDPF", "GPC3", "WFDC2", "PTN", "WFCD2",
+                                    "VCAN", "TUBB2B", "COL14A1")
+
+EnhancedVolcano(dySpherV2d.allMarkers.gene,
+                lab = dySpherV2d.allMarkers.gene$gene,
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                selectLab = genes.to.label.daoySpherVsMono,
+                title = NULL,
+                subtitle = NULL,
+                pointSize = 5.0,
+                labSize = 10.0,
+                cutoffLineWidth = 1.0,
+                axisLabSize = 30,
+                legendLabSize = 40,
+                legendIconSize = 10,
+                legendPosition = "right",
+                legendLabels = c("NS", "log2FC", "p-value", "p-value and Log2FC"),
+                drawConnectors = TRUE,
+                widthConnectors = 0.5,
+                gridlines.major = FALSE,
+                gridlines.minor = FALSE)
+
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Find Genes differentially upregulated in DAOY-only cocultures vs DAOY-spher***
+'DAOY-only' cocultures are malignant cells computationally extracted from co-culture
+```{r eval=FALSE, echo=FALSE}
+# load the PrepSCTFindMarkers object
+dy.3samples.combined.sct.prepSct <- 
+  readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.PrepSCTFindMarkers.rds")
+
+dy.3samples.combined.sct.subset <- 
+  subset(dy.3samples.combined.sct.prepSct, idents = c("DAOY_coculture", "DAOY_spheroid"))
+
+dyCocultVspher.allMarkers <- FindMarkers(dy.3samples.combined.sct.subset,
+                                     assay = "SCT",
+                                     ident.1 = "DAOY_coculture", ident.2 = "DAOY_spheroid",
+                                    verbose = FALSE,
+                                    recorrect_umi = FALSE,
+                                    logfc.threshold = 0.25 )
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dyCocultVspher.allMarkers)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCocultVspher.allMarkers.gene <- dyCocultVspher.allMarkers %>% 
+  rownames_to_column(var = "gene")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dyCocultVspher.allMarkers.gene)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# save the DEGs which are both UP and DOWN regulated
+write.csv(dyCocultVspher.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesAll.DaoyCocultVSspher.Integrated.Doay2drep.DaoySpher.DaoyCocolture.csv",        quote = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the markers csv file
+dyCocultVspher.allMarkers.gene <- 
+  read.csv("outputs50K/INTEGRATE/DEgenesAll.DaoyCocultVSspher.Integrated.Doay2drep.DaoySpher.DaoyCocolture.csv")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCocultVspher.allMarkers.gene %>% 
+  dplyr::arrange(p_val_adj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyCocultVspher.allMarkers.gene.sorted <- dyCocultVspher.allMarkers.gene %>% 
+  dplyr::arrange(p_val_adj)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# look at specific genes
+# these genes all upregulated in DAOY cells in coculture except for ZIC2
+dyCocultVspher.allMarkers.gene %>% 
+  dplyr::filter(gene %in% c("SOX2", "NES", "POU3F2", "FABP7"))
+```
+
+```{r eval=FALSE, echo=FALSE, VolcanoPlotDAOYcocultVSspheroidDEGsIntegratedObject, fig.height=10, fig.width=15}
+# upregulation of stem cell markers
+genes.to.label.daoyCocultVsSpher <- c("SOX2", "NES", "POU3F2", "FABP7")
+
+EnhancedVolcano(dyCocultVspher.allMarkers.gene,
+                lab = dyCocultVspher.allMarkers.gene$gene,
+                x = "avg_log2FC",
+                y = "p_val_adj",
+                selectLab = genes.to.label.daoyCocultVsSpher,
+                title = NULL,
+                subtitle = NULL,
+                pointSize = 5.0,
+                labSize = 10.0,
+                cutoffLineWidth = 1.0,
+                axisLabSize = 30,
+                legendLabSize = 40,
+                legendIconSize = 10,
+                legendPosition = "right",
+                legendLabels = c("NS", "log2FC", "p-value", "p-value and Log2FC"),
+                drawConnectors = TRUE,
+                widthConnectors = 0.5,
+                gridlines.major = FALSE,
+                gridlines.minor = FALSE)
+
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***UMAP Plot of DAOY-spheroid, DAOY-monolayer and DAOY-only cells from DAOY-CBO sample after integration***
+```{r eval=FALSE, echo=FALSE}
+# load the object
+dy.3samples.combined.sct <- 
+   readRDS("outputs50K/INTEGRATE/DaoyOnlyCocult.DaoySpher.Daoy2d.integrated.SCT.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.3samples.combined.sct@meta.data$orig.ident)
+```
+
+There is overlap of DAOY cells grown in different conditions.The clustering of the different samples shows little/no separation between cells originating from different samples, which is what is expected after integration.
+```{r eval=FALSE, echo=FALSE, DimPlotIntegratedDaoyOnlyCocultVsDaoySpherVsDaoy2dRep, fig.height=6, fig.width=10}
+DimPlot(dy.3samples.combined.sct, reduction = "umap", group.by = "orig.ident", pt.size = 1) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Heatmap of genes expressed in integrated DAOY monolayer, spheroid and extracted coculture cells***
+
+```{r eval=FALSE, echo=FALSE}
+table(dy.3samples.combined.sct@meta.data$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE}
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+dy.3samples.allMarkers <- FindAllMarkers(dy.3samples.combined.sct,
+                                     assay = "SCT",
+                                    verbose = FALSE,
+                                    only.pos = TRUE,
+                                    logfc.threshold = 0.25)
+```
+
+```{r eval=FALSE, echo=FALSE}
+nrow(dy.3samples.allMarkers) # 4723 markers
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dy.3samples.allMarkers) # there is already a 'gene' column and rownames are also genes
+```
+
+```{r eval=FALSE, echo=FALSE}
+# remove rownames
+dy.3samples.allMarkers.gene <- dy.3samples.allMarkers %>% 
+  rownames_to_column(var = "gene_name") %>% 
+  select(-"gene_name")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dy.3samples.allMarkers.gene, 5)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the DEGs which are UP regulated as RDS files (not csv as causes problems in DoHeatmap)
+saveRDS(dy.3samples.allMarkers.gene, 
+          file = "./outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the markers file
+dy.3samples.allMarkers.gene <- 
+  readRDS("outputs50K/INTEGRATE/DEgenesUP.Integrated.DAOYcoculture.mono.spher.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(dy.3samples.allMarkers.gene)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this takes the top 20 genes in each cluster (mono, spher, coculture) sorted by avg_Log2FC.
+# ERBB4 is at the top of the list in coculture condition!
+top20.genes <- dy.3samples.allMarkers.gene %>% 
+  dplyr::group_by(cluster) %>%
+  dplyr::arrange(desc(avg_log2FC)) %>% 
+  slice_head(n = 20)
+```
+
+```{r eval=FALSE, echo=FALSE}
+top20.genes %>% 
+  slice_head(n = 2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# From https://bioinformatics.stackexchange.com/questions/17501/avoiding-the-warning-the-following-features-were-omitted-as-they-were-not-found
+# Specify your genes of interest using the features parameter of the ScaleData() function. If this parameter is not specified, only "variable genes" are scaled and that makes sense, genes that do not demonstrate variability across conditions are not interesting in general. Anyhow, since the DoHeatmap() would be looking at the "scaled data slot", it will not be able to find your genes of interest unless they show variation.
+
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+
+# set DefaultAssay to RNA before running DoHeatmap, as this is integrated object
+DefaultAssay(dy.3samples.combined.sct) <- "RNA"
+
+# scale the data and specifically scale the genes of interest
+dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, 
+                                              features = top20.genes$gene,
+                                              verbose = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapTop20genesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=22, fig.width=16}
+# Heatmap now uses all cells, no need to downsample
+DoHeatmap(dy.3samples.combined.sct.scaled, 
+          features = top20.genes$gene, 
+          size = 10, assay = "RNA", group.by = "ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 30), legend.title = element_text(size=20), 
+        legend.text=element_text(size=20))
+```
+
+```{r eval=FALSE, echo=FALSE, HeatmapSelectGenesDAOYmonoSpherDyOnlyCocultSamplesIntegratedRNAassay, fig.height=8, fig.width=12}
+# genes of interest: stem cell markers, SOX2 reg. network, SHH genes
+features <- c("NES", "SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GLI2", "PTCH1")
+
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+
+dy.3samples.combined.sct.scaled <- ScaleData(dy.3samples.combined.sct, 
+                                              features = features,
+                                              verbose = FALSE)
+DoHeatmap(dy.3samples.combined.sct.scaled, features = features, size = 10, 
+          slot = "data", assay = "RNA", group.by = "ident") + 
+  guides(color = "none") +
+  theme(text = element_text(size = 25), legend.title = element_text(size=20), legend.text=element_text(size=15))
+```
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Violin plots of genes of interest which show greater expression in DAOY-only coculture compared to monolayer and spheroid conditions***
+Check the expression of various genes including stemness genes in ALL cells in each sample. Below are shown genes which are all increased in coculture condition. ERBB4 was identified in the Volcano Plot as the most significant upregulated gene in DAOY-only cocultured cells VS Daoy-spheroids. See the Github issue (https://github.com/satijalab/seurat/issues/3334) for guidance on RNA assay and the importance of normalization of the data before VlnPlot, FeaturePlot (but not DoHeatMap())
+```{r eval=FALSE, echo=FALSE, ViolinPlotNSCmarkersAndNeuroD1DAOYmonoSpherCocultIntegrated, fig.height=17, fig.width=22}
+
+Idents(dy.3samples.combined.sct) <- "orig.ident"
+
+p1a <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("SOX2"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1b <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("NES"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1c <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("FABP7"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1d <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("MSI1"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1e <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("MSI2"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1f <- VlnPlot(dy.3samples.combined.sct, 
+        features = c("NEUROD1"),
+        slot = "data", assay = "RNA") +
+  theme(axis.text = element_text(size = 22),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 22),
+        legend.position = "none",
+        plot.title = element_text(size = 30))
+
+p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
+```
+
+
+SECTION END
+##########################################################################################################
+
+##########################################################################################################
+***Find the proportions of cells in different phases of the cell cycle per sample***
+```{r eval=FALSE, echo=FALSE}
+# load the saved object, "dy.3samples.combined.sct" first - contains cell cycle phase information in metadata
+
+# transfer meta.data to a new object called metadata.dy
+metadata.dy <- dy.3samples.combined.sct@meta.data %>% 
+  rownames_to_column(var = "cellID") # this step needed as when 'select' is applied later on, the rownames
+                                    # (cell names) are still retained
+```
+
+```{r eval=FALSE, echo=FALSE}
+# subset the metadata dataframe to keep just 'orig.ident' and 'Phase' columns (cc = cell cycle phase)
+metadata.cc.dy <- metadata.dy %>% 
+  dplyr::select(orig.ident, Phase)
+# for each orig.ident get a count for each orig.ident and for each Phase
+summ.stats.cc.1 <- metadata.cc.dy %>% 
+  dplyr::group_by(orig.ident, Phase) %>% 
+  dplyr::summarise(count= n())
+
+head(summ.stats.cc.1)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(metadata.cc.dy,
+        file = "./outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata.cc.o76 <- 
+  readRDS("outputs50K/INTEGRATE/CellCycleProportionsDataframeDAOYMonoSpherCoculture.integrated.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# convert the counts to a proportion where G1 count is divided by the sum of G1 + G2M + S counts
+summ.stats.cc.2 <- summ.stats.cc.1 %>% 
+  dplyr::group_by(orig.ident) %>% 
+  dplyr::mutate(props = count / sum(count))
+
+summ.stats.cc.2
+```
+
+```{r eval=FALSE, echo=FALSE}
+# re-order the levels for plotting in ggplot
+summ.stats.cc.2$orig.ident <- factor(summ.stats.cc.2$orig.ident, levels = c("DAOY_monolayer", "DAOY_spheroid", "DAOY_coculture"))
+```
+
+```{r eval=FALSE, echo=FALSE}
+levels(summ.stats.cc.2$orig.ident)
+```
+
+```{r eval=FALSE, echo=FALSE, BarchartCellCyclePhaseProportionsDaoyMonoSpherCoculture, fig.height=8, fig.width=6}
+# create a stacked barchart of the result
+ggplot(summ.stats.cc.2, aes(x = orig.ident, y = props,  fill = Phase, label = format(round(props, digits = 2), nsmall = 2))) +
+  geom_bar(position = "stack", stat = "identity") +
+  geom_text(size = 3, position = position_stack(vjust = 0.5)) +
+  theme_classic() +
+  theme(axis.text.x = element_text(size = 14, angle = 45, hjust = 1)) +
+  labs(x = "", y = "Proportion")
+```
+
+A STATISTICAL TEST IS NEEDED FOR THE ABOVE BARCHART - Chi-squared test goodness of fit
+This confirms the difference in proportions of cells in G1 and other phases of the cell cycle is highly significant
+
+```{r eval=FALSE, echo=FALSE}
+# is there a statistically significant difference in the proportion of cells (of whatever orig.ident)
+# that are in G1, G2M and S? Null hypothesis is that proportion of cells that are in G1, G2M and S are equal
+table(metadata.cc.dy)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# check the proportions (or numbers of cells) of each phase
+table(metadata.cc.dy$Phase)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# run the chi squared test (base R) Goodness of Fit test - highly significant! 
+# X-squared = 15.33, df = 2, p-value = 0.0004691, so reject the null hypothesis
+metadata.cc.dy %>% 
+  select(Phase) %>% 
+  table %>% 
+  chisq.test()
+```
+
+```{r eval=FALSE, echo=FALSE}
+# null hypothesis is that Phase and orig.ident (i.e. growth conditions) are independent.
+# now do a chi-squared test on the whole table, i.e. both orig.ident and Phase
+metadata.cc.dy %>%
+  table() %>% 
+  chisq.test()    # X-squared = 452.96, df = 4, p-value < 2.2e-16. Highly significant.
+```
+
+```{r eval=FALSE, echo=FALSE}
+# find expected values
+metadata.cc.dy %>%
+  table() %>% 
+  chisq.test() %>% 
+  .$expected
+```
+
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+SECTION END
+##########################################################################################################
+
+
+
+
+
+
+
+
+
