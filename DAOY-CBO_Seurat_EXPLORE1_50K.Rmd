@@ -41,16 +41,10 @@ library(tidyverse)
 })
 ```
 
+Type of analysis: clustering and annotation of the sample, identification of DAOY malignant clusters and differential expression of malignant cluster markers, functional geneset enrichment
 
-```
-{r}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-load("RDataFiles/DAOY-CBO_Seurat_EXPLORE1_50K.RData")
-```
 
----------------------------------------------------------------------------------------------------------
-***Repeat analysis of DAOY-CBO scRNA-seq with retained ribosomal genes***
-
+***Creation and clustering of the Seurat object***
 ```{r eval=FALSE, echo=FALSE}
 # load the DAOY-CBO raw data
 data_dir <- "./working_data/DAOY-CBO/"   # the dot is current dir and is essential!
@@ -157,7 +151,7 @@ saveRDS(dyCbo.clust, file = "./outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMit
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# load the above object
+# load the above object, ribosome genes included
 dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
 ```
 
@@ -186,27 +180,13 @@ dyCbo.markers.test <- FindAllMarkers(object = dyCbo.clust,
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use
+# save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use  - NOT USED for downstream analysis
 saveRDS(dyCbo.markers.test, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.DAOYcbo.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # save the markers of each cluster in DAOY-CBO folder as csv file also
 write.csv(dyCbo.markers.test, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.DAOYcbo.csv")
-```
-
-```{r eval=FALSE, echo=FALSE}
-# load the list of DAOY-CBO cluster markers
-dyCbo.markers <- read.csv("outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboGenesRemoved.DAOYcbo.csv",
-                          stringsAsFactors = FALSE,
-                          header = TRUE)
-```
-
-```{r eval=FALSE, echo=FALSE}
-# look at the top markers of DAOY-CBO clusters
-dyCbo.markers %>% 
-  dpyr::group_by(cluster) %>% 
-  dplyr::slice_head(n = 3)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -223,12 +203,6 @@ dyCbo.markers.test.2 %>%
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-# none of the malignant markers are expressed in CBO
-dyCbo.markers.test.2 %>% 
-  dplyr::filter(gene %in% c("DACH1", "WLS", "SOX2-OT", "PLEKHA5", "HDAC9", "NLGN1"))
-```
-
-```{r eval=FALSE, echo=FALSE}
 # save the markers of each cluster in DAOY-CBO folder also as RDS file for downstream use
 saveRDS(dyCbo.markers.test.2, file = "./outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.rds")
 ```
@@ -239,20 +213,22 @@ write.csv(dyCbo.markers.test.2, file = "./outputs50K/DAOY-CBO/ClusterMapInput.Fi
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# note ribosome genes retained
 dyCbo.markers.test.2 <- read.csv("outputs50K/DAOY-CBO/ClusterMapInput.FindAllMarkers.RiboRetained.DAOYcbo.csv")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-dyCbo.markers.test.2 %>% 
-  dplyr::filter(cluster == "14") %>% 
-  slice_head(n = 10)
+# note strong expression of PTCH1 in cluster 9
+dyCbo.markers.test.2 %>%
+  dplyr::filter(cluster == "9") %>% 
+  slice_head(n = 40)
 ```
 
+SECTION END
+##############################################################################################
 
-
----------------------------------------------------------------------------------------------------------
-***Pseudotime analysis of DAOY-CBO, DAOY-only clusters 9 and 13***
-
+##############################################################################################
+***Pseudotime analysis of DAOY-CBO, DAOY-only cell clusters 9 and 13***
 ```{r eval=FALSE, echo=FALSE}
 Idents(dyCbo.clust) <- "seurat_clusters"
 dyCbo.clust.sub <- subset(dyCbo.clust, idents = c("9", "13")) %>% 
@@ -299,18 +275,22 @@ plot_cells(cds, color_cells_by = "pseudotime", label_cell_groups = FALSE, label_
     label_branch_points = FALSE, cell_size = 1, show_trajectory_graph = FALSE)
 ```
 
+SECTION END
+##############################################################################################
 
---------------------------------------------------------------------------------------------------------
+##############################################################################################
 ***Transcriptomic comparison of annotated DAOY-CBO and CBO datasets at CLUSTER level***
 code from: https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/Tutorial.md
-First, we need to calculate the average transcriptome profiles for every annotated cell type in the reference data set and every cell cluster in the query data set. This section's code chunks do not knit so I made a separate R script file and just ran the code to generate the heatmap, then saved the figures. Attempt to classify cell types/clusters using Spearman's correlation. This resulted in multiple rounds of cell type identification with some revision of the cell type assignment. I think the assignment of cell type identity is more accurate after doing the correlation tests. Both UMAP plots of the annotated cell types is shown below. The first one is retained so that the changes evident on the revised cell type assignent can be better appreciated.
+First, we need to calculate the average transcriptome profiles for every annotated cell type in the reference data set and every cell cluster in the query data set. UMAP plots of the annotated cell types is shown below.
 
-***Cluster annotation***
-
-THIS IS THE BEST ANNOTATION SO FAR (May 2023)
-Using the above correlations change the specification of the cell types as below.
+****Cluster annotation****
+```{r eval=FALSE, echo=FALSE}
+# load the object, ribosome genes included, mitochondrial genes removed as their inclusion makes cell type annotation more difficult
+dyCbo.clust <- readRDS("outputs50K/DAOY-CBO/ClusterMapInput.DAOYcbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+```
 
 ```{r eval=FALSE, echo=FALSE}
+# THIS IS THE BEST ANNOTATION SO FAR (May 2023)
 # continue to replace the cluster numbers with the identity of each cluster
 new.cluster.ids <- c("Roof Plate_1", "IVth ventricle/CP", "RL-derived_2", 
                      "Purkinje cells_2", "Granule neurons", "Purkinje cells_1", "Glia-like",
@@ -356,7 +336,7 @@ saveRDS(dyCbo.annotate,
         file = "./outputs50K/DAOY-CBO/DaoyCbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 # load the annotated object
 dyCbo.annotate <- 
   readRDS("outputs50K/DAOY-CBO/DaoyCbo.CellAnnot.filtMito.RiboRetained.SCT.CCdiffRegressed.clustered.clusterMap.rds")
@@ -368,58 +348,11 @@ DimPlot(dyCbo.annotate, reduction = "umap", label = TRUE, repel = TRUE, pt.size 
   theme(legend.position = "none")
 ```
 
+SECTION END
+##############################################################################################
 
-***Correlation heatmap of DAOY-CBO vs CBO - Spearman correlation***
-
-```{r eval=FALSE, echo=FALSE}
-cbo.annotate <- 
-  readRDS("outputs50K/CBO/cbo.filtMito.RiboRetained.CellAnnot.SCT.CCdiffRegressed.clustered.clusterMap.rds")
-```
-
-
-```{r eval=FALSE, echo=FALSE}
-av.exp.cbo <- sapply(sort(unique(cbo.annotate$celltype)), function(ct) rowMeans(cbo.annotate$RNA@data[,which(cbo.annotate$celltype == ct)] ))
-
-avg.exp.dyCbo <- sapply(levels(dyCbo.annotate@active.ident), function(ct) rowMeans(dyCbo.annotate$RNA@data[,which(dyCbo.annotate@active.ident == ct)]))
-```
-
-```{r eval=FALSE, echo=FALSE}
-genes2cor <- intersect(VariableFeatures(cbo.annotate), rownames(dyCbo.annotate))
-corr2cbo.cl <- cor(avg.exp.dyCbo[genes2cor,], av.exp.cbo[genes2cor,], method = "spearman")
-```
-
-Now the correlation matrix shows a better match of samples in the Reference (CBO) and query (DAOY-CBO) data
-```{r eval=FALSE, echo=FALSE}
-corr2cbo.cl
-```
-
-```{r eval=FALSE, echo=FALSE}
-# save the correlation matrix corr2cbo.cl
-saveRDS(corr2cbo.cl, file = "./outputs50K/DAOY-CBO/CorrelnSpearmanDAOY-CBOvsCBOclusters.rds")
-```
-
-
-```{r eval=FALSE, echo=FALSE}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-# load the correlation matrix
-corr2cbo.cl <- readRDS("outputs50K/DAOY-CBO/CorrelnSpearmanDAOY-CBOvsCBOclusters.rds")
-```
-
-
-```{r eval=FALSE, echo=FALSE, HeatmapDaoyCboVSCboClusterCorrelations2, fig.height=6,fig.width=6}
-# FOR KNIT DO NOT RE-RUN THIS CODE CHUNK
-graphics.off()
-par("mar")
-par(mar=c(1,1,1,1))
- heatmap3(corr2cbo.cl, scale="none", margins=c(15,17),
-          labRow = colnames(avg.exp.dyCbo), labCol = colnames(av.exp.cbo), cexRow=0.8, cexCol=0.8,
-          col=colorRampPalette(rev(c("#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac")))(30))
-```
-
-
---------------------------------------------------------------------------------------------------------
-***Which clusters are the malignant clusters (including RIBOSOME GENES)?***
-
+##############################################################################################
+***Gene expression in malignant DAOY clusters***
 ```{r eval=FALSE, echo=FALSE}
 Idents(dyCbo.clust) <- "seurat_clusters"
 dyOnly.dyCbo.2 <- subset(dyCbo.clust, idents = c("9", "13", "14"))
@@ -450,6 +383,7 @@ table(dyOnly.dyCbo.2.rescaled$seurat_clusters)
 ```
 
 ```{r eval=FALSE, echo=FALSE, fig.height=14, fig.width=12}
+# analyse candidate CSC-like gene expression
 VlnPlot(dyOnly.dyCboAnnot.rescaled,
         features = c("SOX2", "POU3F2","FABP7", "ERBB4", "OTX2", "ZIC2", "GLI2", "PTCH1", "PAX6"))
 ```
@@ -459,10 +393,12 @@ VlnPlot(dyOnly.dyCbo.2.rescaled,
         features = c("SOX2", "POU3F2","FABP7", "ERBB4", "OTX2", "ZIC2", "GLI2", "PTCH1", "PAX6"))
 ```
 
+SECTION END
+##############################################################################################
 
---------------------------------------------------------------------------------------------------------
-***Malignant clusters - annotations***
-Clusters 9, 13, 14. Only 1 NEUROD1+ cluster which is non-malignant.
+##############################################################################################
+***Malignant clusters - annotations and gene expression***
+Malignant clusters are 9, 13, 14. Only 1 NEUROD1+ cluster which is non-malignant.
 
 ```{r eval=FALSE, echo=FALSE}
 dyOnly.dyCboAnnotate <- subset(dyCbo.annotate, 
@@ -498,8 +434,7 @@ saveRDS(dyOnly.dyCboAnnot.rescaled,
 dyOnly.dyCboAnnot.rescaled <- readRDS("outputs50K/DAOY-CBO/DAOYOnlyCells.SubsetDAOYCboSample.Annotated.Rescaled.SCT.NoRiboNoMito.CCdiffRegressed.rds")
 ```
 
-
-****Expression of the SOX2 regulatory network****
+****Expression of the SOX2 regulatory network in DAOY cells in co-culture with organoid****
 ```{r eval=FALSE, echo=FALSE, ViolinPlotSOX2NetworkDaoyOnlyDaoyCbo, fig.height=17, fig.width=22}
 # ARS2/SRRT is not expressed (ARS2 and SRRT are same gene), also POU5F1 (OCT4) not expressed but other POU domain factors are, e.g.POU3F2
 p1a <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
@@ -552,20 +487,6 @@ p1f <- VlnPlot(dyOnly.dyCboAnnot.rescaled,
 
 p1a + p1b + p1c + p1d + p1e + p1f + plot_layout(ncol = 2)
 ```
-
-```{r eval=FALSE, echo=FALSE}
-p1g<- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
-        features = c("SRRT")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p1g
-```
-
-
 
 ```{r eval=FALSE, echo=FALSE, DAOY-cocultViolinPlotSox2NesErbb4DaoyOnlyDaoyCbo, fig.height=17, fig.width=22}
 p2a <- VlnPlot(dyOnly.dyCboAnnot.rescaled, 
@@ -620,6 +541,7 @@ p2a + p2b + p2c + p2d + p2e + p2f + plot_layout(ncol = 2)
 ```
 
 ```{r ViolinPlotPtch1MEIS1pou3f4FGFBP3twist1DAOYcbo, fig.height=17, fig.width=27}
+# expression of malignant cluster markers
 p3a <- VlnPlot(dyCbo.annotate, 
         features = c("PTCH1")) +
   theme(axis.text = element_text(size = 22),
@@ -666,195 +588,20 @@ p3f <- VlnPlot(dyCbo.annotate,
 p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
 ```
 
-```{r eval=FALSE, echo=FALSE}
-VlnPlot(dyOnly.dyCboAnnot.rescaled,
-        features = c("ATOH1", "FUT4"))
-```
-
-
 ```{r eval=FALSE, echo=FALSE, fig.height=9, fig.width=12}
 # cluster 4 is the only NeuroD1 cluster, and there are 2 CNTN1 clusters (cluster 1 and 4 as in CBO control)
 # malignant clusters are cluster 8 (n=137 cells), cluster 12 (n=77 cells), and cluster 13 (n=55 cells)
-VlnPlot(dyCbo.annotate, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX"))
+# little or no expression of ATOH1 and FUT4
+VlnPlot(dyCbo.annotate, features = c("NEUROD1", "CNTN1", "CNTN2", "RBFOX3", "RTN1", "DCX", "ATOH1"))
 ```
 
-```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSox2networkErbb4Nrg3DaoyCbo, fig.height=10, fig.width=12}
-# visualise gene expression indicating DAOY cell clusters
-VlnPlot(dyCbo.annotate, features = c("PTCH1", "MEIS1", "POU3F2", "FGFBP3", "TWIST1", "LHX9"))
-```
+SECTION END
+##############################################################################################
 
-```{r eval=FALSE, echo=FALSE, VlnplotsErbb4Sox2otx2, fig.height=9, fig.width=13}
-VlnPlot(dyCbo.annotate,
-        features = c("POU3F2", "HOXB2", "HOXB-AS1", "MEIS1"))
-```
-
-
-```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsGranuleGenesDaoyCbo, fig.width=9, fig.width=13}
-# visualise gene expression indicating DAOY cell clusters
-VlnPlot(dyCbo.annotate,
-        features = c("MEIS1", "DCX", "ZIC1", "ZIC2", "IRX5", "TTYH1"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSHHgenesOtx2DaoyCbo, fig.width=9, fig.width=13}
-# visualise gene expression indicating DAOY cell clusters
-VlnPlot(dyCbo.annotate,
-        features = c("TWIST1", "OTX2", "PTCH1", "GLI2", "NNAT", "PROM1"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotDaoyCellsSOX2networkDaoyCbo, fig.height=9, fig.width=13}
-VlnPlot(dyCbo.annotate,
-        features = c("SOX2", "POU3F2", "FABP7", "OTX2", "ZIC2", "GABRA6"))
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotGranuleNeuronGenesDaoyCbo, fig.height=17, fig.width=22}
-p3a <- VlnPlot(dyCbo.annotate, 
-        features = c("NEUROD1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3b <- VlnPlot(dyCbo.annotate, 
-        features = c("MEIS1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3c <- VlnPlot(dyCbo.annotate, 
-        features = c("MEIS2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3d <- VlnPlot(dyCbo.annotate, 
-        features = c("CNTN1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3e <- VlnPlot(dyCbo.annotate, 
-        features = c("CNTN2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p3f <- VlnPlot(dyCbo.annotate, 
-        features = c("DCX")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p3a + p3b + p3c + p3d + p3e + p3f + plot_layout(ncol = 2)
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotGranuleNeuronGenesStemnessGenesDaoyCbo, fig.height=17, fig.width=22}
-p4a <- VlnPlot(dyCbo.annotate, 
-        features = c("PROM1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p4b <- VlnPlot(dyCbo.annotate, 
-        features = c("RBFOX3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p4c <- VlnPlot(dyCbo.annotate, 
-        features = c("RTN1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p4d <- VlnPlot(dyCbo.annotate, 
-        features = c("ZIC1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p4e <- VlnPlot(dyCbo.annotate, 
-        features = c("ZIC2")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p4f <- VlnPlot(dyCbo.annotate, 
-        features = c("DCX")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p4a + p4b + p4c + p4d + p4e + p4f + plot_layout(ncol = 2)
-```
-
-```{r eval=FALSE, echo=FALSE, VlnPlotUniqueMarkersMalignantCellsDaoyCbo, fig.height=17, fig.width=22}
-p5a <- VlnPlot(dyCbo.annotate, 
-        features = c("PTCH1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p5b <- VlnPlot(dyCbo.annotate, 
-        features = c("MEIS1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p5c <- VlnPlot(dyCbo.annotate, 
-        features = c("POU3F4")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p5d <- VlnPlot(dyCbo.annotate, 
-        features = c("FGFBP3")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p5e <- VlnPlot(dyCbo.annotate, 
-        features = c("TWIST1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-p5f <- VlnPlot(dyCbo.annotate, 
-        features = c("ZIC1")) +
-  theme(axis.text = element_text(size = 22),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 22),
-        legend.position = "none",
-        plot.title = element_text(size = 30))
-
-p5a + p5b + p5c + p5d + p5e + p5f + plot_layout(ncol = 2)
-```
-
-
----------------------------------------------------------------------------------------------------------
+##############################################################################################
 ***Gene set enrichment analysis (GSEA) using FGSEA and PRESTO***
 from: https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_05_dge.html#Gene_Set_Enrichment_Analysis_(GSEA) and https://crazyhottommy.github.io/scRNA-seq-workshop-Fall-2019/scRNAseq_workshop_3.html
-
-The first website uses the output of Seurat FindMarkers() to generate the gene list, but this does not use all genes. Note that the arguments are different from the standard ones used to generate DEG list.
-
-Presto is good package to use, ranks genes very fast for Gene Set Enrichment analysis, but fgsea is prone to crashing!!
+The first website uses the output of Seurat FindMarkers() to generate the gene list, but this does not use all genes. Note that the arguments are different from the standard ones used to generate DEG list. Presto is good package to use, ranks genes very fast for Gene Set Enrichment analysis, but fgsea is prone to crashing with RAM set to 15 Gb and 1 core. Use 18 Gb RAM and 1 core for analysis and when knitting the file.
 
 ```{r eval=FALSE, echo=FALSE}
 dyCbo.genes.presto <- wilcoxauc(dyCbo.clust, 'seurat_clusters')
@@ -870,11 +617,10 @@ nrow(dyCbo.genes.presto)
 dplyr::count(dyCbo.genes.presto, group)
 ```
 
-
-***Cluster 9 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers***
+****Cluster 9 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
 ```{r eval=FALSE, echo=FALSE}
 # order the gene list
-# the presto gene list puts ERBB4 at the top which is reassuring, and SOX2 is the 35th listed gene
+# the presto gene list puts ERBB4 at the top, and SOX2 is the 35th listed gene
 dyCbo.genes.presto %>%
   dplyr::filter(group == "9") %>%
   dplyr::arrange(desc(logFC), desc(auc)) %>%
@@ -893,19 +639,15 @@ write.csv(dyCbo.cl9.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster9.markers.aucRanked.csv", quote = F)
 ```
 
-
 ```{r eval=FALSE, echo=FALSE}
-# gProfiler input - use Filezilla to pull the file to my Mac and then copy and paste the ordered list
+# gProfiler input - Filezilla to download the file to my Mac and then copy and paste the ordered list
 # of genes into gProfiler web app
 write.csv(dyCbo.cl9.UPgenes.presto, 
           "./outputs50K/DAOY-CBO/daoyCbo.daoy.cluster9.UPgenes.presto.gProfilerInput.csv", quote = F)
 ```
 
-
-
-
 ---------------------------------------------------------------------------------------------------------
-***Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster 13 markers***
+****Cluster 13 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
 ```{r eval=FALSE, echo=FALSE}
 dyCbo.genes.presto %>%
   dplyr::filter(group == "13") %>%
@@ -954,9 +696,7 @@ write.csv(dyCbo.cl13.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster13.markers.aucRanked.csv", quote = F)
 ```
 
-
----------------------------------------------------------------------------------------------------
-***Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers***
+****Cluster 14 - DAOY-CBO sample: gene set enrichment and g:Profiler input for cytoscape, cluster markers****
 ```{r eval=FALSE, echo=FALSE}
 dyCbo.genes.presto %>%
   dplyr::filter(group == "14") %>%
@@ -1005,1354 +745,10 @@ write.csv(dyCbo.cl14.markers.presto,
           file = "./outputs50K/DAOY-CBO/DAOYcbo.cluster14.markers.aucRanked.csv", quote = F)
 ```
 
-
-CODE RETAINED IN CASE IT PROVES USEFUL LATER
----------------------------------------------------------------------------------------------------
-***Gene set enrichment analysis (GSEA) using enrichR-based Seurat function***. See https://github.com/satijalab/seurat/issues/5151 for guidance and refer to https://maayanlab.cloud/Enrichr/#libraries for a list of gene sets. DOES NOT WORK WITHOUT AN INTERNET CONNECTION. MUST LOAD RSTUDIO SERVER ON RESCOMP1 OR 3 (HEADNODE) TO GET INTERNET CONNECTION. WARN BMRC HELPDESK IN ADVANCE!!
-
-```
-{r EnrichRplotGseaGObiolProcess2021clust7daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-library(enrichR)
-
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "7",
-              enrich.database = "GO_Biological_Process_2021",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaReactome2022clust7daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "7",
-              enrich.database = "Reactome_2022",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbHALLMARK2020clust7daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "7",
-              enrich.database = "MSigDB_Hallmark_2020",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaKegg2021HumanClust7daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "7",
-              enrich.database = "KEGG_2021_Human",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbOncogenicSigClust7daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "7",
-              enrich.database = "MSigDB_Oncogenic_Signatures",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaReactome2022clust13daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "13",
-              enrich.database = "Reactome_2022",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaGObiolProcess2021clust13daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "13",
-              enrich.database = "GO_Biological_Process_2021",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbHALLMARK2020clust13daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "13",
-              enrich.database = "MSigDB_Hallmark_2020",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaKegg2021HumanClust13daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "13",
-              enrich.database = "KEGG_2021_Human",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbOncogenicSigClust13daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "13",
-              enrich.database = "MSigDB_Oncogenic_Signatures",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaReactome2022clust14daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-# this function requires package 'enrichR'
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
-              enrich.database = "Reactome_2022",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaGObiolProcess2021clust14daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
-              enrich.database = "GO_Biological_Process_2021",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbHALLMARK2020clust14daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
-              enrich.database = "MSigDB_Hallmark_2020",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaKegg2021HumanClust14daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
-              enrich.database = "KEGG_2021_Human",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-```
-{r EnrichRplotGseaMsigdbOncogenicSigClust14daoyCbo, fig.width=12}
-# DO NOT RUN THIS CHUNK WITHOUT INTERNET CONNECTION!
-DEenrichRPlot(phase.daoyCbo.sct.clust, ident.1 = "14",
-              enrich.database = "MSigDB_Oncogenic_Signatures",
-              assay = "RNA",
-              max.genes = 500,
-              num.pathway = 20,
-              balanced = TRUE)
-```
-
-
---------------------------------------------------------------------------------------
-RETAINED CODE THAT DOES NOT WORK
-***Fast Gene set enrichment (fgsea)***
-```
-{r}
-# this dataframe shows genes in cluster 8 whether up or downregulated. Needed for fgsea.
-clust8.genes.presto <- dyCbo.genes.presto %>%
-  dplyr::filter(group == "8") %>%
-  dplyr::arrange(desc(auc)) %>% 
-  dplyr::select(feature, auc)
-```
-
-```
-{r}
-# this is the ordered (ranked) gene list for fgsea
-ranks.clus8 <- deframe(clust8.genes.presto)
-head(ranks.clus8)
-```
-
-****msigdbr HALLMARK geneset****
-```
-{r}
-# choose the HALLMARK gene set from msigdbr (this is only one way to choose a geneset)
-# object m_df is a HALLMARK geneset
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-head(m_df)
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values
-# when scoreType='std' an error results and fgsea crashes. A warning message states that all values in the 
-# stats vector  are > 0 and recommends switch ScoreType to 'pos'.
-fgseaRes.clus8.hallmark <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus8.hallmark <- fgseaRes.clus8.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus8.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus7.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus8.hallmark <- 
-  readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-
-Visualise the significant HALLMARK genesets - the result is consistent with GO plots and REACTOME plots above
-```
-{r BarplotFGSEAmsigdbHALLMARKclust8DaoyCbo}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few.
-
-ggplot(fgseaResTidy.clus7.hallmark %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES>0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-```
-{r EnrichmentplotFGSEAmsigdbHALLMARKe2fTargetsClust7DaoyCbo}
-plotEnrichment(fgsea_sets[["HALLMARK_E2F_TARGETS"]],
-               ranks.clus7) + labs(title="HALLMARK_E2F_TARGETS")
-```
-
-****REACTOME geneset**** - fgsea crashes! So leave this out.
-```
-{r}
-# choose the REACTOME gene set from msigdbr (this is only one way to choose a geneset)
-# object m_df is a HALLMARK geneset
-m_df<- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:REACTOME")
-head(m_df)
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# set eps to zero to get lower p-values.
-# Warning - Reactome, if this gene set used fgsea crashes when scoretype='std'!!
-fgseaRes.clus8.reactome <- 
-  fgseaMultilevel(fgsea_sets, eps = 0, stats = ranks.clus8, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus8.reactome <- fgseaRes.clus8.reactome %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus8.reactome %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r BarplotFGSEAmsigdbREACTOMEclust7DaoyCbo}
-# only plot the top 20 pathways, but note the 'padj' filter which will limit the number of plotted
-# genesets to the top few.
-
-ggplot(fgseaResTidy.clus8.reactome %>% filter(padj < 0.01) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-
-****KEGG GENESET****: 
-
-this is a good workaround the problem of clusterProfiler throwing an error when KEGG database is used
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.kegg.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "CP:KEGG")
-
-head(msig.kegg.hs)
-```
-
-```
-{r}
-fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus8.kegg <- 
-  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus8, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# tidy up the data
-fgseaResTidy.clus7.kegg <- fgseaRes.clus7.kegg %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus7.kegg %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-
-```
-{r}
-saveRDS(fgseaResTidy.clus7.kegg, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus7.kegg <- readRDS("outputs50K/DAOY-CBO/daoy_clus7.daoyCbo.multifgsea.KeggGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAkeggClust7DaoyCbo}
-# only plot the top 20 pathways
-ggplot(fgseaResTidy.clus7.kegg %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "KEGG pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-****HALLMARK GENE SET****
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-```
-
-```
-{r}
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus13.hallmark <- 
-  fgseaMultilevel(fgsea_sets, stats = ranks.clus13, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus11.hallmark <- fgseaRes.clus11.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(10)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus11.hallmark,
-        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus11.hallmark <- 
-  readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAmsigdbHALLMARKclust12DaoyCbo}
-# note that padj values are not that low
-ggplot(fgseaResTidy.clus11.hallmark %>% filter(padj < 0.05) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-```
-{r EnrichmentplotFGSEAmsigdbHALLMARKhedgehogSignallingUpClust11DaoyCbo}
-plotEnrichment(fgsea_sets[["HALLMARK_HEDGEHOG_SIGNALING"]],
-               ranks.clus11) + labs(title="HALLMARK_HEDGEHOG_SIGNALING")
-```
-
-****KEGG GENESET**** - this makes fgsea crash so don't run this code
-```
-{r}
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.kegg.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "CP:KEGG")
-
-head(msig.kegg.hs)
-```
-
-```
-{r}
-fgsea_sets_kegg <- msig.kegg.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus11.kegg <- 
-  fgseaMultilevel(fgsea_sets_kegg, stats = ranks.clus11, eps = 0, scoreType = "pos", minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus11.kegg <- fgseaRes.clus11.kegg %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.kegg %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-****GO:BP genesets****
-```
-{r}
-# use dplyr to get the appropriate gene set
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-
-head(msig.GOBP.hs)
-```
-
-```
-{r}
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-```
-
-```
-{r}
-# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
-
-fgseaRes.clus11.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus11, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
-```
-
-```
-{r}
-# tidy up the data
-fgseaResTidy.clus11.GOBP <- fgseaRes.clus11.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus11.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-
-```
-{r}
-saveRDS(fgseaResTidy.clus11.GOBP, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus11.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus11.daoyCbo.multifgsea.GOBiolProcessGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAgoBPclust11DaoyCbo, fig.height=5, fig.width=6}
-# only plot the top 20 pathways
-ggplot(fgseaResTidy.clus11.GOBP %>% filter(padj < 0.001) %>% head(n=20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title= "GO:BP pathways NES from GSEA") + 
-  theme_minimal() # can change bar colours using ggplot
-```
-
-****HALLMARK GENE SET****
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-head(m_df)
-```
-
-```
-{r}
-m_df<- msigdbr(species = "Homo sapiens", category = "H")
-fgsea_sets <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus12.hallmark <- 
-  fgseaMultilevel(fgsea_sets, stats = ranks.clus12, scoreType = "pos", eps = 0, minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-fgseaResTidy.clus12.hallmark <- fgseaRes.clus12.hallmark %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus12.hallmark %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus12.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-```
-{r}
-fgseaResTidy.clus12.hallmark <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.HallmarkGenes.rds")
-```
-
-
-```
-{r BarplotFGSEAmsigdbHALLMARKClust12DaoyCbo}
-ggplot(fgseaResTidy.clus12.hallmark %>% filter(padj < 0.001) %>% head(n = 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill = NES > 0)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Hallmark pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-****GO:BP GENESET****
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-msig.hs <- msigdbr(species = "Homo sapiens")
-
-msig.GOBP.hs <- msig.hs %>% 
-dplyr::filter(gs_subcat == "GO:BP")
-```
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
-
-fgseaRes.clus12.GOBP <- 
-  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks.clus12, eps = 0, scoreType = "pos",  minSize = 15, maxSize = 200)
-```
-
-```
-{r}
-# DO NOT RUN THIS CHUNK
-fgseaResTidy.clus12.GOBP <- fgseaRes.clus12.GOBP %>%
-  as_tibble() %>%
-  arrange(desc(NES))
-
-fgseaResTidy.clus12.GOBP %>% 
-  dplyr::select(-leadingEdge, -ES) %>% 
-  arrange(padj) %>% 
-  head(20)
-```
-
-```
-{r}
-saveRDS(fgseaResTidy.clus12.hallmark, 
-        file = "./outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
-```
-
-```
-{r}
-# load the above file
-fgseaResTidy.clus12.GOBP <- readRDS("outputs50K/DAOY-CBO/daoy_clus12.daoyCbo.multifgsea.GOBPgenes.rds")
-```
-
-
-```
-{r BarplotFGSEAgoBPclust12DaoyCbo}
-ggplot(fgseaResTidy.clus12.GOBP %>% filter(padj < 0.001) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
-  geom_col(fill = "blue") +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="GO:BP pathways NES from GSEA") + 
-  theme_minimal()
-```
-
-
----------------------------------------------------------------------------------------------------
-***Differentially expressed gene GO term enrichment using clusterProfiler***
-This method was only partially successful compared to other methods used here. From chapter 14 of the book "Single Cell Multi-Omics Data Analysis" (https://bookdown.org/ytliu13207/SingleCellMultiOmicsDataAnalysis/deg-go-enrichment.html)
-UPDATE THE CLUSTER PROFILER PACKAGE AND TEST AGAIN
-
-the file needed is:
-```
-{r}
-# load the POSITIVE DEGs object for the DAOY-CBO sample
-daoyCbo.sct.POSdegs <- readRDS("outputs50K/DAOY-CBO/POS.DEGs.Daoy.Cbo.phase.sct.rds")
-```
-
-```
-{r}
-deg.ls <- split(rownames(daoyCbo.sct.POSdegs), f = daoyCbo.sct.POSdegs$cluster)
-```
-
-
-```
-{r}
-geneid.ls <- deg.ls %>% map(~{
-  
-  # here for human
-  gene.df <- AnnotationDbi::select(org.Hs.eg.db,
-                    keys = .x,
-                    columns = c("ENTREZID", "SYMBOL"),
-                    keytype = "SYMBOL")
-  
-  gene <- gene.df$ENTREZID
-  gene <- gene[which(!is.na(gene))]
-  gene <- unique(gene)
-  
-  return(gene)
-})
-```
-
-```
-{r}
-# the 1st member of the above list is #1, hence cluster 7 = 8th component of list, etc..
-gene.ls <- geneid.ls[c(8, 14, 15)]
-```
-
-```
-{r GOdotPlotDyCBOclust7.13.14, fig.height=20}
-# GO term analysis
-compGO <- compareCluster(geneCluster   = gene.ls,
-                           fun           = "enrichGO",
-                           pvalueCutoff  = 0.05,
-                           pAdjustMethod = "BH", 
-                           OrgDb = org.Hs.eg.db, 
-                           ont = 'BP')
-
-## dot plot
-g1 <- dotplot(compGO, showCategory = 10, title = "GO Enrichment Analysis")
-g1
-```
-
-```
-{r}
-# save the object g1 as the EnrichGO computation takes a long time
-saveRDS(g1, file = "./outputs50K/DAOY-CBO/GOdotPlotDyCBOClusters7_13_14.rds")
-```
-
-```
-{r GOdotPlotDyCBOclust7.13.14, fig.height=18, fig.width=6}
-# load the above GO dot plot
-g1 <- readRDS("outputs50K/DAOY-CBO/GOdotPlotDyCBOClusters7_13_14.rds")
-g1
-```
-
-```
-{r}
-# Reactome pathway analysis
-compPathway <- compareCluster(geneCluster   = gene.ls,
-                              fun           = "enrichPathway",
-                              pvalueCutoff  = 0.05,
-                              pAdjustMethod = "BH")
-g2 <- dotplot(compPathway, showCategory = 10, title = "REACTOME Pathway Enrichment Analysis")
-```
-
-```
-{r}
-# save the ReactomePathway object, g2
-saveRDS(g2, file = "./outputs50K/DAOY-CBO/REACTOMEpthwyDyCBOClusters7_13_14.rds")
-```
-
-```
-{r ReactomePathwayDotplotDyCBOclust7.13.14, fig.height=12, fig.width=6}
-# load the above REACTOME pathway dot plot
-g2 <- readRDS("outputs50K/DAOY-CBO/REACTOMEpthwyDyCBOClusters7_13_14.rds")
-g2
-```
-
-clusterProfiler NOT WORKING for KEGG genesets!!!
-```
-{r}
-compKEGG <- compareCluster(geneCluster   = gene.ls,
-                             fun           = "enrichKEGG",
-                             pvalueCutoff  = 0.05,
-                             pAdjustMethod = "BH", 
-                            organism = "hsa")
-g3 <- dotplot(compKEGG, showCategory = 10, title = "KEGG Pathway Enrichment Analysis")
-```
-
-```
-{r fig.width=15}
-## GO enrichment per cluster
-go.ls <- geneid.ls[c(8, 14, 15)] %>% map(~{
-  
-  eGO <- enrichGO(
-    gene          = .x,
-    OrgDb         = org.Hs.eg.db,
-    ont           = "BP",
-    pAdjustMethod = "BH",
-    pvalueCutoff  = 0.05,
-    readable      = TRUE
-  )
-  return(eGO)
-})
-
-pathway.ls <- gene.ls %>% map(~{
-  ePathway <- enrichPathway(
-    gene = .x,
-    pvalueCutoff = 0.05,
-    readable = TRUE, 
-  )
-  return(ePathway)
-})
-
-## enrichment visualisation
-barplotTerm <- function(object,
-                        x = "Count",
-                        color = 'p.adjust',
-                        showCategory = 8,
-                        font.size = 12,
-                        title = "") {
-  ## use *height* to satisfy barplot generic definition
-  ## actually here is an enrichResult object.
-  colorBy <- color
-  
-  df <- fortify(object, showCategory = showCategory, by = x)
-  df$p.adjust <- -log10(df$p.adjust)
-  #df <- df[c(1:3,9:12,15,16),]
-  if (colorBy %in% colnames(df)) {
-    p <-
-      ggplot(df, aes_string(x = x, y = "Description", fill = colorBy)) +
-      theme_dose(font.size) +
-      scale_fill_continuous(
-        low = "red",
-        high = "blue",
-        name = color,
-        guide = guide_colorbar(reverse = TRUE)
-      )
-  } else {
-    p <- ggplot(df, aes_string(x = x, y = "Description")) +
-      theme_dose(font.size) +
-      theme(legend.position = "none")
-  }
-  
-  
-  p + geom_col(fill = color) + ggtitle(title) + xlab('-log10 FDR') + ylab(NULL)
-}
-
-lapply(1:length(gene.ls), function(x){
-  
-  name <- names(gene.ls)[[x]]
-  g1 = barplotTerm(go.ls[[x]], showCategory = 10, title = paste0(name, " GO"), color = 'blue', x = 'p.adjust')
-  g2 = barplotTerm(pathway.ls[[x]], showCategory = 10, title = paste0(name, " REACTOME"), color = 'blue', x = 'p.adjust')
-  #g3 = barplotTerm(kegg.ls[[x]], showCategory = 10, title = paste0(name, " KEGG"), color = 'blue', x = 'p.adjust')
-  print(g1)
-  print(g2)
-  #print(g3)
-  
-})
-```
-
-THe KEGG DATABASE DOES NOT WORK WHEN USING CLUSTERPROFILER!!
-```
-{r}
-kegg.ls <- gene.ls %>% map(~{
-  eKEGG <- enrichKEGG(
-    gene = .x,
-    pvalueCutoff = 0.05, 
-    organism = 'hsa'
-  )
-  return(eKEGG)
-})
-```
-
-```
-{r DotplotAllSeppMarkersAndCiliaDaoyCbo, fig.height=12}
-# from the Sepp paper repeat Dotplot with TF and some key non-TF markers
-# added markers of ciliated cells from cluster10 above.
-# used the argument col.min = 0 so that average expression scale is from 0 to 2.5 in key
-
-sepp.all.markers <- c("TFAP2A", "PAX3", "RFX4", "TCFL71", "TCF7L2", "GLIS3", "SOX6", "HOPX", "TSC22D4",  
-                      "ID4", "NCKAP5", "SLIT2", "CLYBL", "SLC1A3", "SLC6A11", "AQP4",  #astroglial/progenitor
-                      
-                      "ESRRB", "FOXP1", "FOXP2", "FOXP4", "MEF2C", "RORB", "CDH9", "ETV1", "EBF1", "EBF2", 
-                      "SKOR2", "DAB1", "IPTR",   # Purkinje
-                      
-                      "NOTCH1",    # VZ neuroblast
-             
-                      "PAX2", "NFIA", "NFIB", "TFAP2B", "BHLHE22", "PRDM8",  # interneuron
-                      
-                      "ZFHX3", "ZFHX4",   # GABAergic deep nuclei neurons
-             
-                      "TOP2A", "ATOH1", "LMX1A", "OTX2","ETV6", "PAX6", "BARHL1", "E2F3", "ST18", "SATB2", 
-                      "ZBTB18", "NEUROD1", "ZIC1", "ZIC4", "GABAR6", "CNTN1", "CNTN2", "KLF9", "NR3C1", "LMO3", 
-                      "SYNPR", "KCNIP4", "HCRTR2", 
-                      "EOMES", "TRPC3", "GRM1")
-                      # UBC/GCP/granule/glut deep cerebellar nuclei                                                                   
-seppAll.cilia.stem.markers <- c(sepp.all.markers, "CCNO", "CFAP299", "ROPN1L", "C11orf88", "ANKRD66", "C20orf85", 
-                                "STOML3", "TEKT4", "SNTN", "MEIS1", "POU3F2", "HOXB2", "MEIS2", "GRIA4")
-
-
-DotPlot(object = phase.daoyCbo.sct.clust, features = seppAll.cilia.stem.markers, col.min = 0) +
-  coord_flip()
-```
-
----------------------------------------------------------------------------------------------
-***Examine cell cycle and proliferating cells***
-```
-{r}
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-prolif.genes <- list(c(s.genes, g2m.genes))
-```
-
-```
-{r FeaturePlotProlifernDaoyCbo, fig.height=6}
-phase.daoyCbo.sct.clust <- AddModuleScore(phase.daoyCbo.sct.clust,
-                        features = prolif.genes,
-                        name = "prolif.genes")
-FeaturePlot(phase.daoyCbo.sct.clust, features = 'prolif.genes1', label = TRUE, repel = TRUE
-            ) +
-   scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
-
-```
-
-
-----------------------------------------------------------------------------------------------------------
-***Subclustering of cluster 13 (DAOY cells)*** (OLD and probably OUT-OF-DATE)
-This did not lead to many significant DEGs because the number of cells is small
-Cluster 13, I marked as a DAOY cluster, is an interesting cluster as there are markers of progenitor/stem-like cells and differentiated cells. Try to subcluster this cluster, and then do differential expression.
-
-```
-{r}
-# get the graph names for subclustering
-names(phase.daoyCbo.sct.clust@graphs)
-```
-
-
-Choose res = 0.6 for subclustering, no subclusters found at lower res, and 3 clusters found at higher res. Looking at the markers expressed in cluster 13, which suggest two cell types
-```
-{r}
-phase.daoyCbo.sct.subcls <- FindSubCluster(phase.daoyCbo.sct.clust, 
-                            cluster = "13",
-                            graph.name = "SCT_snn",
-                            resolution = 0.6,
-                            subcluster.name = "subclust",
-                            algorithm = 1)
-```
-
-```
-{r}
-head(phase.daoyCbo.sct.subcls@meta.data)
-```
-
-
-```
-{r}
-phase.daoyCbo.sct.subcls@meta.data %>% 
-  filter(seurat_clusters == "13")
-```
-
-```
-{r}
-# there are 77 cells altogether
-phase.daoyCbo.sct.subcls@meta.data %>% 
-  filter(seurat_clusters == "13") %>% 
-  nrow()
-```
-
-```
-{r}
-# cluster 13_0 = 58 cells
-# cluster 13_1 = 19 cells
-table(phase.daoyCbo.sct.subcls$subclust)
-```
-
-
-```
-{r DimplotSubclustersDaoyCbo, fig.height=6}
-DimPlot(phase.daoyCbo.sct.subcls, group.by = "subclust", label = TRUE)
-```
-
-Find DEGs that distinguish cluster 13_0 and 13_1
-```
-{r}
-deg.subclus0.cl13 <- FindMarkers(phase.daoyCbo.sct.subcls, 
-                        ident.1 = "13_0", 
-                        ident.2 = "13_1", 
-                        group.by = "subclust",
-                        only.pos = TRUE)
-```
-
-```
-{r}
-# 1885 genes upregulated in cluster13_0 vs cluster13_1. But there will be many genes which
-# have high p-values
-nrow(deg.subclus0.cl13)
-```
-
-The cluster13 subcluster 13_0 consists of differentiation markers, e.g. DCX, TAGLN3, TUBB2B and CD24. 
-CD24 - In human medulloblastoma, CD24 was found to be highly expressed on Group 3, Group 4 and SHH subgroups (doi: 10.1371/journal.pone.0210665). p-values are not as low as in other clusters as the number of cells is more limited.
-STMN1 - High expression of stathmin protein predicts a fulminant course in medulloblastoma (DOI link: https://doi.org/10.3171/2009.2.PEDS08287)
-```
-{r}
-head(deg.subclus0.cl13, 20)
-```
-
-```
-{r}
-deg.subclus1.cl13 <- FindMarkers(phase.daoyCbo.sct.subcls, 
-                        ident.1 = "13_1", 
-                        ident.2 = "13_0", 
-                        group.by = "subclust",
-                        only.pos = TRUE)
-```
-
-The adjusted p-values are not significant as the number of cells is small in cluster13_1
-HDAC9 is a poor prognostic marker in MB (https://doi.org/10.1158/1078-0432.CCR-10-0395)
-```
-{r}
-head(deg.subclus1.cl13, 50)
-```
-
-```
-{r}
-save.image("./RDataFiles/DAOY-CBO_Seurat_EXPLORE1_50K.RData")
-```
-
-
-UNUSED CODE THAT IS RETAINED IN CASE IT PROVES USEFUL
-
-THIS CODE DID NOT WORK AS EXPECTED, BUT IS RETAINED IN CASE IT IS OF USE LATER ON
-***Transcriptomic comparison of annotated DAOY-CBO and CBO datasets at CELL level***
-code from: https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/Tutorial.md
-```
-{r}
-rank_matrix <- function (mat) 
-{
-    if (is.matrix(mat) | is.data.frame(mat)) {
-        ranked_mat <- apply(mat, 2, rank)
-    }
-    else {
-        df_mat <- Matrix::summary(mat)
-        dfs_mat <- split(df_mat, df_mat$j)
-        df_mat_ranked <- do.call(rbind, lapply(dfs_mat, function(df) {
-            num_zeros <- nrow(mat) - nrow(df)
-            ranks_nonzero <- rank(df$x)
-            df$x <- ranks_nonzero + num_zeros - (1 + num_zeros)/2
-            return(df)
-        }))
-        ranked_mat <- sparseMatrix(i = df_mat_ranked$i, j = df_mat_ranked$j, 
-            x = df_mat_ranked$x, dims = dim(mat), dimnames = dimnames(mat))
-    }
-    return(ranked_mat)
-}
-# genes2cor object above must be loaded first!
-ranked.exp.dyCbo <- rank_matrix(phase.daoyCbo.sct.clust.2@assays$RNA@data[genes2cor,])
-ranked.exp.cbo <- rank_matrix(phase.cbo.sct.clusters.2@assays$RNA@data[genes2cor,])
-```
-
-```
-{r}
-corr2ref.cell <- corSparse(ranked.exp.dyCbo, ranked.exp.cbo)
-ct.maxcor <- colnames(av.exp.cbo)[apply(corr2ref.cell, 1, which.max)]
-phase.daoyCbo.sct.clust.2$celltype_maxcor <- ct.maxcor
-```
-
-
-The below plot looks a bit strange with only 2 cell types in the bottom plot!
-```
-{r fig.height=8}
-plot1 <- UMAPPlot(phase.daoyCbo.sct.clust.2, label=T)
-plot2 <- UMAPPlot(phase.daoyCbo.sct.clust.2, group.by = "celltype_maxcor", label=T)
-plot1 / plot2
-```
-
-I think there is a mistake in the code here: on line 394 the object entered for heatmap3 shoud be the correct one, but according to the website, they used the same object used to make the cluster heatmap!
-```
-{r HeatmapDaoyCboVSCboCellCorrelns, fig.height=10, fig.width=13}
-corr2ref_scaled <- scale(t(corr2ref.cell))
-corr2ref_sum2cl <- t(sapply(levels(phase.daoyCbo.sct.clust.2@active.ident), function(cl)
-  rowMeans(corr2ref_scaled[,which(phase.daoyCbo.sct.clust.2@active.ident == cl)]) ))
-heatmap3(corr2ref_sum2cl, scale="none", margins=c(15,17),
-          labRow = colnames(avg.exp.dyCbo), labCol = colnames(av.exp.cbo), cexRow=0.8, cexCol=0.8,
-          col=colorRampPalette(rev(c("#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac")))(30))
-```
-
---------------------------------------------------------------------------------------------------------
-***Transcriptomic comparison of annotated DAOY-CBO and CBO datasets using Seurat-based label transfer***
-from https://github.com/quadbiolab/scRNAseq_analysis_vignette/blob/master/Tutorial.md
-The below code did not produce the expected results, and correlation between cell types was poorer than ecpected, e.g. ciliated cells in the query and reference datasets did not match very well at all!
-
-```
-{r, fig.height=8, fig.width=10}
-anchors <- FindTransferAnchors(reference = phase.cbo.sct.clusters.2, 
-                               query = phase.daoyCbo.sct.clust.2,
-                               normalization.method = "SCT",
-                               recompute.residuals = T,
-                               dims = 1:30, npcs = 30)
-predictions <- TransferData(anchorset = anchors, 
-                            refdata = phase.cbo.sct.clusters.2$celltype, 
-                            dims = 1:30)
-phase.daoyCbo.sct.clust.2$celltype_transfer <- predictions$predicted.id
-
-plot1 <- UMAPPlot(phase.daoyCbo.sct.clust.2, label=T)
-plot2 <- UMAPPlot(phase.daoyCbo.sct.clust.2, group.by="celltype_transfer", label=T)
-plot1 / plot2
-```
-
-```
-{r fig.height=10}
-pred_scores_sum2cl <- t(sapply(levels(phase.daoyCbo.sct.clust.2@active.ident), function(cl)
-  colMeans(predictions[which(phase.daoyCbo.sct.clust.2@active.ident == cl),-c(1,ncol(predictions))]) ))
-
-heatmap3(pred_scores_sum2cl, scale="none", margins=c(15,17),
-          labRow = colnames(phase.daoyCbo.sct.clust.2), 
-          labCol = unique(phase.cbo.sct.clusters.2$celltype), cexRow=0.8, cexCol=0.8,
-          col=colorRampPalette(rev(c("#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac")))(30))
-```
-
---------------------------------------------------------------------------------------------------
-***Get a correlation matrix of DAOY-only clusters in DAOY-CBO 7,13,14 and DAOY-CBO NEUROD1 cluster 4 with the control CBO NEUROD1+ cluster 5***
-CODE RETAINED IN CASE IT IS USEFUL LATER
-```
-{r}
-# load the SCTransformed, fully filtered seurat object, CBO control from which cluster 5 is needed
-phase.cbo.sct.clusters <- 
-  readRDS("outputs50K/CBO/phase.filtRiboMito.cbo.SCT.CCdiffRegressed.clustered.rds")
-```
-
-```
-{r}
-# subset cluster 5 of phase.cbo.sct.clusters
-cl5.cbo <- subset(phase.cbo.sct.clusters, idents = c("5"))
-dim(cl5.cbo)
-```
-
-```
-{r}
-# subset the daoy clusters again 7, 13, 14
-cl4 <- subset(phase.daoyCbo.sct.clust, idents = c("4"))
-cl7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
-cl13 <- subset(phase.daoyCbo.sct.clust, idents = c("13"))
-cl14 <- subset(phase.daoyCbo.sct.clust, idents = c("14"))
-```
-
-```
-{r}
-# compute AverageExpression of each of the ONS76-CBO NEUROD1+ clusters and AverageExpression of 
-# av.exp.cl5.cbo (the control NEUROD1 cluster from CBO sample)
-av.cl5.cbo <- AverageExpression(cl5.cbo)$RNA
-av.cl4 <- AverageExpression(cl4)$RNA
-av.cl7 <- AverageExpression(cl7)$RNA
-av.cl13 <- AverageExpression(cl13)$RNA
-av.cl14 <- AverageExpression(cl14)$RNA
-```
-
-Check lengths of the objects. They are different. Cluster 5 from the CBO control has the lowest number of genes 
-```
-{r}
-length(av.cl5.cbo)
-length(av.cl4)
-length(av.cl7)
-length(av.cl13)
-length(av.cl14)
-```
-
-```
-{r}
-# convert the matrices of Average Expression to dataframes
-# df = dataframe
-av.cl5.cbo.df <- as.data.frame(av.cl5.cbo) %>% 
-  rownames_to_column("genes")
-av.cl4.df <- as.data.frame(av.cl4) %>% 
-  rownames_to_column("genes")
-av.cl7.df <- as.data.frame(av.cl7) %>% 
-  rownames_to_column("genes")
-av.cl13.df <- as.data.frame(av.cl13) %>% 
-  rownames_to_column("genes")
-av.cl14.df <- as.data.frame(av.cl14) %>% 
-  rownames_to_column("genes")
-```
-
-```
-{r}
-# change colnames of objects (clusters)
-names(av.cl5.cbo.df)[2] <- "cl5_cbo"
-names(av.cl4.df)[2] <- "cl4_daoyCbo"
-names(av.cl7.df)[2] <- "cl7_daoyCbo"
-names(av.cl13.df)[2] <- "cl13_daoyCbo"
-names(av.cl14.df)[2] <- "cl14_daoyCbo"
-```
-
-```
-{r}
-# left join all three dataframes in one go
-av.dy.cbo.clust <- join_all(list(av.cl5.cbo.df, av.cl4.df, av.cl7.df, av.cl13.df, av.cl14.df), 
-                       by = "genes", type = "left")
-head(av.dy.cbo.clust)
-```
-
-Find all NA values in the av.dy.cbo.clust dataframe. Looks like most clusters (columns) in this df have 666 NAs
-```
-{r}
-colSums(is.na(av.dy.cbo.clust))
-```
-
-```
-{r}
-# Replace all the NA values with zeros
-av.dy.cbo.clust[is.na(av.dy.cbo.clust)] <- 0
-```
-
-```
-{r}
-colSums(is.na(av.dy.cbo.clust))
-```
-
-
-```
-{r}
-RNAcounts <- av.dy.cbo.clust %>% 
-  select(-genes)
-```
-
-```
-{r}
-corr.dy.cbo <- cor(RNAcounts)
-corr.dy.cbo
-```
-
-Refer to https://dk81.github.io/dkmathstats_site/rvisual-corrplots.html to plot this upper triangular correlation plot
-```
-{r}
-upper.corr.dy.cbo <- corr.dy.cbo
-
-# Make upper triangular matrix by setting NA to lower triangular part:
-upper.corr.dy.cbo[lower.tri(upper.corr.dy.cbo)] <- NA
-upper.corr.dy.cbo
+```{r eval=FALSE, echo=FALSE}
+sessionInfo()
 ```
 
-```
-{r}
-# Melt this upper triangular matrix (package reshape2 needed) and remove NA values:
-up.m.dy.cbo <- melt(upper.corr.dy.cbo, na.rm = TRUE)
-up.m.dy.cbo
-nrow(up.m.dy.cbo)
-```
-
-This is a much nicer looking plot - the CORRELATION HEATMAP FOR ALL GENES. As expected cluster 4 of DAOY-CBO is most similar to cluster 5 of CBO. Cluster 14 of DAOY-CBO looks very different, and has the least correlation with the healthy granule cluster. So, cluster 7 of DAOY-CBO with the highest SOX2 expression does not have the lowest expression of granule differentiation genes!
-```
-{r CorrAllGenesNeuroD1clustCBOandDAOYclustersInDAOYcbo}
-# ggplot upper triangular correlation matrix:
-ggplot(data = up.m.dy.cbo, aes(x = Var1, y = Var2, fill = value)) +
-  geom_tile() +
-  theme_classic() +
-  labs(x = "", y = "", fill = "Correlation \n Measure \n") +
-  scale_x_discrete(labels = c("Clust 5_CBO", 
-                              "Clust 4_DAOY-CBO",
-                              "Clust 7_DAOY-CBO",
-                              "Clust 13_DAOY-CBO",
-                              "Clust 14_DAOY-CBO")) +
-  scale_y_discrete(labels = c("Clust 5_CBO", 
-                              "Clust 4_DAOY-CBO",
-                              "Clust 7_DAOY-CBO",
-                              "Clust 13_DAOY-CBO",
-                              "Clust 14_DAOY-CBO")) +
-  theme(axis.text.x = element_text(face = "bold", angle = 90, hjust = 1),
-        axis.text.y = element_text(face = "bold", vjust = 1),
-        axis.ticks = element_blank(),
-        axis.line = element_line(linetype = "blank"),
-        panel.background = element_rect(fill = "gray87"),
-        panel.grid.major = element_line(colour = "gray47", linetype = "dotted", size = 0.2)
-        ) +
-  geom_text(aes(label = round(value, 3)), color = "white", fontface = "bold", size = 3) +
-  coord_fixed()
-```
-
-```
-# In https://kb.10xgenomics.com/hc/en-us/articles/218169723-What-fraction-of-reads-map-to-ribosomal-proteins- on the 10X Genomics scRNA-seq website there is a table of percent ribosomal genes in different cell types. For neurons the upper limit is 20%. So try filtering 'filt.cboDaoy.seurat' for ribosomal genes and repeat the clustering.
-
-# View metadata data frame, stored in object@meta.data
-metadata <- filt.cboDaoy.seurat[[]]
-
-# number of cells with percent.ribo > 20%: 1460 cells
-# number of cells with percent.ribo < 20%: 1596 cells
-
-nrow(metadata[metadata$percent.ribo > 20, ])
-
-nrow(metadata[metadata$percent.ribo < 20, ])
-```
-Read a CSV file:
-```
-cboDaoy.cluster.markers.noRiboMito <- read.csv("outputs50K/DAOY-CBO/cboDaoy.cluster.markers.NoRiboNoMito.csv", 
-                                       header = TRUE, 
-                                       stringsAsFactors = FALSE)
-```
-
-Code which was not used, may prove useful later
-```
-# cluster 0 manual = probable glia
-cluster0.markers <- cboDaoy.cluster.markers.noRiboMito[cboDaoy.cluster.markers.noRiboMito$cluster == 0, ] %>%
-  head(n=10)
-
-cluster0.markers
-```
-
-Get the cell IDs of the 'daoyOnly.daoyCbo' object
-```
-# no need to re-run this code
-daoyCellID <- WhichCells(phase.daoyCbo.sct, idents = c("7", "13", "14"))
-length(daoyCellID)
-```
-
-```
-# no need to rerun this code
-# subset the 'filt.noRiboMito.cboDaoy' seurat object for just daoyCellID vector of cancer cells
-daoy <- subset(filt.noRiboMito.cboDaoy, cells = daoyCellID)
-```
-
-```
-# no need to rerun this code
-dim(daoy)
-```
-
-```
-# save the 'daoy' object
-saveRDS(daoy, file = "./outputs50K/DAOY-CBO/dooyOnlyCells.subset.filt.noRiboMito.cboDaoy.rds")
-```
-CODE RETAINED IN CASE IT PROVES USEFUL LATER:
-Find the average expression of SOX2 in the DAOY clusters 7, 13, 14
-```
-{r}
-# subset the daoy clusters first
-clust7 <- subset(phase.daoyCbo.sct.clust, idents = c("7"))
-clust13 <- subset(phase.daoyCbo.sct.clust, idents = c("13"))
-clust14 <- subset(phase.daoyCbo.sct.clust, idents = c("14"))
-
-cl7.norm <- NormalizeData(clust7, assay = "RNA")
-cl13.norm <- NormalizeData(clust13, assay = "RNA")
-cl14.norm <- NormalizeData(clust14, assay = "RNA")
-```
-
-```
-{r}
-# get the average expression of each cluster
-av.cl7 <- AverageExpression(cl7.norm)$RNA
-av.cl13 <- AverageExpression(cl13.norm)$RNA
-av.cl14 <- AverageExpression(cl14.norm)$RNA
-```
-
-```
-{r}
-# convert the matrices of Average Expression to dataframes
-# df = dataframe
-av.cl7.df <- as.data.frame(av.cl7) %>% 
-  rownames_to_column("genes")
-av.cl13.df <- as.data.frame(av.cl13) %>% 
-  rownames_to_column("genes")
-av.cl14.df <- as.data.frame(av.cl14) %>% 
-  rownames_to_column("genes")
-```
-
-```
-{r}
-head(av.cl7.df)
-```
-
-
-```
-{r}
-# change the column names from "all" to cluster no.
-names(av.cl7.df)[2] <- "cluster_7"
-names(av.cl13.df)[2] <- "cluster_13"
-names(av.cl14.df)[2] <- "cluster_14"
-```
-
-```
-{r}
-head(av.cl7.df)
-head(av.cl13.df)
-head(av.cl14.df)
-```
-
-```
-{r}
-# left join all three dataframes in one go
-av.dy.clust <- join_all(list(av.cl7.df, av.cl13.df, av.cl14.df), 
-                       by = "genes", type = "left")
-```
-
-```
-{r}
-head(av.dy.clust)
-```
-
-```
-{r}
-# get SOX2 average expression
-av.dy.clust[av.dy.clust$genes == "SOX2", ]
-```
+SECTION END
+##################################################################################################################
 
