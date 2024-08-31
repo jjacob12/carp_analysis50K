@@ -1,0 +1,379 @@
+---
+title: "InferCNV_NGCHM_DAOYcoculture.Rmd"
+author: "JJ"
+date: "2024-08-24"
+output: html_document
+---
+
+```{r graphical_output}
+options(bitmapType='cairo-png') # this line of code needed BEFORE knitr code in chunk below
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,   # prints the code (if FALSE then only code output is shown)
+                      cache = TRUE)
+```
+
+
+```{r libraries}
+# see this documentation for required libraries when using infercnv and NHCHM: https://github.com/broadinstitute/inferCNV/wiki/Next-Generation-Clustered-Heat-Map
+
+suppressPackageStartupMessages({
+library(Seurat)
+library(infercnv)
+library(rjags)
+library(NGCHM)
+library(NGCHMSupportFiles)
+library(infercnvNGCHM)
+library(tsvio)
+library(Matrix)
+library(RColorBrewer)
+library(tidyverse)
+})
+```
+Type of analysis: inferCNV analysis of DAOY spheroid-organoid coculture sample to identify tumour cells. 
+
+```{r val=FALSE, echo=FALSE}
+# load the subsetted observations cells
+reference_dyCbo <- readRDS("inferCNV_5/SampleReferenceCells_DAOYcoculture_subsettedDAOYcbo_seuratObj.rds")
+
+# load the subsetted malignant cells
+malig_dyCbo <- readRDS("inferCNV_5/ObservationsCells_allMalignantCells_DAOYcoculture_subsettedDAOYcbo_seuratObj.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# extract the gene exp matrix for reference_dyCbo (the non-malignant cells)
+refs_counts <- as.matrix(reference_dyCbo@assays$RNA@counts)
+head(refs_counts[, 1:4])
+
+# extract the gene exp matrix for malig_dyCbo
+malig_counts <- as.matrix(malig_dyCbo@assays$RNA@counts)
+head(malig_counts[, 1:4])
+dim(malig_counts)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# the two matrices can only be bound together if they have the same number of rows (genes), which they should already have
+# Find the common genes between malignant and non-malignant matrices
+common_genes <- intersect(rownames(malig_counts), rownames(refs_counts))
+
+# Subset the matrices to include only the common genes
+malig_counts_common <- malig_counts[common_genes, ]
+refs_counts_common <- refs_counts[common_genes, ]
+
+# Combine the malignant and non-malignant counts
+combined_counts <- cbind(malig_counts_common, refs_counts_common)
+dim(combined_counts)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the combined_counts gene expression matrix in a different inputs folder - includes non-malignant organoid and malignant DAOY cells
+write.table(combined_counts,
+            "./inferCNV_5/combined_counts_reference_DAOY_matrix.txt",
+            sep = "\t", quote = FALSE, row.names = TRUE, col.names = TRUE)
+# check the file
+combined_counts <- read.table("inferCNV_5/combined_counts_reference_DAOY_matrix.txt",
+                                            sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+head(combined_counts[, 1:4]) # cell names (column names) have a '-' preserved when write and read table args are specified correctly
+```
+
+****Preparation of annotations file****
+contains malignant and non-malignant cells
+```{r eval=FALSE, echo=FALSE}
+# Create the annotations data frame from the combined_counts matrix
+annotations <- data.frame(
+    cell = colnames(combined_counts),
+    cell_type = c(rep("malignant", ncol(malig_counts_common)), rep("non-malignant", ncol(refs_counts_common)))
+)
+nrow(annotations)
+# cell column names contain a hyphen
+head(annotations) 
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Check if the row names of annotations match the column names of the combined counts matrix: they do
+annotation_cell_names <- annotations$cell
+combined_counts_cell_names <- colnames(combined_counts)
+
+# Check if all annotation cell names are in the combined counts matrix: they are
+all(annotation_cell_names %in% combined_counts_cell_names)
+
+# Check if all combined counts matrix cell names are in the annotation file: they are
+all(combined_counts_cell_names %in% annotation_cell_names)
+
+# Print any differences: there are no differences
+print("Cell names in annotations but not in combined counts matrix:")
+print(setdiff(annotation_cell_names, combined_counts_cell_names))
+print("Cell names in combined counts matrix but not in annotations:")
+print(setdiff(combined_counts_cell_names, annotation_cell_names))
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save annotations
+write.table(annotations, 
+           "./inferCNV_5/updated_annotations_reference_and_DAOY.txt", 
+           sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load updated_annotations_reference_and_DAOY.txt back in and check for formatting errors when reopened: looks ok
+annotations <- read.table("inferCNV_5/updated_annotations_reference_and_DAOY.txt",
+                                          sep = "\t", stringsAsFactors = FALSE)
+head(annotations, 4)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# generate the genome position file
+# Specify the file path
+genome_pos_path <- "inferCNV/hg38_gencode_v27_updated_for_infercnv.txt"
+
+# Read the file into a data frame
+genome_pos_ref_dyCbo <- read.delim(genome_pos_path, header = TRUE, sep = "\t")
+head(genome_pos_ref_dyCbo, 3)   # this dataframe looks fine
+```
+
+```{r eval=FALSE, echo=FALSE}
+# ensure that 'combined_counts_no_duplicates' gene expression matrix has only genes that are also present in the genome position file:
+
+# Check if all genes in the gene expression matrix are also in the genome position file.
+# Remove any genes from the expression matrix that are not in the genome position file
+
+# Load both the gene expression matrix and the genome position file.
+# Extract the gene names from both files.
+genes_in_counts <- rownames(combined_counts)
+genes_in_genome_pos <- genome_pos_ref_dyCbo$gene_id
+
+# Check for genes in combined_counts_no_duplicates that are not in the genome position file
+missing_genes <- setdiff(genes_in_counts, genes_in_genome_pos)
+
+if (length(missing_genes) == 0) {
+  print("All genes in the expression matrix are present in the genome position file.")
+} else {
+  print("Some genes in the expression matrix are not present in the genome position file. They will be removed.") }
+
+# Remove the missing genes from the expression matrix
+combined_counts <- combined_counts[!(rownames(combined_counts) %in% missing_genes), ]
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Print the number of genes before and after filtering
+
+cat("Number of genes before filtering: ", length(genes_in_counts), "\n")
+cat("Number of genes after filtering: ", nrow(combined_counts), "\n")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Save the filtered expression matrix
+write.table(combined_counts, 
+            "./inferCNV_5/filtered_combined_counts_ref_DAOY_file_with_headers.txt", sep = "\t", quote = FALSE,
+            row.names = TRUE, col.names = TRUE)
+combined_counts <- read.table("inferCNV_5/filtered_combined_counts_ref_DAOY_file_with_headers.txt",
+                              sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+head(combined_counts[, 1:3]) # dataframe looks fine
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Filter the genome position file to include only the genes in the combined counts matrix
+filtered_genome_pos_ref_dyCbo <- genome_pos_ref_dyCbo[genome_pos_ref_dyCbo$gene_id %in% rownames(combined_counts), ]
+
+# Save the filtered genome position file without headers
+write.table(filtered_genome_pos_ref_dyCbo, "inferCNV_5/filtered_genome_position_combined_ref_DAOY.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Check if all genes in the combined counts matrix are in the filtered genome position file: they are
+combined_genes <- rownames(combined_counts)
+genome_pos_genes <- filtered_genome_pos_ref_dyCbo$gene_id
+
+# Find the common genes
+common_genes <- intersect(combined_genes, genome_pos_genes)
+
+# Check if all genes are common
+all_genes_present <- all(combined_genes %in% genome_pos_genes)
+
+# Print the result: "All genes in the combined counts matrix are present in the filtered genome position file."
+if (all_genes_present) {
+  cat("All genes in the combined counts matrix are present in the filtered genome position file.\n")
+} else {
+  cat("Some genes in the combined counts matrix are missing from the filtered genome position file.\n")
+  # Print the missing genes - these are genes that are in the combined counts matrix that are not in genome_pos_genes
+  missing_genes <- setdiff(combined_genes, genome_pos_genes)
+  cat("Missing genes:\n")
+  print(head(missing_genes))
+  length(missing_genes)
+}
+```
+
+****Run Infercnv on malignant DAOY cells in co-culture and non-malignant reference cells****
+```{r eval=FALSE, echo=FALSE}
+# specify input file paths
+raw_counts_matrix_file <- "inferCNV_5/filtered_combined_counts_ref_DAOY_file_with_headers.txt"
+annotations_file <- "inferCNV_5/updated_annotations_reference_and_DAOY.txt"
+gene_order_file <- "inferCNV_5/filtered_genome_position_combined_ref_DAOY.txt"
+
+# Create inferCNV object
+infercnv_obj_5 <- CreateInfercnvObject(
+  raw_counts_matrix = raw_counts_matrix_file,
+  annotations_file = annotations_file,
+  gene_order_file = gene_order_file,
+  ref_group_names = c("non-malignant")
+)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# invoke infercnv 'run' function
+out_dir <- "./outputs50K/infercnv/out_dir_5_daoy/"
+infercnv_obj_5 <- infercnv::run(
+  infercnv_obj_5,
+  cutoff = 0.1,  # use 1 for smart-seq, 0.1 for 10x-genomics
+  out_dir = out_dir,  # dir is auto-created for storing outputs
+  cluster_by_groups = TRUE,  # Set to TRUE to cluster by groups
+  denoise = TRUE,
+  HMM = TRUE
+)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(infercnv_obj_5, 
+        file = "./inferCNV_5/infercnv_results_ReferenceSubset_DAOY_coculture.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this object to be used as input for Next Gen Clust. H'map (NGCHM)
+infercnv_obj_5 <- readRDS("inferCNV_5/infercnv_results_Reference_DAOY_coculture.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+out_dir <- "./outputs50K/infercnv/out_dir_5_daoy/"
+path_to_shaidyMapGen <- "/gpfs3/well/ludwig/users/ikb229/R/4.3/skylake/ngchm_resources/ShaidyMapGen.jar"
+ngchm(infercnv_obj          = infercnv_obj_5,
+       out_dir              = out_dir,
+       path_to_shaidyMapGen = path_to_shaidyMapGen,
+       gene_symbol          = "bio.gene.hugo")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
