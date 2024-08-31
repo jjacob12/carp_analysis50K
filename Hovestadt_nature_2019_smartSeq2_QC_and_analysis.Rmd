@@ -21,12 +21,18 @@ knitr::opts_chunk$set(dev = "png",
 suppressPackageStartupMessages({
 library(Seurat)
 library(SeuratData)
-library(SeuratWrappers)
+library(SeuratWrappers) # needed for RunFastMNN() function
 library(batchelor)
 library(cluster)
 library(factoextra)
 library(glmGamPoi)
 library(Matrix)
+library(ReactomePA)
+library(msigdbr)
+library(fgsea)
+library(presto)
+library(org.Hs.eg.db)
+library(DOSE)
 library(patchwork)
 library(tidyverse)
 })
@@ -84,7 +90,7 @@ DimPlot(muv41, label = T, repel = T)
 VlnPlot(muv41, features = c("NEUROD1", "RTN1", "RBFOX3", "GABRA6"))
 ```
 
-```{r eval=FALSE, echo=FALSE, ViolinPlotMUV41shhMBneurod1Rtn1Rbfox3, fig.height=5, fig.width=12}
+```{r eval=FALSE, echo=FALSE, ViolinPlotMUV41shhMBneurod1Rtn1Rbfox3}
 # SOX2, OTX2 not expressed, but OCT4 (POU5F1) is 
 VlnPlot(muv41, features = c("POU5F1", "SOX2", "GLI2", "SRRT", "OTX2", "ZIC2"))
 ```
@@ -693,6 +699,9 @@ raw.counts.rmcb24 <- read.table(file = "./hovestadt_Nature2019/GSM3905441_RCMB24
 # load the DAOY spheroid data
 dySpher <- readRDS("outputs50K/DAOY_SPHER/filt.MitoCellsGenes.RiboRetained.seurat.DAOYspher.rds")
 
+# load the DAOY monolayer data
+dyMono <- readRDS("outputs50K/DAOY_2D/filt.MitoCellsGenes.RiboRetained.seurat.DaoyMonolayer.rds")
+
 # load the DAOY-only coculture data (not been through SCT normalisation or clustering)
 dyOnly <- 
   readRDS("outputs50K/INTEGRATE/DAOYonly.DAOYcbo.NOTclustered.NoSCT.FiltMitoCellsGenes.RiboRetained.rds")
@@ -821,6 +830,58 @@ p3 <- DimPlot(dySpher.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size
         plot.title = element_blank())
 p3
 ```
+
+SECTION END
+##########################################################################################################
+
+
+##########################################################################################################
+***Run fastMNN on DAOY-monolayer in comparison to SHH-MB's only***
+```{r eval=FALSE, echo=FALSE}
+# merge daoy-mono with patient SHH-MB's only
+dyMono.hovShhMB.merged <- merge(dyMono,
+                                 y = c(muv41.shh, sj454.shh, sj577.shh),
+                                 project = "hov.SHHMB.dyMono.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- dyMono.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "dyMono"))] <- "DAOY_monolayer"
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.hovShhMB.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+dyMono.hovShhMB.merged.clust <- NormalizeData(dyMono.hovShhMB.merged)
+dyMono.hovShhMB.merged.clust <- FindVariableFeatures(dyMono.hovShhMB.merged.clust)
+dyMono.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(dyMono.hovShhMB.merged.clust, split.by = "orig.ident"))
+dyMono.hovShhMB.merged.clust <- RunUMAP(dyMono.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+dyMono.hovShhMB.merged.clust <- FindNeighbors(dyMono.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+dyMono.hovShhMB.merged.clust <- FindClusters(dyMono.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(dyMono.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/DAOYmono.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+dyMono.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/DAOYmono.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursDAOYmonoMNN, fig.height=6, fig.width=6}
+p2b <- DimPlot(dyMono.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p2b
+```
+
+
 
 SECTION END
 ##########################################################################################################
@@ -955,6 +1016,20 @@ SECTION END
 ##########################################################################################################
 ***Calculate Mixing Metric for SHH-MB patient tumours integrated with other samples***
 ```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with DAOY-MONOLAYER cells
+# MixingMetric is a numeric vector
+max.k <- 300
+dyMono.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = dyMono.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
 # calculate mixing metric for 3 SHH-MB tumours with DAOY-SPHEROID cells
 # MixingMetric is a numeric vector
 max.k <- 300
@@ -967,6 +1042,7 @@ dySpher.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = dySpher.hovShh
              eps = 0,
              verbose = TRUE)
 ```
+
 
 ```{r eval=FALSE, echo=FALSE}
 # calculate mixing metric for 3 SHH-MB tumours with DAOY-only cells in DAOY-CBO coculture
@@ -1026,6 +1102,7 @@ rmcb24.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = rmcb24.hovShhMB
 
 ```{r eval=FALSE, echo=FALSE}
 # check the lengths of each vector to find the longest
+length(dyMono.hovShhMB.merged.clust.mm)    # mono + patient MB (this is longest)  
 length(dySpher.hovShhMB.merged.clust.mm)   # spher + patient MB
 length(hov.3shhMbtumours.dyOnly.merged.clust.mm) # cocult-only + patient MB
 length(hovShhMB.merged.clust.mm) # patient MB only
@@ -1034,15 +1111,42 @@ length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# NA's are needed to balance the column lengths of the dataframe: all the vectors need to be as long as the longest vector, dyMono.hovShhMB.merged.clust.mm.
+dySpher.hovShhMB.merged.clust.mm.na <- c(dySpher.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(dySpher.hovShhMB.merged.clust.mm)))
+
+hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(hov.3shhMbtumours.dyOnly.merged.clust.mm)))
+
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(hovShhMB.merged.clust.mm)))
+
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(rmcb18.hovShhMB.merged.clust.mm)))
+
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(rmcb24.hovShhMB.merged.clust.mm)))
+
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # NA's are needed to balance the column lengths of the dataframe
-hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, 378))
-hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 649))
-rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 483))
-rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 512))
+# hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, 378))
+# hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 649))
+# rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 483))
+# rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 512))
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-summary(dySpher.hovShhMB.merged.clust.mm) # spher + patient MB
+# the vectors are all the same length
+length(dyMono.hovShhMB.merged.clust.mm)
+length(dySpher.hovShhMB.merged.clust.mm.na)
+length(hov.3shhMbtumours.dyOnly.merged.clust.mm.na)
+length(hovShhMB.merged.clust.mm.na)
+length(rmcb18.hovShhMB.merged.clust.mm.na)
+length(rmcb24.hovShhMB.merged.clust.mm.na)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+summary(dyMono.hovShhMB.merged.clust.mm)  # monolayer + patient MB
+summary(dySpher.hovShhMB.merged.clust.mm.na) # spher + patient MB
 summary(hov.3shhMbtumours.dyOnly.merged.clust.mm.na) # cocult + patient MB
 summary(hovShhMB.merged.clust.mm.na) # patient MB only
 summary(rmcb18.hovShhMB.merged.clust.mm.na) # PDX1 + patient MB
@@ -1052,13 +1156,15 @@ summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
 ```{r eval=FALSE, echo=FALSE}
 # create a dataframe of the MixingMetric scores for all integrations
 daoy.pdx.patientShhMB.df <- data.frame(DAOY_coculture_patientMB = hov.3shhMbtumours.dyOnly.merged.clust.mm.na,
-                                   DAOY_spheroid_patientMB = dySpher.hovShhMB.merged.clust.mm,
+                                   DAOY_monolayer_patientMB = dyMono.hovShhMB.merged.clust.mm,
+                                   DAOY_spheroid_patientMB = dySpher.hovShhMB.merged.clust.mm.na,
                                    patientMB = hovShhMB.merged.clust.mm.na,
                                    PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
                                    PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na)
 
 daoy.pdx.patientShhMB.df.long <- pivot_longer(daoy.pdx.patientShhMB.df,
-                                       cols = c(DAOY_coculture_patientMB, 
+                                       cols = c(DAOY_coculture_patientMB,
+                                                DAOY_monolayer_patientMB,
                                                 DAOY_spheroid_patientMB, 
                                                 patientMB,
                                                 PDX1_patientMB,
@@ -1066,7 +1172,7 @@ daoy.pdx.patientShhMB.df.long <- pivot_longer(daoy.pdx.patientShhMB.df,
                                        names_to = "groups.fct",
                                        values_to = "mixing_metric")
 
-levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB", "DAOY_spheroid_patientMB")
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB", "DAOY_spheroid_patientMB", "DAOY_monolayer_patientMB")
 
 daoy.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.pdx.patientShhMB.df.long$groups.fct,
                                             levels = levels.order)
@@ -1074,13 +1180,13 @@ daoy.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.pdx.patientShhMB.df.long
 
 ```{r eval=FALSE, echo=FALSE}
 saveRDS(daoy.pdx.patientShhMB.df.long,
-        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.rds")
+        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.DAOYmono.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # load the df in long format for ggplot plotting
 daoy.pdx.patientShhMB.df.long <- 
-  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.rds")
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.DAOYmono.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxDAOY, fig.height=6, fig.width=6}
@@ -1099,7 +1205,7 @@ SECTION END
 ##########################################################################################################
 
 ##########################################################################################################
-***Integrate SHH-MB, PDX1, PDX2, ONS76-SPHEROID, ONS76-only coculture using fastMNN***
+***Integrate SHH-MB, PDX1, PDX2, ONS76-SPHEROID, ONS76-monolayer, ONS76-only coculture using fastMNN***
 
 ****Prepare the ONS76-only coculture cells for merge and fastMNN integration****
 ```{r eval=FALSE, echo=FALSE}
@@ -1137,12 +1243,95 @@ o76only <-
 o76spher <- readRDS("outputs50K/ONS76_SPHER/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76spher.rds")
 ```
 
+```{r eval=FALSE, echo=FALSE}
+# load ONS76-monolayer object
+o76mono <- readRDS("outputs50K/ONS76_2D/filt.MitoCellsGenes.RiboRetained.seurat.ons76monolayer.rds")
+```
+
+
+*****Test whether malignant NEUROD1+ cells (ONS76-CBO cluster 3) are more similar to Hovestadt SHH-MB patient tumours than all (ONS76-CBO cluster 3 and cluster 10) malignant cells:*****
+```{r eval=FALSE, echo=FALSE}
+# load the clustered dataset
+o76cbo.clust <- readRDS("outputs50K/ONS76-CBO/ClusterMapInput.ONS76cbo.NoMito.RiboPresent.SCT.clustered.CCdiffRegressed.rds")
+# get the cell IDs for just cluster 3
+Idents(o76cbo.clust) <- "seurat_clusters"
+maligNeuroD1_cellIDs <- WhichCells(o76cbo.clust, idents = '3')
+# check the format of cell IDs is correct: cell IDs have a hyphen
+head(maligNeuroD1_cellIDs)
+# check there are the expected number of cells: 272 cells which is correct
+length(maligNeuroD1_cellIDs)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# load the unclustered dataset
+o76cbo <- readRDS("outputs50K/ONS76-CBO/filt.MitoCellsGenes.RiboGenesRetained.seurat.ONS76cbo.rds")
+
+# subset o76cbo for only the malignant NeuroD1+ cell IDs
+maligNeuroD1 <- subset(o76cbo, cells = maligNeuroD1_cellIDs)
+dim(maligNeuroD1) # 272 cells
+head(maligNeuroD1) # cell names have a '-'
+```
+
+```{r eval=FALSE, echo=FALSE}
+# save the maligNeuroD1 object
+saveRDS(maligNeuroD1,
+        file = "./outputs50K/ONS76-CBO/maligNEUROD1.ONS76cbo.cluster3cells.seurat.unclustered.rds")
+```
+
 
 SECTION END
 ##########################################################################################################
 
 ##########################################################################################################
-***Run fastMNN on ONS76-spheroid or ONS76-only coculture in comparison to SHH-MB's only before calculating Mixing Metric***
+***Run fastMNN on ONS76-monolayer, ONS76-spheroid or ONS76-only coculture in comparison to SHH-MB's only before calculating Mixing Metric***
+
+```{r eval=FALSE, echo=FALSE}
+# merge ONS76-mono with patient SHH-MB's only
+o76mono.hovShhMB.merged <- merge(o76mono,
+                                 y = c(muv41.shh, sj454.shh, sj577.shh),
+                                 project = "hov.SHHMB.o76mono.merged")
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- o76mono.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "ons76mono"))] <- "ONS76_monolayer"
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76mono.hovShhMB.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+o76mono.hovShhMB.merged.clust <- NormalizeData(o76mono.hovShhMB.merged)
+o76mono.hovShhMB.merged.clust <- FindVariableFeatures(o76mono.hovShhMB.merged.clust)
+o76mono.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(o76mono.hovShhMB.merged.clust, split.by = "orig.ident"))
+o76mono.hovShhMB.merged.clust <- RunUMAP(o76mono.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76mono.hovShhMB.merged.clust <- FindNeighbors(o76mono.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+o76mono.hovShhMB.merged.clust <- FindClusters(o76mono.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76mono.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/ONS76monolayer.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+o76mono.hovShhMB.merged.clust <- 
+  readRDS("outputs50K/Hovestadt_outputs/ONS76monolayer.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, DimplotHOVSHHMBtumoursONS76monoMNN, fig.height=6, fig.width=6}
+p7a <- DimPlot(o76mono.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p7a
+```
+
+
 ```{r eval=FALSE, echo=FALSE}
 # merge ONS76-spher with patient SHH-MB's only
 o76spher.hovShhMB.merged <- merge(o76spher,
@@ -1231,11 +1420,71 @@ p8 <- DimPlot(o76only.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size
 p8
 ```
 
+***Run fastMNN on NEUROD1+ ONS76-only coculture in comparison to SHH-MB's only before calculating Mixing Metric***
+```{r eval=FALSE, echo=FALSE}
+# only need to merge maligNeuroD1 subset of cells with Hovestadt tumours
+# merge ONS76-only coculture with patient SHH-MB
+maligNeurod1.hovShhMB.merged <- merge(maligNeuroD1,
+                                 y = c(muv41.shh, sj454.shh, sj577.shh),
+                                 project = "hov.maligNeuroD1ons76.merged")
+```
+
+```{r eval=FALSE, echo=FALSE}
+metadata <- maligNeurod1.hovShhMB.merged@meta.data
+# change orig.ident as below
+metadata$orig.ident[which(str_detect(metadata$orig.ident, "o76cbo"))] <- "ONS76_coculture_malig_NEUROD1"
+```
+
+```{r eval=FALSE, echo=FALSE}
+maligNeurod1.hovShhMB.merged@meta.data <- metadata
+```
+
+```{r eval=FALSE, echo=FALSE}
+# scale data step is not necessary as RunFastMNN does its own scaling
+maligNeurod1.hovShhMB.merged.clust <- NormalizeData(maligNeurod1.hovShhMB.merged)
+maligNeurod1.hovShhMB.merged.clust <- FindVariableFeatures(maligNeurod1.hovShhMB.merged.clust)
+maligNeurod1.hovShhMB.merged.clust <- RunFastMNN(object.list = SplitObject(maligNeurod1.hovShhMB.merged.clust, split.by = "orig.ident"))
+maligNeurod1.hovShhMB.merged.clust <- RunUMAP(maligNeurod1.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+maligNeurod1.hovShhMB.merged.clust <- FindNeighbors(maligNeurod1.hovShhMB.merged.clust, reduction = "mnn", dims = 1:20)
+maligNeurod1.hovShhMB.merged.clust <- FindClusters(maligNeurod1.hovShhMB.merged.clust)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# n=272 malignant NEUROD1+ cells in co-culture
+saveRDS(maligNeurod1.hovShhMB.merged.clust,
+        file = "./outputs50K/Hovestadt_outputs/maligNEUROD1.ONS76onlyCoculture.SHHMBHov.fastMNN.clust.rds")
+```
+
+```{r DimplotHOVSHHMBtumoursMaligNeurod1ONS76onlyCocultureMNN, fig.height=6, fig.width=10}
+maligNeurod1.hovShhMB.merged.clust <- readRDS("outputs50K/Hovestadt_outputs/maligNEUROD1.ONS76onlyCoculture.SHHMBHov.fastMNN.clust.rds")
+p8a <- DimPlot(maligNeurod1.hovShhMB.merged.clust, group.by = c("orig.ident"), pt.size = 3) +
+  theme(legend.text = element_text(size = 20),
+        plot.title = element_blank())
+p8a
+```
+
+
 SECTION END
 ##########################################################################################################
 
 ##########################################################################################################
 ***Calculate Mixing Metrics for ONS76 samples***
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-MONOLAYER cells
+# MixingMetric is a numeric vector
+max.k <- 300
+o76mono.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76mono.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+
 ```{r eval=FALSE, echo=FALSE}
 # calculate mixing metric for 3 SHH-MB tumours with ONS76-SPHEROID cells
 # MixingMetric is a numeric vector
@@ -1265,22 +1514,56 @@ o76only.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76only.hovShh
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-only NEUROD1+ cells in ONS76-CBO coculture
+# MixingMetric is a numeric vector
+max.k <- 300
+o76.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76only.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
 # check the lengths of each vector to find the longest
+length(o76mono.hovShhMB.merged.clust.mm)   # mono + patient MB
 length(o76spher.hovShhMB.merged.clust.mm)   # spher + patient MB
-length(o76only.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+length(o76only.hovShhMB.merged.clust.mm)    # cocult-only + patient MB
 length(hovShhMB.merged.clust.mm) # patient MB only
 length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
 length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, 815))
-hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 1164))
-rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 998))
-rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 1027))
+# NA's are needed to balance the column lengths of the dataframe: all the vectors need to be as long as the longest vector, o76spher.hovShhMB.merged.clust.mm
+o76mono.hovShhMB.merged.clust.mm.na <- c(o76mono.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(o76mono.hovShhMB.merged.clust.mm)))
+
+o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(o76only.hovShhMB.merged.clust.mm)))
+
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(hovShhMB.merged.clust.mm)))
+
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(rmcb18.hovShhMB.merged.clust.mm)))
+
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(rmcb24.hovShhMB.merged.clust.mm)))
+
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# the lengths are all equal (2288)
+length(o76spher.hovShhMB.merged.clust.mm)
+length(o76mono.hovShhMB.merged.clust.mm.na)
+length(o76only.hovShhMB.merged.clust.mm.na)
+length(hovShhMB.merged.clust.mm.na)
+length(rmcb18.hovShhMB.merged.clust.mm.na)
+length(rmcb24.hovShhMB.merged.clust.mm.na)
+```
+
+```{r eval=FALSE, echo=FALSE}
+summary(o76mono.hovShhMB.merged.clust.mm.na)
 summary(o76spher.hovShhMB.merged.clust.mm) # spher + patient MB
 summary(o76only.hovShhMB.merged.clust.mm.na) # cocult + patient MB
 summary(hovShhMB.merged.clust.mm.na) # patient MB only
@@ -1291,6 +1574,7 @@ summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
 ```{r eval=FALSE, echo=FALSE}
 # create a dataframe of the MixingMetric scores for all integrations
 o76.pdx.patientShhMB.df <- data.frame(ONS76_coculture_patientMB = o76only.hovShhMB.merged.clust.mm.na,
+                                    ONS76_monolayer_patientMB = o76mono.hovShhMB.merged.clust.mm.na,
                                    ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm,
                                    patientMB = hovShhMB.merged.clust.mm.na,
                                    PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
@@ -1298,14 +1582,15 @@ o76.pdx.patientShhMB.df <- data.frame(ONS76_coculture_patientMB = o76only.hovShh
 
 o76.pdx.patientShhMB.df.long <- pivot_longer(o76.pdx.patientShhMB.df,
                                        cols = c(ONS76_coculture_patientMB, 
-                                                ONS76_spheroid_patientMB, 
+                                                ONS76_spheroid_patientMB,
+                                                ONS76_monolayer_patientMB,
                                                 patientMB,
                                                 PDX1_patientMB,
                                                 PDX2_patientMB),
                                        names_to = "groups.fct",
                                        values_to = "mixing_metric")
 
-levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "ONS76_coculture_patientMB", "ONS76_spheroid_patientMB")
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "ONS76_coculture_patientMB", "ONS76_spheroid_patientMB", "ONS76_monolayer_patientMB")
 
 o76.pdx.patientShhMB.df.long$groups.fct <- factor(o76.pdx.patientShhMB.df.long$groups.fct,
                                             levels = levels.order)
@@ -1313,18 +1598,175 @@ o76.pdx.patientShhMB.df.long$groups.fct <- factor(o76.pdx.patientShhMB.df.long$g
 
 ```{r eval=FALSE, echo=FALSE}
 saveRDS(o76.pdx.patientShhMB.df.long,
-        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.rds")
+        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.ONS76mono.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # load the df in long format for ggplot plotting
 o76.pdx.patientShhMB.df.long <- 
-  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.rds")
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76onlyCocult.ONS76spher.ONS76mono.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76, fig.height=6, fig.width=6}
 # violin plot of the MixingMetric scores for all integrations
 ggplot(o76.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
+  geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 20),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 20, margin = margin(r=20)),
+        axis.title.x = element_blank() )
+```
+
+****Calculate mixing metric for malignant NEUROD1 subset of ONS76 cells in co-culture with other ONS76 samples, PDX samples and patient tumour samples****
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-MONOLAYER cells
+# MixingMetric is a numeric vector
+max.k <- 300
+o76mono.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76mono.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-SPHEROID cells
+# MixingMetric is a numeric vector
+max.k <- 300
+o76spher.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76spher.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-only cells in ONS76-CBO coculture
+# MixingMetric is a numeric vector
+max.k <- 300
+o76only.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = o76only.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# calculate mixing metric for 3 SHH-MB tumours with ONS76-only NEUROD1+ cells in ONS76-CBO coculture
+# MixingMetric is a numeric vector
+max.k <- 300
+maligNeuroD1.o76.hovShhMB.merged.clust.mm <- max.k - MixingMetric(object = maligNeurod1.hovShhMB.merged.clust, 
+             grouping.var = "orig.ident",
+             reduction = "umap",
+             dims = 1:2,
+             k = 5,
+             max.k = max.k,
+             eps = 0,
+             verbose = TRUE)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# check the lengths of each vector to find the longest
+length(o76mono.hovShhMB.merged.clust.mm)   # mono + patient MB
+length(o76spher.hovShhMB.merged.clust.mm)   # spher + patient MB
+length(o76only.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+length(maligNeuroD1.o76.hovShhMB.merged.clust.mm) # NeuroD1 malignant ONS76 cocult + patient MB
+length(hovShhMB.merged.clust.mm) # patient MB only
+length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
+length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
+```
+
+```{r eval=FALSE, echo=FALSE}
+# NA's are needed to balance the column lengths of the dataframe: all the vectors need to be as long as the longest vector, o76spher.hovShhMB.merged.clust.mm
+o76mono.hovShhMB.merged.clust.mm.na <- c(o76mono.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(o76mono.hovShhMB.merged.clust.mm)))
+
+maligNeuroD1.o76.hovShhMB.merged.clust.mm.na <- c(maligNeuroD1.o76.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(maligNeuroD1.o76.hovShhMB.merged.clust.mm)))
+
+o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(o76only.hovShhMB.merged.clust.mm)))
+
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(hovShhMB.merged.clust.mm)))
+
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(rmcb18.hovShhMB.merged.clust.mm)))
+
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, (length(o76spher.hovShhMB.merged.clust.mm)) - length(rmcb24.hovShhMB.merged.clust.mm)))
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+# the lengths are all equal (2288)
+length(o76spher.hovShhMB.merged.clust.mm)
+length(o76mono.hovShhMB.merged.clust.mm.na)
+length(o76only.hovShhMB.merged.clust.mm.na)
+length(maligNeuroD1.o76.hovShhMB.merged.clust.mm.na) # maligNEUROD1 ONS76 co-culture subset + patient MB
+length(hovShhMB.merged.clust.mm.na)
+length(rmcb18.hovShhMB.merged.clust.mm.na)
+length(rmcb24.hovShhMB.merged.clust.mm.na)
+```
+
+```{r eval=FALSE, echo=FALSE}
+summary(o76mono.hovShhMB.merged.clust.mm.na)
+summary(o76spher.hovShhMB.merged.clust.mm) # spher + patient MB
+summary(o76only.hovShhMB.merged.clust.mm.na) # cocult + patient MB
+summary(hovShhMB.merged.clust.mm.na) # patient MB only
+summary(maligNeuroD1.o76.hovShhMB.merged.clust.mm.na) # maligNEUROD1 cocult subset + patient MB
+summary(rmcb18.hovShhMB.merged.clust.mm.na) # PDX1 + patient MB
+summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
+```
+
+```{r eval=FALSE, echo=FALSE}
+# create a dataframe of the MixingMetric scores for all integrations
+o76.neurod1.pdx.patientShhMB.df <- 
+  data.frame(ONS76_coculture_patientMB = o76only.hovShhMB.merged.clust.mm.na,
+            ONS76_monolayer_patientMB = o76mono.hovShhMB.merged.clust.mm.na,
+            ONS76_cocult_NEUROD1_patientMB = maligNeuroD1.o76.hovShhMB.merged.clust.mm.na,
+            ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm,
+            patientMB = hovShhMB.merged.clust.mm.na,
+            PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
+            PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na)
+
+o76.neurod1.pdx.patientShhMB.df.long <- pivot_longer(o76.neurod1.pdx.patientShhMB.df,
+                                       cols = c(ONS76_coculture_patientMB,
+                                                ONS76_cocult_NEUROD1_patientMB,
+                                                ONS76_spheroid_patientMB,
+                                                ONS76_monolayer_patientMB,
+                                                patientMB,
+                                                PDX1_patientMB,
+                                                PDX2_patientMB),
+                                       names_to = "groups.fct",
+                                       values_to = "mixing_metric")
+
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "ONS76_coculture_patientMB", "ONS76_cocult_NEUROD1_patientMB", "ONS76_spheroid_patientMB", "ONS76_monolayer_patientMB")
+
+o76.neurod1.pdx.patientShhMB.df.long$groups.fct <- factor(o76.neurod1.pdx.patientShhMB.df.long$groups.fct,
+                                            levels = levels.order)
+```
+
+```{r eval=FALSE, echo=FALSE}
+saveRDS(o76.neurod1.pdx.patientShhMB.df.long,
+        file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76neuroD1Cocult.ONS76onlyCocult.ONS76spher.ONS76mono.rds")
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load the df in long format for ggplot plotting
+o76.neurod1.pdx.patientShhMB.df.long <- 
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.ONS76neuroD1Cocult.ONS76onlyCocult.ONS76spher.ONS76mono.rds")
+```
+
+```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76andMaligNeuroD1only, fig.height=6, fig.width=6}
+# violin plot of the MixingMetric scores for all integrations
+ggplot(o76.neurod1.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
   geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 20),
@@ -1341,22 +1783,50 @@ SECTION END
 ***Create one dataframe for mixing metric computations for both cell lines***
 ```{r eval=FALSE, echo=FALSE}
 # check the lengths of each vector to find the longest - longest vector has  values
-length(dySpher.hovShhMB.merged.clust.mm)   # spher + patient MB 
-length(hov.3shhMbtumours.dyOnly.merged.clust.mm) # cocult-only + patient MB
+length(dyMono.hovShhMB.merged.clust.mm) # daoy-mono + patient MB
+length(dySpher.hovShhMB.merged.clust.mm)   # daoy-spher + patient MB 
+length(hov.3shhMbtumours.dyOnly.merged.clust.mm) # daoy-cocult-only + patient MB
 length(hovShhMB.merged.clust.mm) # patient MB only
 length(rmcb18.hovShhMB.merged.clust.mm) # RMCB18 (PDX1) + patient MB
 length(rmcb24.hovShhMB.merged.clust.mm) # RMCB24 (PDX2) + patient MB
-length(o76spher.hovShhMB.merged.clust.mm)   # spher + patient MB
-length(o76only.hovShhMB.merged.clust.mm) # cocult-only + patient MB
+length(o76spher.hovShhMB.merged.clust.mm)   # ons76-spher + patient MB
+length(o76only.hovShhMB.merged.clust.mm) # ons76-ocult-only + patient MB
+length(o76mono.hovShhMB.merged.clust.mm) # o76-mono + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, 893))
-dySpher.hovShhMB.merged.clust.mm.na <- c(dySpher.hovShhMB.merged.clust.mm, rep(NA, 515))
-hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, 1164))
-rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, 998))
-rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, 1027))
-o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, 815))
+# use this code when computing mixing metric for all samples including tumour monolayers
+# NA's are needed to balance the column lengths of the dataframe: all the vectors need to be as long as the longest vector, dyMono.hovShhMB.merged.clust.mm.
+dySpher.hovShhMB.merged.clust.mm.na <- c(dySpher.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(dySpher.hovShhMB.merged.clust.mm)))
+
+hov.3shhMbtumours.dyOnly.merged.clust.mm.na <- c(hov.3shhMbtumours.dyOnly.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(hov.3shhMbtumours.dyOnly.merged.clust.mm)))
+
+hovShhMB.merged.clust.mm.na <- c(hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(hovShhMB.merged.clust.mm)))
+
+rmcb18.hovShhMB.merged.clust.mm.na <- c(rmcb18.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(rmcb18.hovShhMB.merged.clust.mm)))
+
+rmcb24.hovShhMB.merged.clust.mm.na <- c(rmcb24.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(rmcb24.hovShhMB.merged.clust.mm)))
+
+o76only.hovShhMB.merged.clust.mm.na <- c(o76only.hovShhMB.merged.clust.mm, rep(NA, (length(dyMono.hovShhMB.merged.clust.mm)) - length(o76only.hovShhMB.merged.clust.mm)))
+
+o76mono.hovShhMB.merged.clust.mm.na <- c(o76mono.hovShhMB.merged.clust.mm, rep(NA,
+(length(dyMono.hovShhMB.merged.clust.mm)) - length(o76mono.hovShhMB.merged.clust.mm)))
+
+o76spher.hovShhMB.merged.clust.mm.na <- c(o76spher.hovShhMB.merged.clust.mm, rep(NA,
+(length(dyMono.hovShhMB.merged.clust.mm)) - length(o76spher.hovShhMB.merged.clust.mm)))
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+length(dyMono.hovShhMB.merged.clust.mm)
+length(dySpher.hovShhMB.merged.clust.mm.na)
+length(hov.3shhMbtumours.dyOnly.merged.clust.mm.na)
+length(hovShhMB.merged.clust.mm.na)
+length(rmcb18.hovShhMB.merged.clust.mm.na)
+length(rmcb24.hovShhMB.merged.clust.mm.na)
+length(o76only.hovShhMB.merged.clust.mm.na)
+length(o76mono.hovShhMB.merged.clust.mm.na)
+length(o76spher.hovShhMB.merged.clust.mm.na)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
@@ -1366,19 +1836,26 @@ summary(rmcb24.hovShhMB.merged.clust.mm.na) # PDX2 + patient MB
 summary(hov.3shhMbtumours.dyOnly.merged.clust.mm.na) # DAOY-cocult + patient MB
 summary(o76only.hovShhMB.merged.clust.mm.na) # ONS76-cocult + patient MB
 summary(dySpher.hovShhMB.merged.clust.mm.na) # DAOY-spher + patient MB
-summary(o76spher.hovShhMB.merged.clust.mm) # ONS76-spher + patient MB
+summary(dyMono.hovShhMB.merged.clust.mm) # DAOY-mono + patient MB
+summary(o76mono.hovShhMB.merged.clust.mm.na) # ONS76-mono + patient MB
+summary(o76spher.hovShhMB.merged.clust.mm.na) # ONS76-spher + patient MB
 ```
 
 ```{r eval=FALSE, echo=FALSE}
+# 'summary' computation for samples
 mixmetSumm <- rbind(summary(hovShhMB.merged.clust.mm), 
       summary(rmcb18.hovShhMB.merged.clust.mm),
       summary(rmcb24.hovShhMB.merged.clust.mm),
       summary(hov.3shhMbtumours.dyOnly.merged.clust.mm),
       summary(o76only.hovShhMB.merged.clust.mm),
       summary(dySpher.hovShhMB.merged.clust.mm),
-      summary(o76spher.hovShhMB.merged.clust.mm))
+      summary(o76spher.hovShhMB.merged.clust.mm),
+      summary(dyMono.hovShhMB.merged.clust.mm),
+      summary(o76mono.hovShhMB.merged.clust.mm)
+      )
 mixmetSumm
 ```
+
 
 ```{r eval=FALSE, echo=FALSE}
 colnames(mixmetSumm)
@@ -1389,22 +1866,23 @@ mixmetSumm.df <- as.data.frame(mixmetSumm)
 ```
 
 ```{r eval=FALSE, echo=FALSE}
-head(mixmetSumm.df)
+head(mixmetSumm.df, 9)
 ```
-
 
 ```{r eval=FALSE, echo=FALSE}
 # add a 'sample' column to the above dataframe at the beginning
-Sample <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB")
+Sample <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB", "DAOY_monolayer_patientMB",
+"ONS76_monolayer_patientMB")
 
 mixmetSumm.df2 <- cbind(Sample, mixmetSumm.df)
 
 mixmetSumm.df2
 ```
 
+
 ```{r eval=FALSE, echo=FALSE}
 write.csv(mixmetSumm.df2,
-          file = "./outputs50K/Hovestadt_outputs/MixingMetricTableOfSummaryFunctionValues.7conditions.csv",
+          file = "./outputs50K/Hovestadt_outputs/MixingMetricTableOfSummaryFunctionValues.9conditions.csv",
           quote = FALSE)
 ```
 
@@ -1417,7 +1895,9 @@ daoy.o76.pdx.patientShhMB.df <- data.frame(DAOY_coculture_patientMB = hov.3shhMb
                                    PDX1_patientMB = rmcb18.hovShhMB.merged.clust.mm.na,
                                    PDX2_patientMB = rmcb24.hovShhMB.merged.clust.mm.na,
                                    ONS76_coculture_patientMB = o76only.hovShhMB.merged.clust.mm.na,
-                                   ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm)
+                                   ONS76_spheroid_patientMB = o76spher.hovShhMB.merged.clust.mm.na,
+                                   DAOY_monolayer_patientMB = dyMono.hovShhMB.merged.clust.mm,
+                                   ONS76_monolayer_patientMB = o76mono.hovShhMB.merged.clust.mm.na)
 
 daoy.o76.pdx.patientShhMB.df.long <- pivot_longer(daoy.o76.pdx.patientShhMB.df,
                                        cols = c(DAOY_coculture_patientMB, 
@@ -1426,11 +1906,13 @@ daoy.o76.pdx.patientShhMB.df.long <- pivot_longer(daoy.o76.pdx.patientShhMB.df,
                                                 PDX1_patientMB,
                                                 PDX2_patientMB,
                                                 ONS76_coculture_patientMB,
-                                                ONS76_spheroid_patientMB),
+                                                ONS76_spheroid_patientMB,
+                                                DAOY_monolayer_patientMB,
+                                                ONS76_monolayer_patientMB),
                                        names_to = "groups.fct",
                                        values_to = "mixing_metric")
 
-levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB")
+levels.order <- c("patientMB", "PDX1_patientMB", "PDX2_patientMB", "DAOY_coculture_patientMB",  "ONS76_coculture_patientMB", "DAOY_spheroid_patientMB", "ONS76_spheroid_patientMB", "DAOY_monolayer_patientMB", "ONS76_monolayer_patientMB")
 
 daoy.o76.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.o76.pdx.patientShhMB.df.long$groups.fct,
                                             levels = levels.order)
@@ -1439,16 +1921,16 @@ daoy.o76.pdx.patientShhMB.df.long$groups.fct <- factor(daoy.o76.pdx.patientShhMB
 ```{r eval=FALSE, echo=FALSE}
 # save the df in long format for ggplot plotting
 saveRDS(daoy.o76.pdx.patientShhMB.df.long,
-  file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.rds")
+  file = "./outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.DAOYmono.ONS76mono.rds")
 ```
 
 ```{r eval=FALSE, echo=FALSE}
 # load the long df
 daoy.o76.pdx.patientShhMB.df.long <- 
-  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.rds")
+  readRDS("outputs50K/Hovestadt_outputs/LongDataFrame.MixingMetrics.HOVpatientSHHMB.PDX.DAOYonlyCocult.DAOYspher.ONS76onlyCocult.ONS76spher.DAOYmono.ONS76mono.rds")
 ```
 
-```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76andDAOY, fig.height=6, fig.width=12}
+```{r eval=FALSE, echo=FALSE, ViolinplotMixingMetricPatientShhMBpdxONS76andDAOYinclMonolayers, fig.height=6, fig.width=12}
 # violin plot of the MixingMetric scores for all integrations
 ggplot(daoy.o76.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)) +
   geom_violin(scale = "width", fill = "light blue", colour = "light blue") +
@@ -1458,6 +1940,294 @@ ggplot(daoy.o76.pdx.patientShhMB.df.long, aes(x = groups.fct, y = mixing_metric)
         axis.title.y = element_text(size = 20, margin = margin(r=20)),
         axis.title.x = element_blank() )
 ```
+
+SECTION END
+##########################################################################################################
+
+***Examine ONS76 monolayer cells that transcriptionally overlap the patient tumours strongly and compare their active pathways with those monolayer cells that do not overlap the patient tumours***
+
+```{r eval=FALSE, echo=FALSE}
+# Extract UMAP coordinates and cell identities
+umap_coords <- as.data.frame(o76mono.hovShhMB.merged.clust@reductions$umap@cell.embeddings)
+head(umap_coords, 3)
+
+cell_metadata <- o76mono.hovShhMB.merged.clust@meta.data
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Combine UMAP coordinates with metadata (e.g., cell identity)
+umap_coords$orig.ident <- cell_metadata$orig.ident
+head(umap_coords, 3)
+tail(umap_coords, 3)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Define the region of interest (you can adjust the min/max values based on your outline)
+# this should correspond roughly to the region of maximum overlap of patient tumours and ONS76 cells
+x_min <- 0.5
+x_max <- 6
+y_min <- -0.3
+y_max <- 1.5
+
+selected_cells <- rownames(umap_coords[umap_coords$UMAP_1 > x_min & umap_coords$UMAP_1 < x_max & 
+                                         umap_coords$UMAP_2 > y_min & umap_coords$UMAP_2 < y_max & 
+                                         umap_coords$orig.ident == "ONS76_monolayer", ])
+length(selected_cells) # 141 ONS76 cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Subset Seurat object to get only the 'red' ONS76 monolayer cells within the outlined region
+subset_region <- subset(o76mono.hovShhMB.merged.clust, cells = selected_cells)
+dim(subset_region)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# For comparison, subset the 'red' ONS76 monolayer cells well outside this region
+x2_min <- 2
+x2_max <- 6
+y2_min <- -4
+y2_max <- -1.3
+
+non_selected_cells <- rownames(umap_coords[umap_coords$UMAP_1 > x2_min & umap_coords$UMAP_1 < x2_max & 
+                                         umap_coords$UMAP_2 > y2_min & umap_coords$UMAP_2 < y2_max & 
+                                         umap_coords$orig.ident == "ONS76_monolayer" & !rownames(umap_coords) %in% selected_cells, ])
+subset_non_region <- subset(o76mono.hovShhMB.merged.clust, cells = non_selected_cells)
+dim(subset_non_region)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Add a new metadata column to differentiate the two sub-populations
+subset_region$sub_population <- "region_selected"
+subset_non_region$sub_population <- "region_non_selected"
+
+# Now, merge the two Seurat objects. Both objects are derived from the same ONS76 monolayer sample so re-normalisation is not required
+combined_seurat <- merge(subset_region, y = subset_non_region)
+
+# Ensure the new metadata column is in place: it is
+table(combined_seurat$sub_population)
+```
+
+Identify differentially expressed genes between region_selected and region_non_selected: do this using PRESTO and using FindMarkers() from Seurat
+```{r eval=FALSE, echo=FALSE}
+# Perform differential expression using PRESTO (note: use of the new metadata column). Seurat FindMarkers() tested and produces a list of ~100 genes. The top ranked genes all had negative values so this method was not used further.
+presto_results <- wilcoxauc(combined_seurat, 'sub_population')
+
+# Display the results for the specific group of interest (e.g., 'region_selected' vs others)
+selected_vs_non_results <- presto_results %>%
+  dplyr::filter(group == "region_selected") %>%
+  dplyr::arrange(desc(logFC), desc(auc))
+```
+
+```{r eval=FALSE, echo=FALSE}
+head(selected_vs_non_results, 30)
+nrow(selected_vs_non_results)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this code will only reveal UPregulated pathways (note: if logFC is higher than 0.1 too few genes are enriched)
+subset_region_genesUP_presto <- presto_results %>%
+  dplyr::filter(group == "region_selected" & logFC > 0.1) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+# how many genes?
+nrow(subset_region_genesUP_presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load msigdbr and use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+# Prepare gene sets for fgsea
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use PRESTO results first
+ranks_selected_presto <- deframe(subset_region_genesUP_presto)
+head(ranks_selected_presto)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+# use scoretype=pos for genes where logFC > 0
+fgseaRes.subset.region.GOBP <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks_selected_presto, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.subset.region.GOBP <- fgseaRes.subset.region.GOBP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.subset.region.GOBP %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPSelectedRegionONS76monoPatientSHHMBclust, fig.height=20, fig.width=42}
+# only plot the top 10 pathways
+ggplot(fgseaResTidy.subset.region.GOBP %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=50),
+        axis.text.y = element_text(size=50),
+        axis.title = element_text(size=60),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")
+        ) # can change bar colours in ggplot
+```
+
+***Examine patient tumour cells that transcriptionally overlap the ONS76 monolayer cells strongly and compare their active pathways with those monolayer cells that do not overlap the patient tumours***
+Similar pathways should be upregulated in the transcriptionally overlapping patient tumour cells and ONS76 monolayer cells
+```{r eval=FALSE, echo=FALSE}
+# Define the region of interest (you can adjust the min/max values based on your outline)
+# this should correspond roughly to the region of maximum overlap of patient tumours and ONS76 cells
+x_min <- 0.5
+x_max <- 6
+y_min <- -0.3
+y_max <- 1.5
+
+selected_cells <- rownames(umap_coords[umap_coords$UMAP_1 > x_min & umap_coords$UMAP_1 < x_max & 
+                                         umap_coords$UMAP_2 > y_min & umap_coords$UMAP_2 < y_max & 
+                                         umap_coords$orig.ident == "SHH-MB3", ])
+length(selected_cells) # 37 patient tumour cells
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Subset Seurat object to get only the 'red' ONS76 monolayer cells within the outlined region
+patient_subset_region <- subset(o76mono.hovShhMB.merged.clust, cells = selected_cells)
+dim(patient_subset_region)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# For comparison, subset the 'red' ONS76 monolayer cells well outside this region
+x2_min <- 2
+x2_max <- 6
+y2_min <- -4
+y2_max <- -1.3
+
+non_selected_cells <- rownames(umap_coords[umap_coords$UMAP_1 > x2_min & umap_coords$UMAP_1 < x2_max & 
+                                         umap_coords$UMAP_2 > y2_min & umap_coords$UMAP_2 < y2_max & 
+                                         umap_coords$orig.ident == "ONS76_monolayer" & !rownames(umap_coords) %in% selected_cells, ])
+subset_non_region <- subset(o76mono.hovShhMB.merged.clust, cells = non_selected_cells)
+dim(subset_non_region)
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+# Add a new metadata column to differentiate the two sub-populations
+patient_subset_region$sub_population <- "pt_region_selected"
+subset_non_region$sub_population <- "region_non_selected"
+
+# Now, merge the two Seurat objects. Both objects are derived from the same ONS76 monolayer sample so re-normalisation is not required, and moreover, the o76mono.hovShhMB.merged.clust object, from which both patient tumour cells and ONS76 monolayer cells are derived, was also normalised during its generation.
+combined_seurat_2 <- merge(patient_subset_region, y = subset_non_region)
+
+# Ensure the new metadata column is in place: it is
+table(combined_seurat_2$sub_population)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Perform differential expression using PRESTO (note: use of the new metadata column). Seurat FindMarkers() tested and produces a list of ~100 genes. The top ranked genes all had negative values so this method was not used further.
+presto_results_2 <- wilcoxauc(combined_seurat_2, 'sub_population')
+
+# Display the results for the specific group of interest (e.g., 'region_selected' vs others)
+selected_vs_non_results_2 <- presto_results_2 %>%
+  dplyr::filter(group == "pt_region_selected") %>%
+  dplyr::arrange(desc(logFC), desc(auc))
+
+head(selected_vs_non_results_2, 3)
+nrow(selected_vs_non_results_2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# this code will only reveal UPregulated pathways (note: if logFC is higher than 0.1 too few genes are enriched)
+subset_region_genesUP_presto_2 <- presto_results_2 %>%
+  dplyr::filter(group == "pt_region_selected" & logFC > 0.25) %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+# how many genes?
+nrow(subset_region_genesUP_presto_2)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# load msigdbr and use dplyr to get the appropriate gene set
+msig.hs <- msigdbr(species = "Homo sapiens")
+msig.GOBP.hs <- msig.hs %>% 
+dplyr::filter(gs_subcat == "GO:BP")
+
+# Prepare gene sets for fgsea
+fgsea_sets_GOBP <- msig.GOBP.hs %>% split(x = .$gene_symbol, f = .$gs_name)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use PRESTO results
+ranks_selected_presto_2 <- deframe(subset_region_genesUP_presto_2)
+head(ranks_selected_presto_2, 40)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Step 1: Create a list of ribosomal genes
+ribosomal_genes <- grep(pattern = "^RPS|^RPL", x = names(ranks_selected_presto_2), value = TRUE)
+
+# Step 2: Filter the ranked list for ribosomal genes
+ribosomal_ranks <- ranks_selected_presto_2[ribosomal_genes]
+
+# Display the results
+ribosomal_ranks
+```
+
+```{r eval=FALSE, echo=FALSE}
+# Cross-reference with the full PRESTO results
+ribosomal_genes_info <- selected_vs_non_results_2 %>%
+  dplyr::filter(feature %in% ribosomal_genes)
+
+# Display the information
+ribosomal_genes_info
+```
+
+```{r eval=FALSE, echo=FALSE}
+# use fgsea 'multilevel' function; the multilevel function has by default NPermSimple=1000
+# use scoretype=pos for genes where logFC > 0
+fgseaRes.subset.region.GOBP_2 <- 
+  fgseaMultilevel(fgsea_sets_GOBP, stats = ranks_selected_presto_2, eps = 0, minSize = 15, scoreType = "pos", maxSize = 200)
+```
+
+```{r eval=FALSE, echo=FALSE}
+# tidy up the data
+fgseaResTidy.subset.region.GOBP_2 <- fgseaRes.subset.region.GOBP_2 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy.subset.region.GOBP_2 %>% 
+  dplyr::select(-leadingEdge, -ES) %>% 
+  arrange(padj) %>% 
+  head(20)
+```
+
+```{r eval=FALSE, echo=FALSE, BarplotFGSEAgoBPSelectedRegionPatientEnrichmentONS76monoPatientSHHMBclust, fig.height=20, fig.width=42}
+ggplot(fgseaResTidy.subset.region.GOBP_2 %>% filter(padj < 0.05) %>% head(n=10), aes(reorder(pathway, NES), NES)) +
+  geom_col(fill = "blue") +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+      title= "") + 
+  theme(axis.text.x = element_text(size=50),
+        axis.text.y = element_text(size=50),
+        axis.title = element_text(size=60),
+        panel.grid = element_blank(),
+        axis.line = element_line(size=1),
+        panel.background = element_rect(fill= "white")
+        ) # can change bar colours in ggplot
+```
+
 
 ```{r eval=FALSE, echo=FALSE}
 sessionInfo()
